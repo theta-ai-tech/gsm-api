@@ -1,3 +1,0 @@
-firebase-functions==0.4.3      # latest as of June 2025
-firebase-admin>=6.2.0,<7.0.0
-functions-framework>=3.3.0,<4.0.0   # local runner
