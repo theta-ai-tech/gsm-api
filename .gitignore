@@ -74,6 +74,24 @@ functions/venv/             # local virtual-env
 *.py[cod]
 *.pyo
 *.pytest_cache/
+.venv/
+venv/
+.env
+
+# Node/Firebase emulators
+firebase-debug.log
+.firebaserc.local
+.local/
+
+# OS
+.DS_Store
+
+# Build artifacts
+dist/
+build/
+
+# Docker
+*.local.env
 
 # --- Mac / editor noise ---
 .DS_Store
@@ -89,4 +107,11 @@ firebase-adminsdk*.json
 *.log
 coverage.xml
 htmlcov/
+
+# Python build metadata
+*.egg-info/
+
+
+
+
 
