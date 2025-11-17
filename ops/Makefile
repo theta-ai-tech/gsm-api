@@ -105,3 +105,21 @@ docker-run:
 docker-stop:
 	- docker stop gsm-api || true
 
+# --- Mac-only helpers to start/stop Docker Desktop ---
+.PHONY: docker-up
+docker-up:
+	@command -v docker >/dev/null 2>&1 || { echo "Docker CLI not found. Install Docker Desktop first."; exit 1; }
+	@pgrep -x "Docker" >/dev/null 2>&1 || open -a Docker
+	@echo "Waiting for Docker Desktop to be ready..."
+	@i=0; \
+	while ! docker info >/dev/null 2>&1; do \
+	  i=$$((i+1)); [ $$i -gt 60 ] && { echo "Docker did not become ready in time"; exit 1; }; \
+	  sleep 1; \
+	done
+	@echo "Docker is up."
+
+.PHONY: docker-down
+docker-down:
+	@osascript -e 'quit app "Docker"' || true
+	@echo "Docker asked to quit (running containers will stop)."
+
