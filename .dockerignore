@@ -1,0 +1,53 @@
+# VCS & CI
+.git
+.github
+.gitignore
+
+# Python env & build junk
+.venv
+venv
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.dist-info/
+.build/
+build/
+dist/
+
+# Node / Firebase emulator caches
+node_modules
+.npm
+firebase-debug.log
+.firebase/
+.firebaserc.local
+.local/
+
+# Editors / OS
+.DS_Store
+.idea
+.vscode
+
+# Tests & local-only scripts (not needed in runtime image)
+tests/
+coverage/
+coverage.xml
+htmlcov/
+.nyc_output
+lib-cov
+.grunt
+bower_components
+
+# Dotenv & local secrets (never copy into image)
+.env
+*.local.env
+
+# Project files we don’t need inside the runtime container
+infra/
+ops/
+README.md
+Makefile
+firebase.json
+firestore.rules
+firestore.indexes.json

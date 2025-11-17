@@ -86,3 +86,22 @@ fmt:
 .PHONY: type
 type:
 	$(ACT) && mypy api
+
+
+.PHONY: docker-build
+docker-build:
+	docker build -t gsm-api:dev .
+
+# For Apple Silicon, build an amd64 image (closer to Cloud Run)
+.PHONY: docker-build-amd64
+docker-build-amd64:
+	docker build --platform=linux/amd64 -t gsm-api:dev .
+
+.PHONY: docker-run
+docker-run:
+	docker run --rm -p 8080:8080 --name gsm-api gsm-api:dev
+
+.PHONY: docker-stop
+docker-stop:
+	- docker stop gsm-api || true
+
