@@ -4,7 +4,9 @@ from google.cloud import firestore
 
 # Safety: ensure we're on the emulator
 host = os.environ.get("FIRESTORE_EMULATOR_HOST")
-assert host, "FIRESTORE_EMULATOR_HOST not set. Run via `make api-dev-emu` or `make seed`."
+assert host, (
+    "FIRESTORE_EMULATOR_HOST not set. Run via `make api-dev-emu` or `make seed`."
+)
 
 project = os.environ.get("GOOGLE_CLOUD_PROJECT", "gsm-dev-fake")
 db = firestore.Client(project=project)
@@ -18,7 +20,7 @@ doc = {
     "preferences": {"area": 42, "level": {"padel": "advanced"}, "sports": ["padel"]},
     "leagueSummaries": [],
     "upcomingMatchIds": [],
-    "recentCompletedMatchIds": []
+    "recentCompletedMatchIds": [],
 }
 
 db.collection("users").document("abc123").set(doc)
