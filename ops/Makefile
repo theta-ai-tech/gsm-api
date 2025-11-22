@@ -91,6 +91,16 @@ format:
 type:
 	$(ACT) && mypy api
 
+.PHONY: test-unit
+test-unit:
+	pytest -q tests/unit
+
+.PHONY: test-int
+test-int:
+	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
+	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
+	pytest -q tests/integration
+
 
 .PHONY: docker-build
 docker-build:
