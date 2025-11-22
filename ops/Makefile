@@ -83,6 +83,10 @@ test:
 fmt:
 	$(ACT) && ruff check --fix api tests
 
+.PHONY: format
+format:
+	. .venv/bin/activate && ruff format api tests
+
 .PHONY: type
 type:
 	$(ACT) && mypy api
