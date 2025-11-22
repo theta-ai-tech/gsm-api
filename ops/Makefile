@@ -85,7 +85,7 @@ fmt:
 
 .PHONY: format
 format:
-	. .venv/bin/activate && ruff format api tests
+	$(ACT) && ruff format api tests
 
 .PHONY: type
 type:
