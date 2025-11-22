@@ -1,3 +1,6 @@
+[![CI (lint, type, tests)](https://github.com/theta-gsm/gsm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/theta-gsm/gsm-api/actions/workflows/ci.yml)
+
+
 # gsm-api
 API calls for the GSM
 
