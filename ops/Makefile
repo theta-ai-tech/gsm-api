@@ -1,5 +1,3 @@
-# ===== GSM API Dev Makefile =====
-
 # --- Config ---
 PROJECT_ID := gsm-dev-f70d0
 FIRESTORE_HOST := 127.0.0.1
@@ -101,7 +99,7 @@ test-int:
 	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
 	pytest -q tests/integration
 
-
+    
 .PHONY: docker-build
 docker-build:
 	docker build -t gsm-api:dev .
