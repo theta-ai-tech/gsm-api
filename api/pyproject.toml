@@ -10,7 +10,8 @@ dependencies = [
   "google-cloud-logging>=3.11",
   "firebase-admin>=6.5",
   "pydantic>=2.7",
-  "google-auth>=2.0"
+  "google-auth>=2.0",
+  "python-dotenv>=1.0.1"
 ]
 
 [project.optional-dependencies]
