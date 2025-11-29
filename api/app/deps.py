@@ -1,8 +1,8 @@
 from typing import Annotated
 
-import firebase_admin
+import firebase_admin  # type: ignore[import-untyped]
 from fastapi import Header
-from firebase_admin import auth as firebase_auth
+from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
 
 from app import errors
 from app.security import CurrentUser
@@ -15,14 +15,11 @@ def _get_firebase_app(settings: Settings) -> firebase_admin.App:
     except ValueError:
         # Lazily initialize so imports remain lightweight in tests and tooling.
         # Uses ADC/service-account credentials unless Auth emulator is set.
-        return firebase_admin.initialize_app(
-            options={"projectId": settings.project_id}
-            if not settings.auth_emulator_host
-            else {
-                "projectId": settings.project_id,
-                "authDomain": "localhost:9099" if settings.auth_emulator_host else None,
-            }
-        )
+        options: dict[str, str] = {"projectId": settings.project_id}
+        if settings.auth_emulator_host:
+            # Explicit host for emulator flow; avoid None values to keep types strict.
+            options["authDomain"] = settings.auth_emulator_host
+        return firebase_admin.initialize_app(options=options)
 
 
 def _parse_authorization_header(authorization: str | None) -> str:
