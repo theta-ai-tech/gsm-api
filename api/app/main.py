@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI, Path
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.deps import get_current_user
 from app.security import CurrentUser, require_self
@@ -19,7 +20,7 @@ if settings.cors_origins:
     )
 
 
-@app.get("/health")
+@app.get("/health", openapi_extra={"security": []})
 def health():
     return {"ok": True}
 
@@ -35,3 +36,34 @@ def get_user(
         "email": current_user.email,
         "picture": current_user.picture,
     }
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+        description=app.description,
+    )
+    # Add bearer scheme so Swagger shows Authorize button/lock icons for protected routes.
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {}).update(
+        {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "Firebase ID token (Authorization: Bearer <token>)",
+            }
+        }
+    )
+    # Set global security requirement so protected routes show lock + Authorize button.
+    openapi_schema.setdefault("security", [{"bearerAuth": []}])
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore[assignment]
