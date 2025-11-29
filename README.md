@@ -13,6 +13,18 @@ make api-dev
 # open http://localhost:8000/health
 # docs: http://localhost:8000/docs
 ```
+
+### Authenticated request (Firebase ID token)
+- Required env: `FIREBASE_PROJECT_ID=<your-project-id>`
+- Optional: `CORS_ORIGINS=http://localhost:3000,https://app.example.com`
+- Optional (local emulator): `FIREBASE_AUTH_EMULATOR_HOST=localhost:9099`
+- For real tokens locally, set ADC: `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`
+
+Example call (replace with a real Firebase ID token):
+```bash
+curl -H "Authorization: Bearer $ID_TOKEN" http://localhost:8000/users/<uid>
+```
+
 ## Run against Firestore emulator (recommended for dev)
 
 Terminal A : 
@@ -37,6 +49,7 @@ make api-dev-emu
 pytest -q tests/unit
 # or: make test-unit
 ```
+More detail: see `.codex/testing.md` for auth and manual test steps.
 
 ---
 
@@ -69,5 +82,3 @@ Health & Docs:
 Notes:
 - If http://localhost doesn’t load, use http://127.0.0.1 (IPv6 vs IPv4).
 - The container doesn’t use your local venv; it has its own Python & deps.
-
-

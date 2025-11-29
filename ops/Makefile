@@ -54,6 +54,7 @@ api-dev-emu-auth:
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
 	export FIREBASE_AUTH_EMULATOR_HOST=$(EMU_AUTH) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	uvicorn app.main:app --reload --port 8000 --app-dir api
 
 # --- Emulators ---
@@ -95,17 +96,12 @@ test-unit:
 
 .PHONY: test-int
 test-int:
-	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
-	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
+	export CORS_ORIGIN="http://localhost:3000" && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	export FIREBASE_AUTH_EMULATOR_HOST=$(EMU_AUTH) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	pytest -q tests/integration
-
-
-.PHONY: test-int
-test-int:
-	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
-	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
-	pytest -q tests/integration
-
     
 .PHONY: docker-build
 docker-build:
