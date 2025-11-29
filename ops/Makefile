@@ -98,14 +98,6 @@ test-int:
 	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
 	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
 	pytest -q tests/integration
-
-
-.PHONY: test-int
-test-int:
-	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
-	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
-	pytest -q tests/integration
-
     
 .PHONY: docker-build
 docker-build:
@@ -141,4 +133,12 @@ docker-up:
 docker-down:
 	@osascript -e 'quit app "Docker"' || true
 	@echo "Docker asked to quit (running containers will stop)."
+
+.PHONY: vars
+vars:
+	export FIRESTORE_EMULATOR_HOST=127.0.0.1:8082 && \
+	export GOOGLE_CLOUD_PROJECT=gsm-dev-f70d0 && \
+	export FIREBASE_PROJECT_ID=gsm-dev-f70d0 && \
+	export CORS_ORIGIN="http://localhost:3000"
+
 
