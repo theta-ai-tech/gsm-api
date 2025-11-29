@@ -1,4 +1,3 @@
-from fastapi import HTTPException
 from pydantic import BaseModel
 
 from app import errors
@@ -21,4 +20,3 @@ def require_roles(current_user: CurrentUser, allowed_roles: set[str]) -> None:
     roles = set(current_user.roles or [])
     if not roles.intersection(allowed_roles):
         raise errors.forbidden("You are not allowed to access this resource")
-

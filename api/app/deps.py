@@ -20,7 +20,7 @@ def _get_firebase_app(settings: Settings) -> firebase_admin.App:
             if not settings.auth_emulator_host
             else {
                 "projectId": settings.project_id,
-                "authDomain": f"localhost:9099" if settings.auth_emulator_host else None,
+                "authDomain": "localhost:9099" if settings.auth_emulator_host else None,
             }
         )
 
