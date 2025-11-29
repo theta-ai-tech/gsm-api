@@ -20,7 +20,7 @@ This doc covers how to exercise GSM API auth locally.
   Start API against Auth emulator (recommended):  
   `make api-dev-emu-auth` (fires up API pointing to emulators).  
   Use helper script to sign in and hit the API:
-  ```
+  ```bashs
   ./tests/bash/bearer.sh \
     --api-key "<FIREBASE_WEB_API_KEY or emulator key>" \
     --email "test@example.com" \
