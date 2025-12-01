@@ -11,8 +11,12 @@ class CurrentUser(BaseModel):
     roles: list[str] | None = None
 
 
-def require_self(resource_uid: str, current_user: CurrentUser) -> None:
-    if current_user.uid != resource_uid:
+def is_owner(current_user: CurrentUser, target_uid: str) -> bool:
+    return current_user.uid == target_uid
+
+
+def require_self(current_user: CurrentUser, target_uid: str) -> None:
+    if not is_owner(current_user, target_uid):
         raise errors.forbidden("You do not own this resource")
 
 
