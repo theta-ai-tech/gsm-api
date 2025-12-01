@@ -30,7 +30,7 @@ def get_user(
     uid: str = Path(..., min_length=1),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    require_self(uid, current_user)
+    require_self(current_user, uid)
     return {
         "uid": current_user.uid,
         "email": current_user.email,
