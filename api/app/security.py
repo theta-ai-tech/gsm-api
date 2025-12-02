@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from app import errors
+from collections.abc import Iterable
 
 
 class CurrentUser(BaseModel):
@@ -20,7 +21,30 @@ def require_self(current_user: CurrentUser, target_uid: str) -> None:
         raise errors.forbidden("You do not own this resource")
 
 
-def require_roles(current_user: CurrentUser, allowed_roles: set[str]) -> None:
-    roles = set(current_user.roles or [])
-    if not roles.intersection(allowed_roles):
-        raise errors.forbidden("You are not allowed to access this resource")
+def _normalized_roles(roles: Iterable[str] | None) -> set[str]:
+    return {role.lower() for role in roles or []}
+
+
+def require_roles(current_user: CurrentUser, roles: Iterable[str]) -> None:
+    required = _normalized_roles(roles)
+    if not required:
+        return
+
+    current = _normalized_roles(current_user.roles)
+    if not required.issubset(current):
+        raise errors.forbidden("Missing required role")
+
+
+def require_any_role(current_user: CurrentUser, roles: Iterable[str]) -> None:
+    required = _normalized_roles(roles)
+    if not required:
+        return
+
+    current = _normalized_roles(current_user.roles)
+    if not current.intersection(required):
+        raise errors.forbidden("Missing required role")
+
+
+def is_admin(current_user: CurrentUser) -> bool:
+    admin_aliases = {"admin", "administrator", "superadmin", "super-admin"}
+    return bool(_normalized_roles(current_user.roles).intersection(admin_aliases))
