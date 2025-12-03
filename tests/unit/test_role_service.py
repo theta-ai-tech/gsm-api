@@ -1,13 +1,11 @@
 from unittest.mock import MagicMock
 
-from app.services.role_service import (
-    RoleService,
-    get_league_member_role,
-    is_league_member,
-)
+from app.services.role_service import RoleService, get_league_member_role, is_league_member
 
 
-def _mock_db(member_exists: bool = True, role_value: str | None = "captain"):
+def _mock_db(
+    member_exists: bool = True, role_value: str | None = "captain", owner_uid: str | None = None
+):
     snapshot = MagicMock()
     snapshot.exists = member_exists
     snapshot.to_dict.return_value = {"role": role_value} if role_value else {}
@@ -18,8 +16,13 @@ def _mock_db(member_exists: bool = True, role_value: str | None = "captain"):
     members_collection = MagicMock()
     members_collection.document.return_value = member_doc
 
+    league_snapshot = MagicMock()
+    league_snapshot.exists = True if owner_uid is not None else False
+    league_snapshot.to_dict.return_value = {"ownerUid": owner_uid} if owner_uid else {}
+
     league_doc = MagicMock()
     league_doc.collection.return_value = members_collection
+    league_doc.get.return_value = league_snapshot
 
     leagues_collection = MagicMock()
     leagues_collection.document.return_value = league_doc
@@ -56,6 +59,13 @@ def test_get_league_member_role_none_when_missing():
     service = RoleService(db=db)
 
     assert service.get_league_member_role("league-1", "user-1") is None
+
+
+def test_get_league_owner_uid():
+    db, _, _ = _mock_db(member_exists=True, role_value="captain", owner_uid="owner-1")
+    service = RoleService(db=db)
+
+    assert service.get_league_owner_uid("league-1") == "owner-1"
 
 
 def test_convenience_functions_use_service():

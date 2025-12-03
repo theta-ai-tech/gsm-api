@@ -14,8 +14,11 @@ class RoleService:
     def __init__(self, db):
         self.db = db
 
+    def _league_doc(self, league_id: str):
+        return self.db.collection("leagues").document(league_id)
+
     def _member_doc(self, league_id: str, uid: str):
-        return self.db.collection("leagues").document(league_id).collection("members").document(uid)
+        return self._league_doc(league_id).collection("members").document(uid)
 
     def is_league_member(self, league_id: str, uid: str) -> bool:
         snapshot = self._member_doc(league_id, uid).get()
@@ -31,6 +34,17 @@ class RoleService:
         if not role:
             return None
         return str(role)
+
+    def get_league_owner_uid(self, league_id: str) -> Optional[str]:
+        snapshot = self._league_doc(league_id).get()
+        if not getattr(snapshot, "exists", False):
+            return None
+
+        data = snapshot.to_dict() or {}
+        owner_uid = data.get("ownerUid") or data.get("owner_uid")
+        if not owner_uid:
+            return None
+        return str(owner_uid)
 
 
 # Convenience helpers when you don't want to wire the class explicitly.
