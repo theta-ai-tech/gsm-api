@@ -25,6 +25,13 @@ Example call (replace with a real Firebase ID token):
 curl -H "Authorization: Bearer $ID_TOKEN" http://localhost:8000/users/<uid>
 ```
 
+### AuthZ helpers (FastAPI)
+- Restrict to the same user: `require_self(current_user, uid)`
+- Require league admin (global role claim or league membership role): `dependencies=[Depends(require_league_member("admin"))]`
+- Example routes (see `app/main.py`):
+  - `POST /leagues/{league_id}/members` -> 201 for admins, 403 otherwise
+  - `DELETE /leagues/{league_id}/members/{uid}` -> 204 for admins, 403 otherwise
+
 ## Run against Firestore emulator (recommended for dev)
 
 Terminal A : 
