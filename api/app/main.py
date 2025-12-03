@@ -1,9 +1,9 @@
-from fastapi import Depends, FastAPI, Path
+from fastapi import Depends, FastAPI, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from app.deps import get_current_user
-from app.security import CurrentUser, require_self
+from app.deps import get_current_user, get_role_service
+from app.security import CurrentUser, require_league_member, require_self
 from app.settings import get_settings
 
 app = FastAPI(title="GSM API", version="0.1.0")
@@ -36,6 +36,34 @@ def get_user(
         "email": current_user.email,
         "picture": current_user.picture,
     }
+
+
+@app.post(
+    "/leagues/{league_id}/members",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def add_league_member(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    # Placeholder: real implementation will add a member to the league in Firestore.
+    return {"league_id": league_id, "requested_by": current_user.uid}
+
+
+@app.delete(
+    "/leagues/{league_id}/members/{uid}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def remove_league_member(
+    league_id: str,
+    uid: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    role_service=Depends(get_role_service),
+):
+    # Placeholder: real implementation will remove the member document.
+    return {"league_id": league_id, "removed_user": uid, "requested_by": current_user.uid}
 
 
 def custom_openapi():
