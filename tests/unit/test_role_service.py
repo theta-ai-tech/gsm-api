@@ -1,10 +1,16 @@
 from unittest.mock import MagicMock
 
-from app.services.role_service import RoleService, get_league_member_role, is_league_member
+from app.services.role_service import (
+    RoleService,
+    get_league_member_role,
+    is_league_member,
+)
 
 
 def _mock_db(
-    member_exists: bool = True, role_value: str | None = "captain", owner_uid: str | None = None
+    member_exists: bool = True,
+    role_value: str | None = "captain",
+    owner_uid: str | None = None,
 ):
     snapshot = MagicMock()
     snapshot.exists = member_exists

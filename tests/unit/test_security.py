@@ -77,7 +77,9 @@ def test_is_admin_detects_aliases_case_insensitive():
 
 
 class FakeRoleService:
-    def __init__(self, member: bool, member_role: str | None = None, owner_uid: str | None = None):
+    def __init__(
+        self, member: bool, member_role: str | None = None, owner_uid: str | None = None
+    ):
         self.member = member
         self.member_role = member_role
         self.owner_uid = owner_uid
@@ -130,7 +132,10 @@ def test_require_league_member_dependency_passes_for_member():
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_role_service] = lambda: role_service
 
-    @app.get("/leagues/{league_id}/protected", dependencies=[Depends(require_league_member("player"))])
+    @app.get(
+        "/leagues/{league_id}/protected",
+        dependencies=[Depends(require_league_member("player"))],
+    )
     def _protected():  # pragma: no cover - simple passthrough
         return {"ok": True}
 
@@ -146,7 +151,10 @@ def test_require_league_member_dependency_blocks_non_member():
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_role_service] = lambda: role_service
 
-    @app.get("/leagues/{league_id}/protected", dependencies=[Depends(require_league_member("player"))])
+    @app.get(
+        "/leagues/{league_id}/protected",
+        dependencies=[Depends(require_league_member("player"))],
+    )
     def _protected():  # pragma: no cover - simple passthrough
         return {"ok": True}
 
