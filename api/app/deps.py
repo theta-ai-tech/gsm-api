@@ -1,10 +1,12 @@
 from typing import Annotated
 
 import firebase_admin  # type: ignore[import-untyped]
-from fastapi import Header
+from fastapi import Header, Depends
 from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
+from google.cloud import firestore  # type: ignore[import-untyped]
 
 from app import errors
+from app.services.role_service import RoleService
 from app.security import CurrentUser
 from app.settings import Settings, get_settings
 
@@ -64,3 +66,14 @@ def get_current_user(
         picture=decoded.get("picture"),
         roles=roles,
     )
+
+
+def get_firestore_client() -> firestore.Client:
+    settings = get_settings()
+    return firestore.Client(project=settings.project_id)
+
+
+def get_role_service(
+    db: Annotated[firestore.Client, Depends(get_firestore_client)],
+) -> RoleService:
+    return RoleService(db=db)
