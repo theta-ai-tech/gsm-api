@@ -7,7 +7,9 @@ from app.security import CurrentUser
 
 
 class FakeRoleService:
-    def __init__(self, member: bool, member_role: str | None = None, owner_uid: str | None = None):
+    def __init__(
+        self, member: bool, member_role: str | None = None, owner_uid: str | None = None
+    ):
         self.member = member
         self.member_role = member_role
         self.owner_uid = owner_uid
