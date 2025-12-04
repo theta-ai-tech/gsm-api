@@ -2,6 +2,7 @@ from fastapi import Depends, FastAPI, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi import Request
+import secrets
 
 from app.deps import get_current_user, get_role_service
 from app.security import CurrentUser, require_league_member, require_self
@@ -28,6 +29,15 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers["Server"] = "gsm-api"
+    return response
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or secrets.token_hex(8)
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = request_id
     return response
 
 
