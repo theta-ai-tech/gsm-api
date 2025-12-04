@@ -98,3 +98,8 @@ Notes:
   - Prod: `CORS_ORIGINS=https://app.gamesetmatch.io`
   - Credentials: `CORS_ALLOW_CREDENTIALS=0` (default; set to `1` only if using cookies)
 - Native mobile apps and server-to-server calls are not affected by CORS.
+
+## Responses & errors
+- All API responses, including errors, are JSON; no HTML error pages.
+- Statuses: 401 unauthorized (missing/invalid token), 403 forbidden (authz failure), 422 validation, 500 internal error (generic message, no stack trace).
+- Each response includes `X-Request-Id` for correlation; pass your own header to propagate tracing.
