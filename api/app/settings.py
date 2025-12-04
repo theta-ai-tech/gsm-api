@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class Settings(BaseModel):
     project_id: str
     cors_origins: List[str] = []
+    cors_allow_credentials: bool = False
     auth_emulator_host: str | None = None
 
     @property
@@ -25,9 +26,11 @@ def get_settings() -> Settings:
 
     cors_raw = os.getenv("CORS_ORIGINS", "")
     cors_origins = [origin.strip() for origin in cors_raw.split(",") if origin.strip()]
+    cors_allow_credentials = bool(int(os.getenv("CORS_ALLOW_CREDENTIALS", "0")))
 
     return Settings(
         project_id=project_id,
         cors_origins=cors_origins,
+        cors_allow_credentials=cors_allow_credentials,
         auth_emulator_host=os.getenv("FIREBASE_AUTH_EMULATOR_HOST"),
     )
