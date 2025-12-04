@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi import Request
 
 from app.deps import get_current_user, get_role_service
 from app.security import CurrentUser, require_league_member, require_self
@@ -18,6 +19,16 @@ if settings.cors_origins:
         allow_methods=["*"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers["Server"] = "gsm-api"
+    return response
 
 
 @app.get("/health", openapi_extra={"security": []})
