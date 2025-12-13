@@ -37,9 +37,14 @@ install:
 	$(ACT) && pip install --upgrade pip && pip install -e api[dev]
 
 # --- API local runs ---
+# Local dev against Firestore emulator; sets FIREBASE_PROJECT_ID, GOOGLE_CLOUD_PROJECT, FIRESTORE_EMULATOR_HOST
 .PHONY: api-dev
 api-dev:
-	$(ACT) && uvicorn app.main:app --reload --port 8000 --app-dir api
+	$(ACT) && \
+	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	uvicorn app.main:app --reload --port 8000 --app-dir api
 
 .PHONY: api-dev-emu
 api-dev-emu:
@@ -137,4 +142,3 @@ docker-up:
 docker-down:
 	@osascript -e 'quit app "Docker"' || true
 	@echo "Docker asked to quit (running containers will stop)."
-
