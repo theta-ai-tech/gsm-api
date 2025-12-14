@@ -14,3 +14,18 @@ def test_get_settings_reads_emulator_env(monkeypatch):
         assert settings.firestore_emulator_host == "127.0.0.1:8082"
     finally:
         get_settings.cache_clear()
+
+
+def test_get_settings_real_firestore(monkeypatch):
+    """Optional api-dev-real config: talks to real Firestore (no emulator host set)."""
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "gsm-real-test")
+    monkeypatch.delenv("FIRESTORE_EMULATOR_HOST", raising=False)
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.project_id == "gsm-real-test"
+        assert settings.firestore_emulator_host is None
+    finally:
+        get_settings.cache_clear()

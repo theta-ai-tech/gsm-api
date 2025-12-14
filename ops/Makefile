@@ -46,6 +46,14 @@ api-dev:
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
 	uvicorn app.main:app --reload --port 8000 --app-dir api
 
+# Local dev against real Firestore (no emulator); requires ADC or GOOGLE_APPLICATION_CREDENTIALS
+.PHONY: api-dev-real
+api-dev-real:
+	$(ACT) && \
+	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	uvicorn app.main:app --reload --port 8000 --app-dir api
+
 .PHONY: api-dev-emu
 api-dev-emu:
 	$(ACT) && \
