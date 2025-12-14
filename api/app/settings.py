@@ -9,6 +9,8 @@ class Settings(BaseModel):
     project_id: str
     cors_origins: List[str] = []
     cors_allow_credentials: bool = False
+    credentials_file: str | None = None
+    firestore_emulator_host: str | None = None
     auth_emulator_host: str | None = None
 
     @property
@@ -32,5 +34,7 @@ def get_settings() -> Settings:
         project_id=project_id,
         cors_origins=cors_origins,
         cors_allow_credentials=cors_allow_credentials,
+        credentials_file=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        firestore_emulator_host=os.getenv("FIRESTORE_EMULATOR_HOST"),
         auth_emulator_host=os.getenv("FIREBASE_AUTH_EMULATOR_HOST"),
     )
