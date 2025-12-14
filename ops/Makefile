@@ -46,7 +46,9 @@ api-dev:
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
 	uvicorn app.main:app --reload --port 8000 --app-dir api
 
-# Local dev against real Firestore (no emulator); requires ADC or GOOGLE_APPLICATION_CREDENTIALS
+# Local dev against real Firestore in the dev project (no emulator); optional/debugging.
+# Requires Application Default Credentials: either `gcloud auth application-default login`
+# or GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/your-dev-sa.json (outside the repo; never committed).
 .PHONY: api-dev-real
 api-dev-real:
 	$(ACT) && \
