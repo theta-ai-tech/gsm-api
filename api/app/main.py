@@ -1,7 +1,9 @@
+import logging
+import secrets
+import time
 from fastapi import Depends, FastAPI, Path, status, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-import secrets
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
@@ -13,6 +15,8 @@ from app.settings import get_settings
 app = FastAPI(title="GSM API", version="0.1.0")
 
 settings = get_settings()
+logger = logging.getLogger("gsm-api")
+SLOW_REQUEST_THRESHOLD_MS = 500
 
 if settings.cors_origins:
     app.add_middleware(
@@ -40,6 +44,27 @@ async def request_id_middleware(request: Request, call_next):
     request.state.request_id = request_id
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
+    return response
+
+
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+
+    if duration_ms >= SLOW_REQUEST_THRESHOLD_MS:
+        logger.warning(
+            "slow_request",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "status_code": response.status_code,
+                "duration_ms": round(duration_ms, 2),
+                "threshold_ms": SLOW_REQUEST_THRESHOLD_MS,
+                "request_id": getattr(request.state, "request_id", None),
+            },
+        )
     return response
 
 
@@ -79,11 +104,18 @@ def health():
 
 
 @app.get("/ready", openapi_extra={"security": []})
-def ready():
+def ready(request: Request):
     try:
         db = get_firestore_client()
         db.collection("ready").limit(1).get()
     except Exception as exc:  # pragma: no cover - exercised via tests
+        logger.error(
+            "readiness_failure",
+            extra={
+                "request_id": getattr(request.state, "request_id", None),
+                "detail": "firestore_unavailable",
+            },
+        )
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
