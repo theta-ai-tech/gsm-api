@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
 from app.deps import get_current_user, get_role_service
+from app.deps import get_firestore_client
 from app.security import CurrentUser, require_league_member, require_self
 from app.settings import get_settings
 
@@ -75,6 +76,25 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/health", openapi_extra={"security": []})
 def health():
     return {"status": "ok", "service": "gsm-api", "version": app.version, "ok": True}
+
+
+@app.get("/ready", openapi_extra={"security": []})
+def ready():
+    try:
+        db = get_firestore_client()
+        db.collection("ready").limit(1).get()
+    except Exception as exc:  # pragma: no cover - exercised via tests
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "degraded",
+                "firestore": "error",
+                "detail": "firestore_unavailable",
+                "message": str(exc),
+            },
+        )
+
+    return {"status": "ok", "firestore": "ok", "service": "gsm-api", "version": app.version}
 
 
 @app.get("/users/{uid}")
