@@ -61,3 +61,19 @@ def test_firebase_app_uses_adc_without_key_file(monkeypatch):
         assert init_calls["kwargs"]["options"]["projectId"] == "cloud-run-test"
     finally:
         deps.get_settings.cache_clear()
+
+
+def test_ci_emulator_settings(monkeypatch):
+    """Matches CI env: Firestore emulator host + project id set for tests."""
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "gsm-dev-f70d0")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "gsm-dev-f70d0")
+    monkeypatch.setenv("FIRESTORE_EMULATOR_HOST", "127.0.0.1:8082")
+    monkeypatch.delenv("FIREBASE_AUTH_EMULATOR_HOST", raising=False)
+
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.project_id == "gsm-dev-f70d0"
+        assert settings.firestore_emulator_host == "127.0.0.1:8082"
+    finally:
+        get_settings.cache_clear()
