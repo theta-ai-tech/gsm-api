@@ -110,3 +110,14 @@ Notes:
 - CI: uses only the Firestore emulator; env sets `FIRESTORE_EMULATOR_HOST`, `GOOGLE_CLOUD_PROJECT`, `FIREBASE_PROJECT_ID`; no JSON keys.
 - Prod (Cloud Run): uses Application Default Credentials via Workload Identity; no JSON key files in the container. Set `FIREBASE_PROJECT_ID` in service config.
 - Never commit Service Account JSON files or `.env.local` to Git.
+
+## Auth Tests
+- Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.
+
+## Health & Readiness
+- `GET /health`: liveness, public, no external deps or auth; safe for uptime checks.
+- `GET /ready`: readiness, public; touches Firestore (emulator in dev/CI, real in prod); returns 200 when Firestore is reachable, 503 when not.
+
+## Observability
+- Every request gets an `X-Request-Id` (honors incoming header or generates one) and echoes it back in responses.
+- Timing middleware logs slow requests with path, method, status, duration, threshold, and request id to aid tracing/debugging.

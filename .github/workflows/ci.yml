@@ -97,4 +97,5 @@ jobs:
           # ---- Auth/Settings for B1 (token verify is mocked, but settings expect a project id) ----
           # Optional (browser CORS only; safe to omit)
           CORS_ORIGINS: http://localhost:3000
+        # Runs auth regressions, health/readiness, and observability-related tests.
         run: pytest -q
