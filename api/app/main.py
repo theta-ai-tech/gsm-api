@@ -74,7 +74,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health", openapi_extra={"security": []})
 def health():
-    return {"ok": True}
+    return {"status": "ok", "service": "gsm-api", "version": app.version, "ok": True}
 
 
 @app.get("/users/{uid}")
