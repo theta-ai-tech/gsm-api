@@ -12,6 +12,7 @@ from app.settings import Settings, get_settings
 
 
 def _get_firebase_app(settings: Settings) -> firebase_admin.App:
+    # In Cloud Run, ADC via Workload Identity provides credentials; no JSON key files required.
     try:
         return firebase_admin.get_app()
     except ValueError:
@@ -70,6 +71,7 @@ def get_current_user(
 
 def get_firestore_client() -> firestore.Client:
     settings = get_settings()
+    # Firestore client also uses ADC in Cloud Run; no explicit key files are read here.
     return firestore.Client(project=settings.project_id)
 
 
