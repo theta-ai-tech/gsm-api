@@ -1,11 +1,11 @@
 import os
 
+import pytest
+from fastapi.testclient import TestClient
+
 # Ensure required env is present before app import (app.main calls get_settings at import time)
 os.environ.setdefault("FIREBASE_PROJECT_ID", "gsm-dev-f70d0")
 os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "gsm-dev-f70d0")
-
-import pytest
-from fastapi.testclient import TestClient
 
 from app.main import app
 
