@@ -22,7 +22,7 @@ from app.models import (
 
 def _sport_ranking_to_dict(ranking: SportRanking) -> Dict[str, Any]:
     return {
-        "sport": ranking.sport,
+        "sport": ranking.sport.value,
         "pts": ranking.pts,
         "globalRanking": ranking.global_ranking,
     }
@@ -48,16 +48,16 @@ def _league_summary_to_dict(summary: LeagueSummary) -> Dict[str, Any]:
     return {
         "leagueId": summary.league_id,
         "name": summary.name,
-        "sport": summary.sport,
-        "status": summary.status,
-        "role": summary.role,
+        "sport": summary.sport.value,
+        "status": summary.status.value,
+        "role": summary.role.value if summary.role else None,
     }
 
 
 def _user_match_summary_to_dict(summary: UserMatchSummary) -> Dict[str, Any]:
     return {
         "matchId": summary.match_id,
-        "sport": summary.sport,
+        "sport": summary.sport.value,
         "scheduledAt": summary.scheduled_at,
         "leagueId": summary.league_id,
         "courtId": summary.court_id,
@@ -68,9 +68,9 @@ def _user_match_summary_to_dict(summary: UserMatchSummary) -> Dict[str, Any]:
 def _user_completed_match_summary_to_dict(summary: UserCompletedMatchSummary) -> Dict[str, Any]:
     return {
         "matchId": summary.match_id,
-        "sport": summary.sport,
+        "sport": summary.sport.value,
         "finishedAt": summary.finished_at,
-        "result": summary.result,
+        "result": summary.result.value if summary.result else None,
         "scoreText": summary.score_text,
         "leagueId": summary.league_id,
     }
@@ -82,7 +82,7 @@ def _journal_entry_summary_to_dict(summary: JournalEntrySummary) -> Dict[str, An
         "createdAt": summary.created_at,
         "title": summary.title,
         "matchId": summary.match_id,
-        "sport": summary.sport,
+        "sport": summary.sport.value if summary.sport else None,
     }
 
 
@@ -101,13 +101,13 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
         "uid": user.uid,
         "name": user.name,
         "email": user.email,
-        "profileUrl": user.profile_url,
+        "profileUrl": str(user.profile_url) if user.profile_url else None,
         "phone": user.phone,
         "rankings": _per_sport_rankings_to_dict(user.rankings),
         "preferences": {
             "area": user.preferences.area,
             "levels": _per_sport_levels_to_dict(user.preferences.levels),
-            "sports": user.preferences.sports,
+            "sports": [sport.value for sport in user.preferences.sports],
         },
         "leaguesActive": [_league_summary_to_dict(l) for l in user.leagues_active],
         "leaguesCompleted": [_league_summary_to_dict(l) for l in user.leagues_completed],
@@ -121,9 +121,9 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
 def league_to_firestore_doc(league: League) -> Dict[str, Any]:
     return {
         "name": league.name,
-        "sport": league.sport,
+        "sport": league.sport.value,
         "season": league.season,
-        "status": league.status,
+        "status": league.status.value,
         "ownerUid": league.owner_uid,
         "meta": league.meta or {},
     }
@@ -132,8 +132,8 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
 def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:
     return {
         "uid": member.uid,
-        "role": member.role,
-        "status": member.status,
+        "role": member.role.value,
+        "status": member.status.value,
         "joinedAt": member.joined_at,
         "stats": member.stats or {},
     }
@@ -161,22 +161,26 @@ def _participant_to_dict(p: MatchParticipant) -> Dict[str, Any]:
     return {
         "uid": p.uid,
         "team": p.team,
-        "role": p.role,
-        "result": p.result,
+        "role": p.role.value,
+        "result": p.result.value if p.result else None,
     }
 
 
 def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
     return {
-        "sport": match.sport,
-        "status": match.status,
+        "sport": match.sport.value,
+        "status": match.status.value,
         "scheduledAt": match.scheduled_at,
         "finishedAt": match.finished_at,
         "leagueId": match.league_id,
         "courtId": match.court_id,
         "participants": [_participant_to_dict(p) for p in match.participants],
         "participantUids": match.participant_uids,
-        "resultByUser": match.result_by_user,
+        "resultByUser": (
+            {uid: result.value for uid, result in match.result_by_user.items()}
+            if match.result_by_user
+            else None
+        ),
         "score": _match_score_to_dict(match.score),
     }
 
@@ -188,6 +192,6 @@ def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
         "tags": entry.tags,
         "createdAt": entry.created_at,
         "matchId": entry.match_id,
-        "sport": entry.sport,
-        "visibility": entry.visibility,
+        "sport": entry.sport.value if entry.sport else None,
+        "visibility": entry.visibility.value,
     }

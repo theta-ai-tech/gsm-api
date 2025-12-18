@@ -23,6 +23,7 @@ from app.models import (
     SetScore,
     SportEnum,
     SportRanking,
+    JournalVisibilityEnum,
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
@@ -235,7 +236,7 @@ JOURNAL_1 = JournalEntry(
     tags=["padel", "volley", "serve"],
     match_id=MATCH_COMPLETED_1.match_id,
     sport=SportEnum.PADEL,
-    visibility=SportEnum.PADEL.to_string()  # type: ignore[attr-defined]
+    visibility=JournalVisibilityEnum.PRIVATE,
 )
 
 JOURNAL_2 = JournalEntry(
@@ -247,7 +248,7 @@ JOURNAL_2 = JournalEntry(
     tags=["tennis", "backhand"],
     match_id=MATCH_COMPLETED_2.match_id,
     sport=SportEnum.TENNIS,
-    visibility=SportEnum.TENNIS.to_string()  # type: ignore[attr-defined]
+    visibility=JournalVisibilityEnum.PRIVATE,
 )
 
 SAMPLE_JOURNAL_ENTRIES = [JOURNAL_1, JOURNAL_2]

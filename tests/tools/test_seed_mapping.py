@@ -16,6 +16,7 @@ from app.models import (
     SportEnum,
     SportRanking,
     UserPreferences,
+    LevelEnum,
 )
 from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
@@ -37,7 +38,9 @@ def _sample_user() -> PrivateUserProfile:
         profile_url=None,
         rankings=PerSportRankings(padel=SportRanking(sport=SportEnum.PADEL, pts=100)),
         preferences=UserPreferences(
-            area=1, levels=PerSportLevels(), sports=[SportEnum.PADEL]
+            area=1,
+            levels=PerSportLevels(padel=LevelEnum.BEGINNER),
+            sports=[SportEnum.PADEL],
         ),
         leagues_active=[],
         leagues_completed=[],
@@ -52,7 +55,7 @@ def test_user_mapping_basic():
     doc = user_to_firestore_doc(_sample_user())
     assert doc["uid"] == "u1"
     assert doc["rankings"]["padel"]["pts"] == 100
-    assert doc["preferences"]["sports"] == [SportEnum.PADEL]
+    assert doc["preferences"]["sports"] == ["padel"]
 
 
 def test_match_mapping_includes_score_and_participants():
