@@ -89,6 +89,14 @@ seed:
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	python tests/integration/seed_emulator.py
 
+# Seed Firestore emulator with sample GSM data (C2)
+.PHONY: seed-emu
+seed-emu:
+	$(ACT) && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	python -m tools.seed_firestore --env=emu
+
 .PHONY: test
 test:
 	$(ACT) && pytest -q
@@ -108,6 +116,10 @@ type:
 .PHONY: test-unit
 test-unit:
 	pytest -q tests/unit
+
+.PHONY: test-tools
+test-tools:
+	pytest -q tests/tools
 
 .PHONY: test-int
 test-int:

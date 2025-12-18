@@ -30,3 +30,5 @@ This summarizes the shared value objects, enums, and resource models introduced 
 
 ## Journal
 - `JournalEntry`: id, owner uid, timestamps, title/body/tags, optional match/sport, visibility.
+
+For emulator seeding with these models, see `tools/README.md`.***
