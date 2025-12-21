@@ -111,6 +111,9 @@ Notes:
 - Prod (Cloud Run): uses Application Default Credentials via Workload Identity; no JSON key files in the container. Set `FIREBASE_PROJECT_ID` in service config.
 - Never commit Service Account JSON files or `.env.local` to Git.
 
+## Firestore Query Contract
+- See `wiki/queries.md` for the agreed Firestore query shapes (profiles, matches, journals) and index expectations.
+
 ## Auth Tests
 - Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.
 
