@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
+from google.cloud import firestore  # type: ignore[attr-defined]
 
 from app.deps import get_settings
 from app.repos.leagues_repo import LeaguesRepo

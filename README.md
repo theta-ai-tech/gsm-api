@@ -14,6 +14,32 @@ make api-dev
 # docs: http://localhost:8000/docs
 ```
 
+## Make targets
+- `make venv`: create virtual env
+- `make install`: install API deps
+- `make api-dev`: run FastAPI locally (no emulator)
+- `make api-dev-real`: run API against real Firestore (requires ADC)
+- `make api-dev-emu`: run API against Firestore emulator
+- `make api-dev-emu-auth`: run API against Firestore + Auth emulators
+- `make emu-firestore`: start Firestore emulator
+- `make emu-all`: start Firestore + Auth emulators
+- `make seed`: seed example data into emulator (legacy)
+- `make seed-emu`: seed emulator with GSM sample data
+- `make check-queries`: run repo query checks against emulator
+- `make test`: run all tests (requires emulators)
+- `make test-unit`: run unit tests
+- `make test-tools`: run tools tests
+- `make test-int`: run integration tests (requires emulators)
+- `make fmt`: lint/autofix (ruff)
+- `make format`: format code (ruff)
+- `make type`: type check (mypy)
+- `make docker-build`: build dev Docker image
+- `make docker-build-amd64`: build amd64 Docker image
+- `make docker-run`: run Docker image locally
+- `make docker-stop`: stop local Docker container
+- `make docker-up`: start Docker Desktop (macOS)
+- `make docker-down`: stop Docker Desktop (macOS)
+
 ### Authenticated request (Firebase ID token)
 - Required env: `FIREBASE_PROJECT_ID=<your-project-id>`
 - Optional: `CORS_ORIGINS=http://localhost:3000,https://app.example.com`
@@ -113,6 +139,22 @@ Notes:
 
 ## Firestore Query Contract
 - See `wiki/queries.md` for the agreed Firestore query shapes (profiles, matches, journals) and index expectations.
+
+## Deploying Firestore Indexes
+- Local emulator reads `firestore.indexes.json` via `firebase.json`; keep both files in sync.
+- Deploy indexes to dev/prod:
+  ```bash
+  firebase deploy --only firestore:indexes --project <your-project>
+  ```
+- If you see a Firestore error with a console link to create an index, confirm the query is part of
+  the C3 contracts and add the index to `firestore.indexes.json` so it is committed.
+
+## Index Validation (C3.3)
+Run against the emulator to ensure repo queries do not hit “requires an index” errors:
+```bash
+make emu-firestore
+make check-queries
+```
 
 ## Auth Tests
 - Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.
