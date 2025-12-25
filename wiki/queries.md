@@ -1,6 +1,7 @@
 # Firestore Query Contract
 
 This documents the exact queries we will support in C3. No Firestore calls or indexes are implemented yet.
+See `wiki/repositories.md` for how query contracts map to repository classes.
 
 ## Q1 — Get user profile (single doc read)
 - Purpose: `GET /users/{uid}`; return `PrivateUserProfile` when `requester.uid == uid`, otherwise `PublicUserProfile`.

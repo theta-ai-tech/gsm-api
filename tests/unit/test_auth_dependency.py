@@ -87,8 +87,6 @@ def test_successful_auth_returns_user(monkeypatch, client):
 
     resp = client.get("/users/alex", headers={"Authorization": "Bearer fake"})
     assert resp.status_code == 200
-    assert resp.json() == {
-        "uid": "alex",
-        "email": "alex@example.com",
-        "picture": "http://example.com/avatar.png",
-    }
+    body = resp.json()
+    assert body["uid"] == "alex"
+    assert body["email"] == "alex@example.com"

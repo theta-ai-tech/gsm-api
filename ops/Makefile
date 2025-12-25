@@ -23,7 +23,8 @@ help:
 	@echo "make api-dev-emu      - run API against Firestore emulator"
 	@echo "make api-dev-emu-auth - run API against Firestore + Auth emulators"
 	@echo "make seed             - seed example data into emulator"
-	@echo "make test             - run tests"
+	@echo "make test             - run all tests (requires emulators)"
+	@echo "make test-int         - run integration tests (requires emulators)"
 	@echo "make fmt              - lint/format (ruff)"
 	@echo "make type             - type check (mypy)"
 
@@ -99,7 +100,13 @@ seed-emu:
 
 .PHONY: test
 test:
-	$(ACT) && pytest -q
+	$(ACT) && \
+	export CORS_ORIGIN="http://localhost:3000" && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	export FIREBASE_AUTH_EMULATOR_HOST=$(EMU_AUTH) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
+	pytest -q
 
 .PHONY: fmt
 fmt:

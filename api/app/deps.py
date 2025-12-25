@@ -3,7 +3,7 @@ from typing import Annotated
 import firebase_admin  # type: ignore[import-untyped]
 from fastapi import Header, Depends
 from firebase_admin import auth as firebase_auth  # type: ignore[import-untyped]
-from google.cloud import firestore  # type: ignore[import-untyped]
+from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app import errors
 from app.services.role_service import RoleService
