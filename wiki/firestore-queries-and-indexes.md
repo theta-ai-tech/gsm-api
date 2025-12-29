@@ -75,3 +75,15 @@ make deploy-indexes-dev
 ```
 Indexes can take time to build. Avoid using console-generated index links; prefer committing
 changes to `firestore.indexes.json`.
+
+### When to run
+- Any time `firestore.indexes.json` changes.
+- Before running the API against real dev Firestore (non-emulator mode).
+
+### How to verify
+- Repo queries that previously failed with “requires an index” should succeed after deployment.
+
+### Notes
+- Emulator: no deployment needed.
+- Dev/prod: deployment required.
+- Use a dedicated dev project for index deployment; avoid running this against prod unless intended.

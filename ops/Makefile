@@ -1,5 +1,6 @@
 # --- Config ---
 PROJECT_ID := gsm-dev-f70d0
+DEV_PROJECT_ID ?= $(PROJECT_ID)
 FIRESTORE_HOST := 127.0.0.1
 FIRESTORE_PORT := 8082
 AUTH_HOST := 127.0.0.1
@@ -41,6 +42,7 @@ help:
 	@echo "make docker-stop      - stop local Docker container"
 	@echo "make docker-up        - start Docker Desktop (macOS)"
 	@echo "make docker-down      - stop Docker Desktop (macOS)"
+	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
 
 # --- Python env ---
 # Create virtual env
@@ -178,6 +180,12 @@ test-int:
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	pytest -q tests/integration
+
+# Deploy Firestore indexes to dev project
+.PHONY: deploy-indexes-dev
+deploy-indexes-dev:
+	@echo "Deploying Firestore indexes to dev project: $(DEV_PROJECT_ID)"
+	firebase deploy --only firestore:indexes --project $(DEV_PROJECT_ID)
     
 # Build Docker image
 .PHONY: docker-build
