@@ -139,6 +139,7 @@ Notes:
 
 ## Firestore Query Contract
 - See `wiki/queries.md` for the agreed Firestore query shapes (profiles, matches, journals) and index expectations.
+- Query-to-index mapping: `wiki/firestore-queries-and-indexes.md`.
 
 ## Deploying Firestore Indexes
 - Local emulator reads `firestore.indexes.json` via `firebase.json`; keep both files in sync.

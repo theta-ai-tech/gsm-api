@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
+from google.cloud import firestore  # type: ignore[import-untyped,attr-defined]
 
 
 class RepoBase:
