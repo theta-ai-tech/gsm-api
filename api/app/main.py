@@ -11,6 +11,7 @@ from app.deps import get_current_user, get_role_service
 from app.deps import get_firestore_client
 from app.security import CurrentUser, require_league_member, require_self
 from app.settings import get_settings
+from app.dependencies.repos import get_users_repo
 
 app = FastAPI(title="GSM API", version="0.1.0")
 
@@ -133,13 +134,13 @@ def ready(request: Request):
 def get_user(
     uid: str = Path(..., min_length=1),
     current_user: CurrentUser = Depends(get_current_user),
+    users_repo=Depends(get_users_repo),
 ):
     require_self(current_user, uid)
-    return {
-        "uid": current_user.uid,
-        "email": current_user.email,
-        "picture": current_user.picture,
-    }
+    profile = users_repo.get_private_profile(uid)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return profile
 
 
 @app.post(

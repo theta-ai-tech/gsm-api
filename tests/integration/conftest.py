@@ -19,7 +19,10 @@ def db():
 
 
 @pytest.fixture(autouse=True)
-def _cleanup(db):
+def _cleanup(db, request):
+    if request.node.get_closest_marker("seeded"):
+        yield
+        return
     # runs before/after each test (adjust to your needs)
     yield
     # cleanup collections you touch in integration tests
