@@ -27,6 +27,7 @@ help:
 	@echo "make seed             - seed example data into emulator"
 	@echo "make seed-emu         - seed emulator with GSM sample data"
 	@echo "make check-queries    - run repo query checks against emulator"
+	@echo "make check-queries-emu - run repo query checks against emulator"
 	@echo "make test             - run all tests (requires emulators)"
 	@echo "make test-int         - run integration tests (requires emulators)"
 	@echo "make test-unit        - run unit tests"
@@ -128,6 +129,9 @@ check-queries:
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	python -m tools.check_queries
 
+# Run repo query checks against emulator (C3.4)
+.PHONY: check-queries-emu
+check-queries-emu: check-queries
 .PHONY: test
 # Run full test suite (unit + tools + integration)
 .PHONY: test

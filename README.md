@@ -149,11 +149,16 @@ Notes:
 - If you see a Firestore error with a console link to create an index, confirm the query is part of
   the C3 contracts and add the index to `firestore.indexes.json` so it is committed.
 
-## Index Validation (C3.3)
-Run against the emulator to ensure repo queries do not hit “requires an index” errors:
+## Verification (C3.4)
+Run against the emulator to ensure seeding + repo queries succeed:
 ```bash
 make emu-firestore
-make check-queries
+make check-queries-emu
+```
+
+Integration test subset:
+```bash
+pytest -k firestore_queries
 ```
 
 ## Auth Tests
