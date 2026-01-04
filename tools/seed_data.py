@@ -152,6 +152,25 @@ SAMPLE_LEAGUES = [LEAGUE_PADEL_LOCAL, LEAGUE_TENNIS_LOCAL, LEAGUE_TENNIS_COMPLET
 PRIMARY_USER_UID = USER_IGNATIOS.uid
 PRIMARY_LEAGUE_ID = LEAGUE_PADEL_LOCAL.league_id
 
+USER_IGNATIOS.leagues_active = [
+    LeagueSummary(
+        league_id=LEAGUE_PADEL_LOCAL.league_id,
+        name=LEAGUE_PADEL_LOCAL.name,
+        sport=LEAGUE_PADEL_LOCAL.sport,
+        status=LEAGUE_PADEL_LOCAL.status,
+        role=None,
+    )
+]
+USER_IGNATIOS.leagues_completed = [
+    LeagueSummary(
+        league_id=LEAGUE_TENNIS_COMPLETED.league_id,
+        name=LEAGUE_TENNIS_COMPLETED.name,
+        sport=LEAGUE_TENNIS_COMPLETED.sport,
+        status=LEAGUE_TENNIS_COMPLETED.status,
+        role=None,
+    )
+]
+
 # --- Matches ---
 # A small set of matches with varied statuses; participant_uids align to SAMPLE_USERS.
 MATCH_UPCOMING_1 = Match(

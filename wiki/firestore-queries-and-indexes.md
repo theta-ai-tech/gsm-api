@@ -60,6 +60,22 @@ Completed league matches:
 - Repo: `JournalRepo.list_entries`
 - Index: single-field only (no composite index required)
 
+## Leagues by Status (MVP Source of Truth)
+Option A (MVP): derive “active” vs “completed” leagues from denormalized summaries stored on
+the user document:
+- `users/{uid}.leaguesActive`: `LeagueSummary[]`
+- `users/{uid}.leaguesCompleted`: `LeagueSummary[]`
+
+Why:
+- Fast “home/profile” read without cross-league joins.
+- Avoids membership query complexity for MVP.
+
+Future alternative (Option B):
+- Derive by membership docs at `leagues/{leagueId}/members/{uid}` using collection-group queries,
+  or introduce a top-level `leagueMembers` collection for efficient queries.
+
+Tests in C4 treat Option A as canonical.
+
 ## How to reproduce locally
 ```bash
 make emu-firestore
