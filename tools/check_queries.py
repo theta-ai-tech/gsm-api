@@ -4,7 +4,7 @@ from google.cloud import firestore
 
 from app.repos.journal_repo import JournalRepo
 from app.repos.matches_repo import MatchesRepo
-from tools.seed_data import LEAGUE_PADEL_LOCAL, USER_IGNATIOS
+from tools.seed_data import PRIMARY_LEAGUE_ID, PRIMARY_USER_UID
 from tools.seed_firestore import seed_all
 
 
@@ -30,8 +30,8 @@ def main() -> None:
     client = firestore.Client(project=project)
     seed_all(client)
 
-    uid = USER_IGNATIOS.uid
-    league_id = LEAGUE_PADEL_LOCAL.league_id
+    uid = PRIMARY_USER_UID
+    league_id = PRIMARY_LEAGUE_ID
 
     matches_repo = MatchesRepo(client)
     journal_repo = JournalRepo(client)

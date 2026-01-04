@@ -137,15 +137,28 @@ LEAGUE_TENNIS_LOCAL = League(
     meta=None,
 )
 
-SAMPLE_LEAGUES = [LEAGUE_PADEL_LOCAL, LEAGUE_TENNIS_LOCAL]
+LEAGUE_TENNIS_COMPLETED = League(
+    league_id="tennis-completed-2024",
+    name="Tennis Series 2024",
+    sport=SportEnum.TENNIS,
+    season="Autumn 2024",
+    status=LeagueStatusEnum.COMPLETED,
+    owner_uid=USER_ALICE.uid,
+    meta=None,
+)
+
+SAMPLE_LEAGUES = [LEAGUE_PADEL_LOCAL, LEAGUE_TENNIS_LOCAL, LEAGUE_TENNIS_COMPLETED]
+
+PRIMARY_USER_UID = USER_IGNATIOS.uid
+PRIMARY_LEAGUE_ID = LEAGUE_PADEL_LOCAL.league_id
 
 # --- Matches ---
 # A small set of matches with varied statuses; participant_uids align to SAMPLE_USERS.
-MATCH_SCHEDULED = Match(
-    match_id="match_scheduled",
+MATCH_UPCOMING_1 = Match(
+    match_id="match-upcoming-1",
     sport=SportEnum.PADEL,
     status=MatchStatusEnum.SCHEDULED,
-    scheduled_at=utc(2099, 1, 15, 18, 0),
+    scheduled_at=utc(2030, 1, 10, 10, 0),
     league_id=LEAGUE_PADEL_LOCAL.league_id,
     court_id="court-1",
     score=None,
@@ -157,11 +170,27 @@ MATCH_SCHEDULED = Match(
     participant_uids=[USER_IGNATIOS.uid, USER_BOB.uid],
 )
 
+MATCH_UPCOMING_2 = Match(
+    match_id="match-upcoming-2",
+    sport=SportEnum.PADEL,
+    status=MatchStatusEnum.SCHEDULED,
+    scheduled_at=utc(2030, 1, 15, 10, 0),
+    league_id=LEAGUE_PADEL_LOCAL.league_id,
+    court_id="court-2",
+    score=None,
+    result_by_user=None,
+    participants=[
+        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=1),
+        MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team=2),
+    ],
+    participant_uids=[USER_IGNATIOS.uid, USER_ALICE.uid],
+)
+
 MATCH_PENDING = Match(
     match_id="match_pending",
     sport=SportEnum.TENNIS,
     status=MatchStatusEnum.PENDING_CONFIRMATION,
-    scheduled_at=utc(2024, 12, 20, 17, 0),
+    scheduled_at=utc(2030, 2, 1, 17, 0),
     league_id=LEAGUE_TENNIS_LOCAL.league_id,
     score=None,
     result_by_user={
@@ -175,11 +204,11 @@ MATCH_PENDING = Match(
 )
 
 MATCH_COMPLETED_1 = Match(
-    match_id="match_completed_1",
+    match_id="match-completed-1",
     sport=SportEnum.PADEL,
     status=MatchStatusEnum.COMPLETED,
-    scheduled_at=utc(2024, 11, 1, 19, 0),
-    finished_at=utc(2024, 11, 1, 20, 15),
+    scheduled_at=utc(2020, 1, 20, 18, 0),
+    finished_at=utc(2020, 1, 20, 20, 15),
     league_id=LEAGUE_PADEL_LOCAL.league_id,
     score=MatchScore(
         sets=[
@@ -199,12 +228,12 @@ MATCH_COMPLETED_1 = Match(
 )
 
 MATCH_COMPLETED_2 = Match(
-    match_id="match_completed_2",
-    sport=SportEnum.TENNIS,
+    match_id="match-completed-2",
+    sport=SportEnum.PADEL,
     status=MatchStatusEnum.COMPLETED,
-    scheduled_at=utc(2024, 10, 10, 18, 30),
-    finished_at=utc(2024, 10, 10, 19, 50),
-    league_id=None,
+    scheduled_at=utc(2020, 1, 10, 18, 30),
+    finished_at=utc(2020, 1, 10, 19, 50),
+    league_id=LEAGUE_PADEL_LOCAL.league_id,
     score=MatchScore(
         sets=[
             SetScore(p1_games=4, p2_games=6),
@@ -223,14 +252,20 @@ MATCH_COMPLETED_2 = Match(
     participant_uids=[USER_ALICE.uid, USER_IGNATIOS.uid],
 )
 
-SAMPLE_MATCHES = [MATCH_SCHEDULED, MATCH_PENDING, MATCH_COMPLETED_1, MATCH_COMPLETED_2]
+SAMPLE_MATCHES = [
+    MATCH_UPCOMING_1,
+    MATCH_UPCOMING_2,
+    MATCH_PENDING,
+    MATCH_COMPLETED_1,
+    MATCH_COMPLETED_2,
+]
 
 # --- Journal entries ---
 # Basic journal entries tied to completed matches.
 JOURNAL_1 = JournalEntry(
     entry_id="journal_1",
     uid=USER_IGNATIOS.uid,
-    created_at=utc(2024, 11, 2, 9, 0),
+    created_at=utc(2020, 1, 21, 9, 0),
     title="Padel win reflections",
     body="Worked on volleys; need to improve serve consistency.",
     tags=["padel", "volley", "serve"],
@@ -242,12 +277,12 @@ JOURNAL_1 = JournalEntry(
 JOURNAL_2 = JournalEntry(
     entry_id="journal_2",
     uid=USER_ALICE.uid,
-    created_at=utc(2024, 10, 11, 8, 30),
-    title="Tennis match recap",
-    body="Backhand felt strong, footwork needs work.",
-    tags=["tennis", "backhand"],
+    created_at=utc(2020, 1, 11, 8, 30),
+    title="Padel match recap",
+    body="Worked on positioning and volleys.",
+    tags=["padel", "positioning"],
     match_id=MATCH_COMPLETED_2.match_id,
-    sport=SportEnum.TENNIS,
+    sport=SportEnum.PADEL,
     visibility=JournalVisibilityEnum.PRIVATE,
 )
 

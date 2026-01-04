@@ -1,16 +1,17 @@
 import pytest
 
-from app.repos.users_repo import UsersRepo
-from app.repos.matches_repo import MatchesRepo
+from app.models import PrivateUserProfile, PublicUserProfile
 from app.repos.journal_repo import JournalRepo
-from app.models import PublicUserProfile, PrivateUserProfile
+from app.repos.matches_repo import MatchesRepo
+from app.repos.users_repo import UsersRepo
+from tools.seed_data import PRIMARY_USER_UID, USER_ALICE
 
 pytestmark = [pytest.mark.integration, pytest.mark.seeded]
 
 
 def test_get_user_private_profile_self(firestore_client):
     repo = UsersRepo(firestore_client)
-    profile = repo.get_private_profile("user_ignatios")
+    profile = repo.get_private_profile(PRIMARY_USER_UID)
     assert isinstance(profile, PrivateUserProfile)
     assert profile.email
     assert profile.preferences.sports
@@ -18,14 +19,14 @@ def test_get_user_private_profile_self(firestore_client):
 
 def test_get_user_public_profile_other(firestore_client):
     repo = UsersRepo(firestore_client)
-    profile = repo.get_public_profile("user_alice")
+    profile = repo.get_public_profile(USER_ALICE.uid)
     assert isinstance(profile, PublicUserProfile)
     assert not hasattr(profile, "email")
 
 
 def test_list_upcoming_matches_for_user_sorted(firestore_client):
     repo = MatchesRepo(firestore_client)
-    matches = repo.list_upcoming_for_user("user_ignatios", limit=10)
+    matches = repo.list_upcoming_for_user(PRIMARY_USER_UID, limit=10)
     assert matches
     statuses = [m.status.value for m in matches]
     assert all(status == "scheduled" for status in statuses)
@@ -35,7 +36,7 @@ def test_list_upcoming_matches_for_user_sorted(firestore_client):
 
 def test_list_completed_matches_for_user_sorted(firestore_client):
     repo = MatchesRepo(firestore_client)
-    matches = repo.list_completed_for_user("user_ignatios", limit=10)
+    matches = repo.list_completed_for_user(PRIMARY_USER_UID, limit=10)
     assert matches
     statuses = [m.status.value for m in matches]
     assert all(status == "completed" for status in statuses)
@@ -45,7 +46,7 @@ def test_list_completed_matches_for_user_sorted(firestore_client):
 
 def test_journal_entries_sorted(firestore_client):
     repo = JournalRepo(firestore_client)
-    entries = repo.list_entries("user_ignatios", limit=10)
+    entries = repo.list_entries(PRIMARY_USER_UID, limit=10)
     assert entries
     created = [e.created_at for e in entries]
     assert created == sorted(created, reverse=True)

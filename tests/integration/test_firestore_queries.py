@@ -5,7 +5,7 @@ from google.cloud import firestore
 
 from app.repos.journal_repo import JournalRepo
 from app.repos.matches_repo import MatchesRepo
-from tools.seed_data import LEAGUE_PADEL_LOCAL, USER_IGNATIOS
+from tools.seed_data import PRIMARY_LEAGUE_ID, PRIMARY_USER_UID
 from tools.seed_firestore import seed_all
 
 pytestmark = [pytest.mark.integration, pytest.mark.seeded]
@@ -27,7 +27,7 @@ def test_upcoming_matches_sorted_and_contains_user(
     firestore_client: firestore.Client,
 ) -> None:
     repo = MatchesRepo(firestore_client)
-    uid = USER_IGNATIOS.uid
+    uid = PRIMARY_USER_UID
     matches = repo.list_upcoming_for_user(uid, limit=10)
     assert matches
     assert all(match.scheduled_at for match in matches)
@@ -39,7 +39,7 @@ def test_completed_matches_sorted_and_contains_user(
     firestore_client: firestore.Client,
 ) -> None:
     repo = MatchesRepo(firestore_client)
-    uid = USER_IGNATIOS.uid
+    uid = PRIMARY_USER_UID
     matches = repo.list_completed_for_user(uid, limit=10)
     assert matches
     assert all(match.finished_at for match in matches)
@@ -51,7 +51,7 @@ def test_league_upcoming_matches_sorted_and_match_league(
     firestore_client: firestore.Client,
 ) -> None:
     repo = MatchesRepo(firestore_client)
-    league_id = LEAGUE_PADEL_LOCAL.league_id
+    league_id = PRIMARY_LEAGUE_ID
     matches = repo.list_upcoming_for_league(league_id, limit=10)
     assert matches
     assert all(match.scheduled_at for match in matches)
@@ -63,7 +63,7 @@ def test_league_completed_matches_sorted_and_match_league(
     firestore_client: firestore.Client,
 ) -> None:
     repo = MatchesRepo(firestore_client)
-    league_id = LEAGUE_PADEL_LOCAL.league_id
+    league_id = PRIMARY_LEAGUE_ID
     matches = repo.list_completed_for_league(league_id, limit=10)
     assert matches
     assert all(match.finished_at for match in matches)
@@ -75,7 +75,7 @@ def test_journal_entries_sorted_and_match_owner(
     firestore_client: firestore.Client,
 ) -> None:
     repo = JournalRepo(firestore_client)
-    uid = USER_IGNATIOS.uid
+    uid = PRIMARY_USER_UID
     entries = repo.list_entries(uid, limit=10)
     assert entries
     assert all(entry.created_at for entry in entries)
