@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.repos.base import RepoBase
 from app.repos.mappers import to_private_user_profile, to_public_user_profile
-from app.models import PrivateUserProfile, PublicUserProfile
+from app.models import LeagueSummary, PrivateUserProfile, PublicUserProfile
 
 
 class UsersRepo(RepoBase):
@@ -24,3 +24,9 @@ class UsersRepo(RepoBase):
         if data is None:
             return None
         return to_private_user_profile(data)
+
+    def get_leagues_by_status(self, uid: str) -> tuple[list[LeagueSummary], list[LeagueSummary]]:
+        profile = self.get_private_profile(uid)
+        if profile is None:
+            return [], []
+        return profile.leagues_active, profile.leagues_completed

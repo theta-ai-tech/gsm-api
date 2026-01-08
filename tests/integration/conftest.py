@@ -1,6 +1,13 @@
 import os
+import sys
+from pathlib import Path
+
 import pytest
 from google.cloud import firestore
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 pytestmark = pytest.mark.integration
 
@@ -16,6 +23,23 @@ def _require_emulator():
 def db():
     project = os.environ.get("GOOGLE_CLOUD_PROJECT", "gsm-dev-fake")
     return firestore.Client(project=project)
+
+
+@pytest.fixture(scope="session")
+def firestore_client() -> firestore.Client:
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT", "gsm-dev-fake")
+    return firestore.Client(project=project)
+
+
+@pytest.fixture(scope="session")
+def seeded_firestore(firestore_client: firestore.Client) -> firestore.Client:
+    assert os.environ.get("FIRESTORE_EMULATOR_HOST"), (
+        "Set FIRESTORE_EMULATOR_HOST for integration tests"
+    )
+    from tools.seed_firestore import seed_all
+
+    seed_all(firestore_client)
+    return firestore_client
 
 
 @pytest.fixture(autouse=True)

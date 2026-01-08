@@ -31,6 +31,7 @@ help:
 	@echo "make check-queries-emu - run repo query checks against emulator"
 	@echo "make test             - run all tests (requires emulators)"
 	@echo "make test-int         - run integration tests (requires emulators)"
+	@echo "make test-integration - run integration tests (requires emulators)"
 	@echo "make test-unit        - run unit tests"
 	@echo "make test-tools       - run tools tests"
 	@echo "make fmt              - lint/format (ruff)"
@@ -180,6 +181,10 @@ test-int:
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	pytest -q tests/integration
+
+# Run integration tests (requires emulators)
+.PHONY: test-integration
+test-integration: test-int
 
 # Deploy Firestore indexes to dev project
 .PHONY: deploy-indexes-dev
