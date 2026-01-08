@@ -30,6 +30,7 @@ make api-dev
 - `make test-unit`: run unit tests
 - `make test-tools`: run tools tests
 - `make test-int`: run integration tests (requires emulators)
+- `make test-integration`: run integration tests (requires emulators)
 - `make fmt`: lint/autofix (ruff)
 - `make format`: format code (ruff)
 - `make type`: type check (mypy)
@@ -83,6 +84,22 @@ pytest -q tests/unit
 # or: make test-unit
 ```
 More detail: see `.codex/testing.md` for auth and manual test steps.
+
+### Running integration tests (Firestore emulator)
+
+Terminal A:
+```bash
+make emu-firestore
+```
+
+Terminal B:
+```bash
+make test-integration
+```
+
+Notes:
+- Emulator must be running (CI already starts it).
+- Tests seed the emulator automatically; no manual seeding required.
 
 ---
 
