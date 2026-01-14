@@ -203,9 +203,79 @@ Minimal examples (timestamps shown as ISO8601 UTC strings).
 }
 ```
 
+## Collection: matches
+Path: `matches/{matchId}`
+
+Purpose: scheduled and completed match records; supports user and league match queries.
+
+### Fields: matches/{matchId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| sport | string | required | sport | canonical | — | Sport for the match. |
+| status | string | required | matchStatus | canonical | index=filter | Match lifecycle state. |
+| participantUids | array<string> | required | — | canonical | index=array-contains | Query driver for user-scoped match lists. |
+| participants | array<map> | required | — | canonical | — | Structured participant data. |
+| participants[].uid | string | required | — | canonical | — | Participant UID. |
+| participants[].team | number | optional | — | canonical | — | Team number for doubles, null for singles. |
+| participants[].role | string | optional | — | canonical | — | Participant role (defaults to player). |
+| participants[].result | string | optional | — | canonical | — | Per-participant result (W/L/D). |
+| leagueId | string | optional | — | canonical | index=filter | Optional league reference. |
+| courtId | string | optional | — | canonical | — | Optional court reference. |
+| scheduledAt | timestamp | optional | — | canonical | index=order-by | Required for scheduled/pending/completed. |
+| finishedAt | timestamp | optional | — | canonical | index=order-by | Required for completed. |
+| resultByUser | map | optional | — | canonical | — | Map of uid -> W/L/D. |
+| score | map | optional | — | canonical | — | Structured score object. |
+| score.sets | array<map> | optional | — | canonical | — | List of set scores. |
+| score.sets[].p1Games | number | optional | — | canonical | — | Games for player/team 1. |
+| score.sets[].p2Games | number | optional | — | canonical | — | Games for player/team 2. |
+| score.sets[].tiebreakScore | string | optional | — | canonical | — | Optional tiebreak string. |
+| score.winnerUid | string | optional | — | canonical | — | Winner UID, if known. |
+| score.retired | boolean | optional | — | canonical | — | True if match ended by retirement. |
+
+### Status transitions
+| From | To | Trigger |
+| --- | --- | --- |
+| scheduled | completed | Participants submit/confirm result. |
+| scheduled | cancelled | Organizer or league admin cancels. |
+| pending_confirmation | completed | Opponent confirms result. |
+| pending_confirmation | disputed | Opponent disputes submitted result. |
+| completed | disputed | Result challenged after completion. |
+
+### scheduledAt / finishedAt semantics
+- `scheduledAt` is present for `scheduled`, `pending_confirmation`, and `completed` matches.
+- `finishedAt` is required for `completed` (and `disputed` if the match has a result timestamp).
+- All timestamps are stored in UTC.
+
+### Required composite indexes
+Indexes are defined in `firestore.indexes.json` and required for C3 queries:
+- Upcoming matches by user: `participantUids` (array-contains), `status` (ASC), `scheduledAt` (ASC)
+- Completed matches by user: `participantUids` (array-contains), `status` (ASC), `finishedAt` (DESC)
+- Upcoming matches by league: `leagueId` (ASC), `status` (ASC), `scheduledAt` (ASC)
+- Completed matches by league: `leagueId` (ASC), `status` (ASC), `finishedAt` (DESC)
+
 ### matches/{matchId}
 ```json
-{}
+{
+  "sport": "padel",
+  "status": "completed",
+  "scheduledAt": "2020-01-20T18:00:00Z",
+  "finishedAt": "2020-01-20T20:15:00Z",
+  "leagueId": "league_1",
+  "participants": [
+    {"uid": "user_123", "role": "player", "team": 1, "result": "W"},
+    {"uid": "user_456", "role": "player", "team": 2, "result": "L"}
+  ],
+  "participantUids": ["user_123", "user_456"],
+  "resultByUser": {"user_123": "W", "user_456": "L"},
+  "score": {
+    "sets": [
+      {"p1Games": 6, "p2Games": 4},
+      {"p1Games": 7, "p2Games": 5, "tiebreakScore": "7-5"}
+    ],
+    "winnerUid": "user_123",
+    "retired": false
+  }
+}
 ```
 
 ### leagues/{leagueId}
