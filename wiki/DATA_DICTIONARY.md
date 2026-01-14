@@ -49,22 +49,158 @@ Values below match the C1 enums in code.
 - API/Pydantic representation: string enum
 - Allowed values: `private`, `friends`
 
+## Collection: users
+Path: `users/{uid}`
+
+Ownership: user-owned document; self-only updates as policy.
+
+Purpose: canonical user profile data with denormalized summaries for fast reads.
+
+### Public vs Private projection
+- Public profile must not expose `email`, `phone`, or `preferences`.
+- Private profile (self) includes those fields plus cached summary lists and cursors.
+
+### Cache fields (denormalized summaries)
+These fields are denormalized summaries for fast reads. Treat as cache with capped lengths.
+- `leaguesActive[]`: `{leagueId, name, sport, status, role}` (cache, cap <= 20)
+- `leaguesCompleted[]`: `{leagueId, name, sport, status, role}` (cache, cap <= 20)
+- `upcomingMatches[]`: `{matchId, sport, scheduledAt, leagueId?, courtId?, opponents[]}` (cache, cap <= 10)
+- `completedMatches[]`: `{matchId, sport, finishedAt, result?, scoreText?, leagueId?}` (cache, cap <= 10)
+- `journalRecent[]`: `{entryId, createdAt, title, matchId?, sport?}` (cache, cap <= 10)
+- `cursors`: `{upcomingMatches?, completedMatches?, journal?}` (cache; last-seen pagination cursors)
+
+### Fields: users/{uid}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| uid | string | required | — | canonical | — | Stored in doc; should match document ID. |
+| name | string | required | — | canonical | — | Public. |
+| profileUrl | string (url) | optional | — | canonical | — | Public. |
+| email | string | optional | — | canonical | — | Private. |
+| phone | string | optional | — | canonical | — | Private. |
+| rankings | map | optional | — | canonical | — | Public; per-sport rankings. |
+| rankings.tennis | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
+| rankings.padel | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
+| rankings.pickleball | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
+| rankings.*.sport | string | required | sport | canonical | — | Enum value. |
+| rankings.*.pts | number | optional | — | canonical | — | Ranking points. |
+| rankings.*.globalRanking | number | optional | — | canonical | — | Optional global rank. |
+| preferences | map | optional | — | canonical | — | Private. |
+| preferences.area | number | optional | — | canonical | — | Private; area code. |
+| preferences.levels | map | optional | level | canonical | — | Per-sport level preferences. |
+| preferences.levels.tennis | string | optional | level | canonical | — | Enum value. |
+| preferences.levels.padel | string | optional | level | canonical | — | Enum value. |
+| preferences.levels.pickleball | string | optional | level | canonical | — | Enum value. |
+| preferences.sports | array<string> | optional | sport | canonical | — | Private; preferred sports. |
+| leaguesActive | array<map> | optional | — | cache | — | Active league summaries (cap <= 20). |
+| leaguesCompleted | array<map> | optional | — | cache | — | Completed league summaries (cap <= 20). |
+| upcomingMatches | array<map> | optional | — | cache | — | Upcoming match summaries (cap <= 10). |
+| completedMatches | array<map> | optional | — | cache | — | Completed match summaries (cap <= 10). |
+| journalRecent | array<map> | optional | — | cache | — | Recent journal summaries (cap <= 10). |
+| cursors | map | optional | — | cache | — | Cursor bundle for pagination. |
+
+## Subcollection: users/{uid}/journalEntries
+Path: `users/{uid}/journalEntries/{entryId}`
+
+Ownership: owner-only (self).
+
+Visibility: `journalVisibility` enum governs access; enforced at API layer.
+
+Ordering: `createdAt` DESC with cursor-based pagination using `startAfter`.
+
+### Fields: users/{uid}/journalEntries/{entryId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| title | string | required | — | canonical | — | Title text. |
+| body | string | required | — | canonical | — | Entry body. |
+| tags | array<string> | optional | — | canonical | — | Freeform tags. |
+| createdAt | timestamp | required | — | canonical | index=order-by | UTC timestamp. |
+| matchId | string | optional | — | canonical | — | Optional match reference. |
+| sport | string | optional | sport | canonical | — | Optional sport enum. |
+| visibility | string | required | journalVisibility | canonical | — | Access scope. |
+
 ## Field Table Template
 | Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | participantUids | array<string> | required | — | canonical | index=array-contains | Used for user-scoped match queries. |
 
 ## Examples
-Placeholders for minimal JSON examples (to be filled in C5.2–C5.5).
+Minimal examples (timestamps shown as ISO8601 UTC strings).
 
-### users/{uid}
+### users/{uid} (public projection)
 ```json
-{}
+{
+  "uid": "user_123",
+  "name": "Alex",
+  "profileUrl": "https://example.com/avatar.png",
+  "rankings": {
+    "tennis": {"sport": "tennis", "pts": 820, "globalRanking": 340}
+  },
+  "leaguesActive": [
+    {"leagueId": "league_1", "name": "Local Ladder", "sport": "padel", "status": "active"}
+  ],
+  "leaguesCompleted": []
+}
+```
+
+### users/{uid} (private projection)
+```json
+{
+  "uid": "user_123",
+  "name": "Alex",
+  "email": "alex@example.com",
+  "phone": "+301111111111",
+  "profileUrl": "https://example.com/avatar.png",
+  "rankings": {
+    "padel": {"sport": "padel", "pts": 980, "globalRanking": 120}
+  },
+  "preferences": {
+    "area": 101,
+    "levels": {"padel": "advanced"},
+    "sports": ["padel", "tennis"]
+  },
+  "leaguesActive": [
+    {"leagueId": "league_1", "name": "Local Ladder", "sport": "padel", "status": "active"}
+  ],
+  "leaguesCompleted": [
+    {"leagueId": "league_2", "name": "Series 2024", "sport": "tennis", "status": "completed"}
+  ],
+  "upcomingMatches": [
+    {
+      "matchId": "match_1",
+      "sport": "padel",
+      "scheduledAt": "2030-01-10T10:00:00Z",
+      "leagueId": "league_1",
+      "opponents": [{"uid": "user_456", "name": "Sam"}]
+    }
+  ],
+  "completedMatches": [
+    {
+      "matchId": "match_2",
+      "sport": "padel",
+      "finishedAt": "2020-01-20T20:15:00Z",
+      "result": "W",
+      "scoreText": "6-4, 7-5",
+      "leagueId": "league_1"
+    }
+  ],
+  "journalRecent": [
+    {"entryId": "journal_1", "createdAt": "2020-01-21T09:00:00Z", "title": "Padel win"}
+  ],
+  "cursors": {"upcomingMatches": null, "completedMatches": null, "journal": null}
+}
 ```
 
 ### users/{uid}/journalEntries/{entryId}
 ```json
-{}
+{
+  "title": "Padel win reflections",
+  "body": "Worked on volleys; need to improve serve consistency.",
+  "tags": ["padel", "volley", "serve"],
+  "createdAt": "2020-01-21T09:00:00Z",
+  "matchId": "match_1",
+  "sport": "padel",
+  "visibility": "private"
+}
 ```
 
 ### matches/{matchId}
