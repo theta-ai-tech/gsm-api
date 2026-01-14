@@ -278,14 +278,65 @@ Indexes are defined in `firestore.indexes.json` and required for C3 queries:
 }
 ```
 
+## Collection: leagues
+Path: `leagues/{leagueId}`
+
+Purpose: league metadata, configuration, and lifecycle.
+
+### Fields: leagues/{leagueId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| name | string | required | — | canonical | — | League display name. |
+| sport | string | required | sport | canonical | — | Sport enum. |
+| season | string | optional | — | canonical | — | Season label (e.g., "Autumn 2025"). |
+| status | string | required | leagueStatus | canonical | — | League lifecycle state. |
+| ownerUid | string | required | — | canonical | — | League owner uid. |
+| meta | map | optional | — | canonical | — | Free-form metadata. |
+
+## Subcollection: leagues/{leagueId}/members
+Path: `leagues/{leagueId}/members/{uid}`
+
+Purpose: membership record for a user in a league.
+
+### Roles
+`player`, `admin`, `captain`
+
+### Membership status
+`active`, `left`, `banned`
+
+### Fields: leagues/{leagueId}/members/{uid}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| role | string | required | leagueRole | canonical | — | Role in league. |
+| status | string | required | leagueMemberStatus | canonical | — | Membership state. |
+| joinedAt | timestamp | required | — | canonical | index=order-by | When the user joined. |
+| stats | map | optional | — | canonical | — | Optional per-user league stats. |
+
+### Common queries
+- List members of a league ordered by `joinedAt` ASC.
+- Check membership existence for a user: read `leagues/{leagueId}/members/{uid}`.
+- User profiles cache league summaries in `users/{uid}.leaguesActive` / `leaguesCompleted`.
+
 ### leagues/{leagueId}
 ```json
-{}
+{
+  "name": "Local Padel Ladder 2025",
+  "sport": "padel",
+  "season": "Autumn 2025",
+  "status": "active",
+  "ownerUid": "user_123",
+  "meta": {}
+}
 ```
 
 ### leagues/{leagueId}/members/{uid}
 ```json
-{}
+{
+  "role": "player",
+  "status": "active",
+  "joinedAt": "2024-10-01T12:00:00Z",
+  "stats": {}
+}
 ```
 
 ### courts/{courtId}
