@@ -34,6 +34,7 @@ make api-dev
 - `make fmt`: lint/autofix (ruff)
 - `make format`: format code (ruff)
 - `make type`: type check (mypy)
+- `make docs-check`: validate internal doc links/anchors
 - `make docker-build`: build dev Docker image
 - `make docker-build-amd64`: build amd64 Docker image
 - `make docker-run`: run Docker image locally
@@ -84,6 +85,13 @@ pytest -q tests/unit
 # or: make test-unit
 ```
 More detail: see `.codex/testing.md` for auth and manual test steps.
+
+### Docs quality gate
+Run the internal docs link/anchor check:
+```bash
+make docs-check
+```
+PRs that update Markdown should keep internal links/anchors valid.
 
 ### Running integration tests (Firestore emulator)
 

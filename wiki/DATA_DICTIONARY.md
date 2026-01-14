@@ -339,7 +339,27 @@ Purpose: membership record for a user in a league.
 }
 ```
 
+## Collection: courts
+Path: `courts/{courtId}`
+
+Purpose: tennis/padel/pickleball court directory entries.
+
+### Fields: courts/{courtId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| name | string | required | — | canonical | — | Court display name. |
+| area | number | required | — | canonical | — | Area code/region id. |
+| geo | map | required | — | canonical | — | WGS84 coordinates. |
+| geo.lat | number | required | — | canonical | — | Latitude (WGS84). |
+| geo.lng | number | required | — | canonical | — | Longitude (WGS84). |
+| bookingUrl | string (url) | optional | — | canonical | — | Optional booking link. |
+
 ### courts/{courtId}
 ```json
-{}
+{
+  "name": "Central Court",
+  "area": 101,
+  "geo": {"lat": 37.9838, "lng": 23.7275},
+  "bookingUrl": "https://example.com/courts/central"
+}
 ```
