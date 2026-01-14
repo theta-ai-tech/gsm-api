@@ -37,6 +37,7 @@ help:
 	@echo "make fmt              - lint/format (ruff)"
 	@echo "make format           - formatter pass (ruff)"
 	@echo "make type             - type check (mypy)"
+	@echo "make docs-check       - validate internal doc links/anchors"
 	@echo "make docker-build     - build dev Docker image"
 	@echo "make docker-build-amd64 - build amd64 Docker image"
 	@echo "make docker-run       - run Docker image locally"
@@ -161,6 +162,11 @@ format:
 .PHONY: type
 type:
 	$(ACT) && mypy api
+
+# Docs link/anchor check
+.PHONY: docs-check
+docs-check:
+	$(PYTHON) -m tools.docs_check
 
 # Run unit tests
 .PHONY: test-unit

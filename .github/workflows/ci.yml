@@ -31,6 +31,8 @@ jobs:
         run: ruff check api tests
       - name: Ruff format (verify)
         run: ruff format --check api tests
+      - name: Docs check
+        run: make docs-check
 
   type:
     name: mypy (type-check)
