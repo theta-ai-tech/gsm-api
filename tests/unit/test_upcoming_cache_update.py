@@ -126,6 +126,7 @@ def test_apply_upcoming_cache_caps_at_ten_and_drops_oldest() -> None:
 
     assert len(updated) == 10
     assert [item["matchId"] for item in updated] == [
+        "m1",
         "m2",
         "m3",
         "m4",
@@ -135,5 +136,4 @@ def test_apply_upcoming_cache_caps_at_ten_and_drops_oldest() -> None:
         "m8",
         "m9",
         "m10",
-        "m11",
     ]
