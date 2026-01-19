@@ -2,6 +2,9 @@
 
 This page tracks the D-series Firestore trigger work and the intended behavior for each task.
 
+Diagrams live in `arch/`:
+- `arch/match_lifecycle.md`
+
 ## D1.1 — onMatchWrite: upcoming cache qualification
 Purpose: Detect match writes that should update each participant's upcoming matches cache.
 
@@ -24,6 +27,10 @@ Purpose: Detect match writes that should update each participant's upcoming matc
 - D1.1 adds only qualification logic; no Firestore updates occur yet.
 - Later D tasks will use the qualification result to push match IDs into each participant's
   upcoming cache.
+
+### Cache note
+- The "cache" here is a denormalized list stored on `users/{uid}` in Firestore, not an in-memory
+  cache. It enables a single document read instead of multiple match queries.
 
 ## D1.2 — transactional upcoming cache update
 Purpose: Atomically update each participant user doc to include a scheduled match in the
@@ -55,3 +62,20 @@ Purpose: Prove cache update behavior is robust against duplicate events and full
 - Duplicate events do not create duplicates.
 - Ordering is deterministic by `scheduledAt` ascending.
 - Cache is capped at 10; adding an 11th drops the oldest by `scheduledAt`.
+
+## D2.1 — completion transition detection
+Purpose: Trigger completion migration only on the first `scheduled` → `completed` transition.
+
+### Behavior summary
+- Requires `before.status == "scheduled"` and `after.status == "completed"`.
+- Requires `finishedAt` to exist and be timezone-aware.
+- Ignores idempotent repeats (`completed` → `completed`) and other status changes.
+
+## D2.2 — migrate upcoming → completed cache
+Purpose: Move a completed match out of upcoming and into recent completed, per participant.
+
+### Behavior summary
+- Removes `matchId` from `upcomingMatches`.
+- Inserts `matchId` into `completedMatches` ordered by `finishedAt` DESC.
+- Deduped and capped at 10.
+- Updates `upcomingMatchIds` and `recentCompletedMatchIds` as derived lists.
