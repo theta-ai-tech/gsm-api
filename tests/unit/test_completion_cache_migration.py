@@ -27,6 +27,37 @@ def test_migration_removes_from_upcoming_and_adds_to_completed() -> None:
     assert [item["matchId"] for item in updated_completed] == ["m1"]
 
 
+def test_migration_upcoming_without_match_is_unchanged() -> None:
+    upcoming = [
+        {"matchId": "m2", "scheduledAt": _utc(2030, 1, 2, 10, 0)},
+    ]
+    completed: list[dict[str, object]] = []
+
+    updated_upcoming, _ = apply_completion_cache_migration(
+        upcoming_cache=upcoming,
+        completed_cache=completed,
+        match_id="m1",
+        finished_at=_utc(2030, 1, 1, 12, 0),
+        cap=10,
+        extra_fields=None,
+    )
+
+    assert [item["matchId"] for item in updated_upcoming] == ["m2"]
+
+
+def test_migration_inserts_when_missing_in_completed() -> None:
+    _, updated_completed = apply_completion_cache_migration(
+        upcoming_cache=[],
+        completed_cache=[],
+        match_id="m1",
+        finished_at=_utc(2030, 1, 1, 12, 0),
+        cap=10,
+        extra_fields=None,
+    )
+
+    assert [item["matchId"] for item in updated_completed] == ["m1"]
+
+
 def test_migration_dedupes_on_repeat() -> None:
     completed = [
         {"matchId": "m1", "finishedAt": _utc(2030, 1, 1, 12, 0)},
@@ -90,3 +121,28 @@ def test_migration_caps_completed_at_ten() -> None:
         "m3",
         "m2",
     ]
+
+
+def test_migration_retry_does_not_duplicate_or_readd_upcoming() -> None:
+    upcoming = [{"matchId": "m1", "scheduledAt": _utc(2030, 1, 1, 10, 0)}]
+    completed: list[dict[str, object]] = []
+
+    first_upcoming, first_completed = apply_completion_cache_migration(
+        upcoming_cache=upcoming,
+        completed_cache=completed,
+        match_id="m1",
+        finished_at=_utc(2030, 1, 1, 12, 0),
+        cap=10,
+        extra_fields=None,
+    )
+    second_upcoming, second_completed = apply_completion_cache_migration(
+        upcoming_cache=first_upcoming,
+        completed_cache=first_completed,
+        match_id="m1",
+        finished_at=_utc(2030, 1, 1, 12, 0),
+        cap=10,
+        extra_fields=None,
+    )
+
+    assert [item["matchId"] for item in second_upcoming] == []
+    assert [item["matchId"] for item in second_completed] == ["m1"]

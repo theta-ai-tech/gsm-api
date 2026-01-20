@@ -13,6 +13,7 @@ def apply_upcoming_cache_update(
     cap: int = 10,
     extra_fields: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    # Covered by unit tests: insert into empty, dedupe on retry, sorted ASC, cap at 10.
     entries = list(current_cache or [])
 
     existing: dict[str, dict[str, Any]] = {}
@@ -50,6 +51,7 @@ def apply_completion_cache_migration(
     cap: int = 10,
     extra_fields: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    # Covered by unit tests: remove from upcoming, insert/dedupe in completed, sorted DESC, cap at 10.
     upcoming_entries = [dict(item) for item in (upcoming_cache or [])]
     upcoming_entries = [item for item in upcoming_entries if item.get("matchId") != match_id]
 
