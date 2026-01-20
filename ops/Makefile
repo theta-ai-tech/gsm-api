@@ -161,7 +161,7 @@ format:
 # Type check (mypy)
 .PHONY: type
 type:
-	$(ACT) && mypy api
+	$(ACT) && mypy --no-incremental api
 
 # Docs link/anchor check
 .PHONY: docs-check
