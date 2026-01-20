@@ -46,6 +46,9 @@ make api-dev
 - `wiki/DATA_DICTIONARY.md`: canonical Firestore schema and conventions
 - `wiki/functions.md`: D-series trigger behavior and design notes
 
+## Architecture
+- `arch/match_lifecycle.md`: match status lifecycle and trigger flow
+
 ### Authenticated request (Firebase ID token)
 - Required env: `FIREBASE_PROJECT_ID=<your-project-id>`
 - Optional: `CORS_ORIGINS=http://localhost:3000,https://app.example.com`

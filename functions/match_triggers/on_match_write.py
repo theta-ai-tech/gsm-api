@@ -14,6 +14,15 @@ class UpcomingQualificationResult:
     scheduled_at: datetime | None
 
 
+@dataclass(frozen=True)
+class CompletionQualificationResult:
+    qualifies: bool
+    reason: str
+    match_id: str
+    participant_uids: list[str]
+    finished_at: datetime | None
+
+
 def _is_aware(value: datetime) -> bool:
     return value.tzinfo is not None and value.tzinfo.utcoffset(value) is not None
 
@@ -112,4 +121,70 @@ def qualify_upcoming_match_write(
         match_id=match_id,
         participant_uids=participant_uids,
         scheduled_at=scheduled_at,
+    )
+
+
+def qualify_completion_match_write(
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    now: datetime,
+) -> CompletionQualificationResult:
+    match_id = _get_match_id(before, after)
+    participant_uids = _list_from((after or {}).get("participantUids"))
+    finished_at = (after or {}).get("finishedAt")
+
+    if after is None:
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="deleted",
+            match_id=match_id,
+            participant_uids=_list_from((before or {}).get("participantUids")),
+            finished_at=(before or {}).get("finishedAt"),
+        )
+
+    before_status = (before or {}).get("status")
+    after_status = after.get("status")
+
+    if before_status == "completed" and after_status == "completed":
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="already_completed",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at if isinstance(finished_at, datetime) else None,
+        )
+
+    if before_status != "scheduled" or after_status != "completed":
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="status_not_transitioned",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at if isinstance(finished_at, datetime) else None,
+        )
+
+    if finished_at is None or not isinstance(finished_at, datetime):
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="finished_at_missing",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=None,
+        )
+
+    if not _is_aware(finished_at):
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="finished_at_naive",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at,
+        )
+
+    return CompletionQualificationResult(
+        qualifies=True,
+        reason="qualifies",
+        match_id=match_id,
+        participant_uids=participant_uids,
+        finished_at=finished_at,
     )
