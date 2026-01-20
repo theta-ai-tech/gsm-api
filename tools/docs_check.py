@@ -46,6 +46,9 @@ def _iter_files() -> list[Path]:
     docs_dir = ROOT / "docs"
     if docs_dir.exists():
         files.extend(sorted(docs_dir.rglob("*.md")))
+    arch_dir = ROOT / "arch"
+    if arch_dir.exists():
+        files.extend(sorted(arch_dir.rglob("*.md")))
     return [path for path in files if path.exists()]
 
 
