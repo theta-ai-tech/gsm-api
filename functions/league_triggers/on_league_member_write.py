@@ -143,7 +143,7 @@ def upsert_league_summary(
     new_summary: dict[str, Any],
     cap: int = 20,
 ) -> list[dict[str, Any]]:
-    # Drop non-active summaries first when trimming to cap, then drop oldest by order.
+    # Trim policy: keep active first, then completed; preserve order within each group.
     entries = [dict(item) for item in (existing or [])]
     league_id = new_summary.get("leagueId")
     updated: list[dict[str, Any]] = []

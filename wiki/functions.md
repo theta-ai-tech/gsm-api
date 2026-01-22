@@ -104,3 +104,9 @@ Purpose: Remove league summaries when membership is deleted or becomes non-activ
 - Triggered by `leagues/{leagueId}/members/{uid}` deletes or status changes to `left`/`banned`.
 - Removes the league entry from both `leaguesActive` and `leaguesCompleted`.
 - Idempotent under retries (no-op if already removed).
+
+## D3 — Summary & use cases
+- Fast Home/Profile: user reads include league summaries without membership queries.
+- Role/status changes reflect immediately via cache upsert.
+- Leave/ban removes the league from cached lists to prevent stale cards.
+- Trigger retries are safe: dedupe and idempotent removal keep stable state.
