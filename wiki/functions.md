@@ -4,6 +4,7 @@ This page tracks the D-series Firestore trigger work and the intended behavior f
 
 Diagrams live in `arch/`:
 - `arch/match_lifecycle.md`
+- `arch/league_member_triggers.md`
 
 ## D1.1 — onMatchWrite: upcoming cache qualification
 Purpose: Detect match writes that should update each participant's upcoming matches cache.
@@ -79,3 +80,33 @@ Purpose: Move a completed match out of upcoming and into recent completed, per p
 - Inserts `matchId` into `completedMatches` ordered by `finishedAt` DESC.
 - Deduped and capped at 10.
 - Updates `upcomingMatchIds` and `recentCompletedMatchIds` as derived lists.
+
+## D3.1 — league member upsert into user summaries
+Purpose: Maintain user league summaries on membership create/update.
+
+### Behavior summary
+- Triggered by `leagues/{leagueId}/members/{uid}` writes when member is active and role/status changed.
+- Reads league doc and member doc to compose summary `{leagueId, sport, status, name, role}`.
+- Upserts into `users/{uid}.leaguesActive` or `leaguesCompleted` based on league status.
+- Deduped by `leagueId`, capped at 20, and avoids no-op writes.
+
+### What gets updated
+- On active membership writes, the user doc is updated so the league appears in the correct
+  section:
+  - `leaguesActive` when league status is `active`
+  - `leaguesCompleted` when league status is `completed` (or non-active)
+  - Removed from the other list to keep them disjoint
+
+## D3.2 — league member removal from user summaries
+Purpose: Remove league summaries when membership is deleted or becomes non-active.
+
+### Behavior summary
+- Triggered by `leagues/{leagueId}/members/{uid}` deletes or status changes to `left`/`banned`.
+- Removes the league entry from both `leaguesActive` and `leaguesCompleted`.
+- Idempotent under retries (no-op if already removed).
+
+## D3 — Summary & use cases
+- Fast Home/Profile: user reads include league summaries without membership queries.
+- Role/status changes reflect immediately via cache upsert.
+- Leave/ban removes the league from cached lists to prevent stale cards.
+- Trigger retries are safe: dedupe and idempotent removal keep stable state.
