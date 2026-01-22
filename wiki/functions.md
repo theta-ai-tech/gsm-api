@@ -96,3 +96,11 @@ Purpose: Maintain user league summaries on membership create/update.
   - `leaguesActive` when league status is `active`
   - `leaguesCompleted` when league status is `completed` (or non-active)
   - Removed from the other list to keep them disjoint
+
+## D3.2 — league member removal from user summaries
+Purpose: Remove league summaries when membership is deleted or becomes non-active.
+
+### Behavior summary
+- Triggered by `leagues/{leagueId}/members/{uid}` deletes or status changes to `left`/`banned`.
+- Removes the league entry from both `leaguesActive` and `leaguesCompleted`.
+- Idempotent under retries (no-op if already removed).

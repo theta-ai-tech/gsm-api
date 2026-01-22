@@ -16,6 +16,15 @@ class LeagueSummaryUpsertResult:
     member_status: str | None
 
 
+@dataclass(frozen=True)
+class LeagueSummaryRemovalResult:
+    qualifies: bool
+    reason: str
+    league_id: str
+    uid: str
+    member_status: str | None
+
+
 def _get_member_uid(after: dict[str, Any] | None, before: dict[str, Any] | None) -> str:
     for source in (after or {}, before or {}):
         uid = source.get("uid")
@@ -29,6 +38,10 @@ def _has_member_change(before: dict[str, Any], after: dict[str, Any]) -> bool:
         if before.get(key) != after.get(key):
             return True
     return False
+
+
+def _is_removed_status(status: str | None) -> bool:
+    return status in {"left", "banned"}
 
 
 def qualify_league_member_upsert(
@@ -81,6 +94,50 @@ def qualify_league_member_upsert(
     )
 
 
+def qualify_league_member_removal(
+    league_id: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> LeagueSummaryRemovalResult:
+    uid = _get_member_uid(after, before)
+    after_status = (after or {}).get("status")
+    before_status = (before or {}).get("status")
+
+    if after is None:
+        return LeagueSummaryRemovalResult(
+            qualifies=True,
+            reason="deleted",
+            league_id=league_id,
+            uid=uid,
+            member_status=before_status,
+        )
+
+    if _is_removed_status(after_status):
+        if _is_removed_status(before_status):
+            return LeagueSummaryRemovalResult(
+                qualifies=False,
+                reason="already_removed",
+                league_id=league_id,
+                uid=uid,
+                member_status=after_status,
+            )
+        return LeagueSummaryRemovalResult(
+            qualifies=True,
+            reason="status_removed",
+            league_id=league_id,
+            uid=uid,
+            member_status=after_status,
+        )
+
+    return LeagueSummaryRemovalResult(
+        qualifies=False,
+        reason="not_removed",
+        league_id=league_id,
+        uid=uid,
+        member_status=after_status,
+    )
+
+
 def upsert_league_summary(
     existing: list[dict[str, Any]] | None,
     new_summary: dict[str, Any],
@@ -110,6 +167,13 @@ def upsert_league_summary(
     inactive = [item for item in updated if not _is_active(item)]
     trimmed = active + inactive
     return trimmed[:cap]
+
+
+def remove_league_summary(
+    existing: list[dict[str, Any]] | None,
+    league_id: str,
+) -> list[dict[str, Any]]:
+    return [item for item in (existing or []) if item.get("leagueId") != league_id]
 
 
 def _upsert_user_league_summary(
@@ -142,6 +206,42 @@ def _upsert_user_league_summary(
         else:
             updated_completed = upsert_league_summary(completed, summary, cap=cap)
             updated_active = [item for item in active if item.get("leagueId") != league_id]
+
+        updates: dict[str, Any] = {}
+        if updated_active != active:
+            updates[active_key] = updated_active
+        if updated_completed != completed:
+            updates[completed_key] = updated_completed
+
+        if updates:
+            transaction.update(doc_ref, updates)
+            return True
+        return False
+
+    return _apply(transaction)
+
+
+def _remove_user_league_summary(
+    client: firestore.Client,
+    uid: str,
+    league_id: str,
+) -> bool:
+    doc_ref = client.collection("users").document(uid)
+    transaction = client.transaction()
+
+    @firestore.transactional
+    def _apply(transaction: firestore.Transaction) -> bool:
+        snapshot = doc_ref.get(transaction=transaction)
+        if not snapshot.exists:
+            return False
+        data = snapshot.to_dict() or {}
+        active_key = "leaguesActive"
+        completed_key = "leaguesCompleted"
+        active = data.get(active_key) or []
+        completed = data.get(completed_key) or []
+
+        updated_active = remove_league_summary(active, league_id)
+        updated_completed = remove_league_summary(completed, league_id)
 
         updates: dict[str, Any] = {}
         if updated_active != active:
@@ -190,3 +290,18 @@ def handle_league_member_upsert(
         league_id=league_id,
         summary=summary,
     )
+
+
+def handle_league_member_removal(
+    client: firestore.Client,
+    league_id: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> None:
+    # Trigger entry point: remove summary on member deletion or removal status.
+    result = qualify_league_member_removal(league_id, before, after)
+    if not result.qualifies:
+        return
+    if not result.uid:
+        return
+    _remove_user_league_summary(client=client, uid=result.uid, league_id=league_id)
