@@ -150,6 +150,28 @@ Notes:
 
 ---
 
+## Deploy triggers (dev)
+```bash
+./scripts/deploy_functions.sh --project gsm-dev-f70d0
+```
+
+Notes:
+- The script stamps a revision (defaults to git short SHA) into Firebase runtime config
+  as `gsm.revision`, deploys only functions, and prints the deployed function list.
+- To use a custom revision tag: `./scripts/deploy_functions.sh --project <id> --revision v0.1.2`
+- View deployed functions in Firebase Console → Build → Functions (Gen 2 also appears in GCP
+  Console → Cloud Functions for the same project/region).
+
+Make target (uses `DEV_PROJECT_ID` from `ops/Makefile`):
+```bash
+make deploy-functions
+```
+
+TODO:
+- Add a manual CI workflow to deploy Functions via WIF once triggers stabilize.
+
+---
+
 ## CORS & environments
 - Configure via env only:
   - Dev: `CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
