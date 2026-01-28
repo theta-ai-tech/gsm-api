@@ -161,6 +161,8 @@ Notes:
 - To use a custom revision tag: `./scripts/deploy_functions.sh --project <id> --revision v0.1.2`
 - View deployed functions in Firebase Console → Build → Functions (Gen 2 also appears in GCP
   Console → Cloud Functions for the same project/region).
+- Each deploy appends a line to `deploy/last_good_revision_dev.txt`:
+  `<sha> DEPLOYED <utc-timestamp>`.
 
 Make target (uses `DEV_PROJECT_ID` from `ops/Makefile`):
 ```bash
@@ -169,6 +171,20 @@ make deploy-functions
 
 TODO:
 - Add a manual CI workflow to deploy Functions via WIF once triggers stabilize.
+
+---
+
+## Rollback triggers (dev)
+```bash
+./scripts/rollback_functions.sh --project gsm-dev-f70d0
+```
+
+Notes:
+- The rollback target defaults to `deploy/last_good_revision_dev.txt` (update this file after
+  successful deploy + smoke checks).
+- You can override the target revision: `./scripts/rollback_functions.sh --project <id> --revision <sha>`
+- Each rollback appends a line to `deploy/last_good_revision_dev.txt`:
+  `<sha> ROLLED BACK <utc-timestamp>`.
 
 ---
 
