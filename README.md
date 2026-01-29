@@ -150,6 +150,71 @@ Notes:
 
 ---
 
+## Deploy triggers (dev)
+Quick runbook:
+1) One-time: `make functions-venv`
+2) Deploy: `make deploy-functions` (runs smoke automatically)
+3) Verify `gsm_ping` via `make smoke-functions` (set `GSM_PING_URL` first)
+4) CI: run the manual workflow “Deploy Firebase Functions (manual)” in GitHub Actions
+   (TODO: automate on main once triggers are stable)
+
+```bash
+./scripts/deploy_functions.sh --project gsm-dev-f70d0
+```
+
+Notes:
+- The script stamps a revision (defaults to git short SHA) into Firebase runtime config
+  as `gsm.revision`, deploys only functions, and prints the deployed function list.
+- To use a custom revision tag: `./scripts/deploy_functions.sh --project <id> --revision v0.1.2`
+- View deployed functions in Firebase Console → Build → Functions (Gen 2 also appears in GCP
+  Console → Cloud Functions for the same project/region).
+- Each deploy appends a line to `deploy/last_good_revision_dev.txt`:
+  `<sha> DEPLOYED <utc-timestamp>`.
+
+Make target (uses `DEV_PROJECT_ID` from `ops/Makefile`):
+```bash
+make deploy-functions
+```
+
+TODO:
+- Add a manual CI workflow to deploy Functions via WIF once triggers stabilize.
+
+---
+
+## Rollback triggers (dev)
+```bash
+./scripts/rollback_functions.sh --project gsm-dev-f70d0
+```
+
+Notes:
+- The rollback target defaults to `deploy/last_good_revision_dev.txt` (update this file after
+  successful deploy + smoke checks).
+- You can override the target revision: `./scripts/rollback_functions.sh --project <id> --revision <sha>`
+- Each rollback appends a line to `deploy/last_good_revision_dev.txt`:
+  `<sha> ROLLED BACK <utc-timestamp>`.
+
+---
+
+## Post-deploy smoke check
+Emulator (local):
+```bash
+make emu-firestore
+./scripts/smoke_triggers.sh --env emu
+```
+
+Dev (requires ADC + project id):
+```bash
+./scripts/smoke_triggers.sh --env dev --project <project-id>
+```
+
+Notes:
+- The smoke script simulates trigger execution by invoking the match-trigger handlers directly
+  after synthetic writes, then verifies cache fields on the user doc.
+- `deploy_functions.sh` runs smoke checks automatically after deploy (env defaults to `dev`;
+  override with `SMOKE_ENV=emu` if needed).
+
+---
+
 ## CORS & environments
 - Configure via env only:
   - Dev: `CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`

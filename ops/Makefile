@@ -44,6 +44,9 @@ help:
 	@echo "make docker-stop      - stop local Docker container"
 	@echo "make docker-up        - start Docker Desktop (macOS)"
 	@echo "make docker-down      - stop Docker Desktop (macOS)"
+	@echo "make functions-venv   - create venv for Firebase Functions and install deps"
+	@echo "make deploy-functions - deploy Firebase Functions (dev project)"
+	@echo "make smoke-functions  - curl GSM_PING_URL to verify deployed function"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
 
 # --- Python env ---
@@ -56,6 +59,23 @@ venv:
 .PHONY: install
 install:
 	$(ACT) && pip install --upgrade pip && pip install -e api[dev]
+
+# --- Functions env ---
+.PHONY: functions-venv
+functions-venv:
+	@cd functions && \
+	python3.11 -m venv venv && \
+	./venv/bin/pip install --upgrade pip && \
+	./venv/bin/pip install -r requirements.txt
+
+.PHONY: deploy-functions
+deploy-functions:
+	@./scripts/deploy_functions.sh --project $(DEV_PROJECT_ID)
+
+.PHONY: smoke-functions
+smoke-functions:
+	@test -n "$(GSM_PING_URL)" || { echo "Set GSM_PING_URL to the gsm_ping HTTPS URL."; exit 1; }
+	@curl -sS "$(GSM_PING_URL)" && echo
 
 # --- API local runs ---
 # Local dev against Firestore emulator; sets FIREBASE_PROJECT_ID, GOOGLE_CLOUD_PROJECT, FIRESTORE_EMULATOR_HOST
