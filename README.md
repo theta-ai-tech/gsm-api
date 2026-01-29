@@ -151,6 +151,13 @@ Notes:
 ---
 
 ## Deploy triggers (dev)
+Quick runbook:
+1) One-time: `make functions-venv`
+2) Deploy: `make deploy-functions` (runs smoke automatically)
+3) Verify `gsm_ping` via `make smoke-functions` (set `GSM_PING_URL` first)
+4) CI: run the manual workflow “Deploy Firebase Functions (manual)” in GitHub Actions
+   (TODO: automate on main once triggers are stable)
+
 ```bash
 ./scripts/deploy_functions.sh --project gsm-dev-f70d0
 ```
@@ -185,6 +192,26 @@ Notes:
 - You can override the target revision: `./scripts/rollback_functions.sh --project <id> --revision <sha>`
 - Each rollback appends a line to `deploy/last_good_revision_dev.txt`:
   `<sha> ROLLED BACK <utc-timestamp>`.
+
+---
+
+## Post-deploy smoke check
+Emulator (local):
+```bash
+make emu-firestore
+./scripts/smoke_triggers.sh --env emu
+```
+
+Dev (requires ADC + project id):
+```bash
+./scripts/smoke_triggers.sh --env dev --project <project-id>
+```
+
+Notes:
+- The smoke script simulates trigger execution by invoking the match-trigger handlers directly
+  after synthetic writes, then verifies cache fields on the user doc.
+- `deploy_functions.sh` runs smoke checks automatically after deploy (env defaults to `dev`;
+  override with `SMOKE_ENV=emu` if needed).
 
 ---
 

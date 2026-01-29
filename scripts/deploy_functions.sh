@@ -108,6 +108,10 @@ echo "Deployed functions:"
 firebase functions:list --project "$PROJECT"
 echo "Revision: $REVISION"
 
+SMOKE_ENV="${SMOKE_ENV:-dev}"
+echo "Running smoke checks: env=$SMOKE_ENV"
+./scripts/smoke_triggers.sh --env "$SMOKE_ENV" --project "$PROJECT"
+
 LOG_FILE="$ROOT_DIR/deploy/last_good_revision_dev.txt"
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 mkdir -p "$(dirname "$LOG_FILE")"
