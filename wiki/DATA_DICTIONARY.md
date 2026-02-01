@@ -203,6 +203,34 @@ Minimal examples (timestamps shown as ISO8601 UTC strings).
 }
 ```
 
+### users/{uid} cache snippets
+```json
+{
+  "upcomingMatches": [
+    {
+      "matchId": "match_123",
+      "sport": "tennis",
+      "scheduledAt": "2030-03-05T18:30:00Z",
+      "leagueId": "league_spring",
+      "courtId": "court_4",
+      "opponents": [{"uid": "user_456", "name": "Jamie"}]
+    }
+  ],
+  "completedMatches": [
+    {
+      "matchId": "match_456",
+      "sport": "tennis",
+      "finishedAt": "2030-02-15T20:05:00Z",
+      "result": "W",
+      "scoreText": "6-4 6-3",
+      "leagueId": "league_winter"
+    }
+  ],
+  "upcomingMatchIds": ["match_123"],
+  "recentCompletedMatchIds": ["match_456"]
+}
+```
+
 ## Collection: matches
 Path: `matches/{matchId}`
 
@@ -238,6 +266,75 @@ Purpose: scheduled and completed match records; supports user and league match q
 | scheduled | completed | Participants submit/confirm result. |
 | scheduled | cancelled | Organizer or league admin cancels. |
 | pending_confirmation | completed | Opponent confirms result. |
+
+### matches/{matchId} (scheduled)
+```json
+{
+  "sport": "padel",
+  "status": "scheduled",
+  "scheduledAt": "2030-03-01T19:00:00Z",
+  "leagueId": "league_abc",
+  "participantUids": ["user_1", "user_2"],
+  "participants": [
+    {"uid": "user_1", "team": 1, "role": "player"},
+    {"uid": "user_2", "team": 2, "role": "player"}
+  ]
+}
+```
+
+### matches/{matchId} (completed)
+```json
+{
+  "sport": "padel",
+  "status": "completed",
+  "scheduledAt": "2030-02-25T19:00:00Z",
+  "finishedAt": "2030-02-25T20:05:00Z",
+  "leagueId": "league_abc",
+  "participantUids": ["user_1", "user_2"],
+  "participants": [
+    {"uid": "user_1", "team": 1, "role": "player", "result": "W"},
+    {"uid": "user_2", "team": 2, "role": "player", "result": "L"}
+  ],
+  "resultByUser": {"user_1": "W", "user_2": "L"},
+  "score": {
+    "sets": [
+      {"p1Games": 6, "p2Games": 4},
+      {"p1Games": 6, "p2Games": 3}
+    ],
+    "winnerUid": "user_1",
+    "retired": false
+  }
+}
+```
+
+## Collection: leagues
+Path: `leagues/{leagueId}`
+
+### leagues/{leagueId}
+```json
+{
+  "name": "Athens Spring Ladder",
+  "sport": "tennis",
+  "season": "2026-spring",
+  "status": "active",
+  "ownerUid": "user_admin",
+  "meta": {"surface": "clay"}
+}
+```
+
+## Subcollection: leagues/{leagueId}/members
+Path: `leagues/{leagueId}/members/{uid}`
+
+### leagues/{leagueId}/members/{uid}
+```json
+{
+  "uid": "user_123",
+  "role": "player",
+  "status": "active",
+  "joinedAt": "2026-01-15T12:00:00Z",
+  "stats": {"wins": 3, "losses": 1}
+}
+```
 | pending_confirmation | disputed | Opponent disputes submitted result. |
 | completed | disputed | Result challenged after completion. |
 
