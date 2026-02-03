@@ -47,6 +47,7 @@ help:
 	@echo "make functions-venv   - create venv for Firebase Functions and install deps"
 	@echo "make deploy-functions - deploy Firebase Functions (dev project)"
 	@echo "make smoke-functions  - curl GSM_PING_URL to verify deployed function"
+	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
 
 # --- Python env ---
@@ -76,6 +77,13 @@ deploy-functions:
 smoke-functions:
 	@test -n "$(GSM_PING_URL)" || { echo "Set GSM_PING_URL to the gsm_ping HTTPS URL."; exit 1; }
 	@curl -sS "$(GSM_PING_URL)" && echo
+
+.PHONY: rebuild-caches-emu
+rebuild-caches-emu:
+	$(ACT) && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	python -m tools.rebuild_caches --env emu --all
 
 # --- API local runs ---
 # Local dev against Firestore emulator; sets FIREBASE_PROJECT_ID, GOOGLE_CLOUD_PROJECT, FIRESTORE_EMULATOR_HOST

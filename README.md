@@ -259,6 +259,32 @@ Integration test subset:
 pytest -k firestore_queries
 ```
 
+## Rebuild user caches (D6.1)
+Use this when cache fields drift from canonical data (missed triggers, schema migration, bad deploy).
+
+Emulator (all users):
+```bash
+make rebuild-caches-emu
+```
+
+Single user dry-run:
+```bash
+python -m tools.rebuild_caches --env emu --uid user_ignatios --dry-run
+```
+
+All users dry-run:
+```bash
+python -m tools.rebuild_caches --env emu --all --dry-run
+```
+
+Notes:
+- Deterministic rebuild rules:
+  - upcoming matches: `status=scheduled` and `scheduledAt>now`, order `scheduledAt ASC`, cap 10
+  - recent completed: `status=completed`, order `finishedAt DESC`, cap 10
+  - league summaries: from `leagues/{leagueId}/members/{uid}` + `leagues/{leagueId}`, dedup by
+    `leagueId`, cap 20
+- In `--dry-run` mode, no writes happen; the tool prints before/after for changed fields.
+
 ## Auth Tests
 - Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.
 
