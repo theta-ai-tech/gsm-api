@@ -460,3 +460,128 @@ Purpose: tennis/padel/pickleball court directory entries.
   "bookingUrl": "https://example.com/courts/central"
 }
 ```
+
+## Collection: broadcasts
+Path: `broadcasts/{broadcastId}`
+
+Purpose: availability broadcasts created when a user taps "I'm Ready to Play". One active broadcast per user at a time. Offers queue against an active broadcast.
+
+### Fields: broadcasts/{broadcastId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ownerUid | string | required | — | canonical | index=filter | Broadcaster's UID. |
+| sport | string | required | sport | canonical | index=filter | Sport for the broadcast. |
+| availability | string | required | availability | canonical | — | `today` / `tomorrow` / `weekend`. |
+| courtStatus | string | required | courtStatus | canonical | — | `have_court` / `need_court`. |
+| courtLocation | string | optional | — | canonical | — | Free-text location (when courtStatus is `have_court`). |
+| status | string | required | broadcastStatus | canonical | index=filter | `active` / `expired` / `cancelled` / `matched`. |
+| expiresAt | timestamp | required | — | canonical | index=order-by | Hard cut-off TTL set by user. |
+| createdAt | timestamp | required | — | canonical | — | When broadcast was created. |
+| ownerName | string | required | — | cache | — | Denormalized from user profile for display. |
+| ownerRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from user rankings. |
+| area | number | optional | — | cache | — | From user preferences; enables geo-scoped discovery queries. |
+
+### Required composite indexes
+- Active broadcasts by area/sport: `status` (ASC), `area` (ASC), `sport` (ASC), `expiresAt` (ASC)
+- Active broadcasts by owner: `ownerUid` (ASC), `status` (ASC)
+
+### Status transitions
+| From | To | Trigger |
+| --- | --- | --- |
+| active | expired | Broadcast TTL passes (freshness reconciliation or scheduled job). |
+| active | cancelled | User cancels via DELETE /me/broadcast. |
+| active | matched | An offer against this broadcast is accepted. |
+
+### broadcasts/{broadcastId} (active)
+```json
+{
+  "ownerUid": "user_123",
+  "sport": "tennis",
+  "availability": "today",
+  "courtStatus": "have_court",
+  "courtLocation": "Central Court, Athens",
+  "status": "active",
+  "expiresAt": "2026-02-03T16:00:00Z",
+  "createdAt": "2026-02-03T08:00:00Z",
+  "ownerName": "Alex",
+  "ownerRanking": {"sport": "tennis", "pts": 1200},
+  "area": 101
+}
+```
+
+## Collection: offers
+Path: `offers/{offerId}`
+
+Purpose: match proposals (challenges) sent between users. An offer may target an active broadcast or be a direct challenge. Offers have a short TTL (e.g. 5 minutes) to drive urgency.
+
+### Fields: offers/{offerId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| fromUid | string | required | — | canonical | index=filter | Sender UID. |
+| toUid | string | required | — | canonical | index=filter | Recipient UID. |
+| broadcastId | string | optional | — | canonical | — | If offer targets an active broadcast. |
+| sport | string | required | sport | canonical | — | Sport for the proposed match. |
+| proposedTime | timestamp | optional | — | canonical | — | Suggested match time. |
+| courtLocation | string | optional | — | canonical | — | Proposed court location. |
+| message | string | optional | — | canonical | — | Free-text message from sender. |
+| status | string | required | offerStatus | canonical | index=filter | `pending` / `accepted` / `declined` / `expired` / `cancelled`. |
+| expiresAt | timestamp | required | — | canonical | index=order-by | Auto-expiry timestamp. |
+| createdAt | timestamp | required | — | canonical | index=order-by | When offer was created. |
+| fromName | string | required | — | cache | — | Denormalized sender name. |
+| fromRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from sender. |
+| toName | string | required | — | cache | — | Denormalized recipient name. |
+| toRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from recipient. |
+| matchId | string | optional | — | canonical | — | Set when status transitions to `accepted`; references the created match. |
+
+### Required composite indexes
+- Pending offers by recipient: `toUid` (ASC), `status` (ASC), `createdAt` (ASC)
+- Pending offers by sender: `fromUid` (ASC), `status` (ASC), `createdAt` (ASC)
+
+### Status transitions
+| From | To | Trigger |
+| --- | --- | --- |
+| pending | accepted | Recipient accepts via POST /me/offers/{id}/accept. |
+| pending | declined | Recipient declines via POST /me/offers/{id}/decline. |
+| pending | cancelled | Sender withdraws via POST /me/offers/{id}/cancel. |
+| pending | expired | Offer TTL passes (freshness reconciliation). |
+
+### offers/{offerId} (pending)
+```json
+{
+  "fromUid": "user_456",
+  "toUid": "user_123",
+  "broadcastId": "broadcast_abc",
+  "sport": "tennis",
+  "proposedTime": "2026-02-03T18:00:00Z",
+  "courtLocation": "Central Court, Athens",
+  "message": "Up for a game?",
+  "status": "pending",
+  "expiresAt": "2026-02-03T10:05:00Z",
+  "createdAt": "2026-02-03T10:00:00Z",
+  "fromName": "Sam",
+  "fromRanking": {"sport": "tennis", "pts": 1100},
+  "toName": "Alex",
+  "toRanking": {"sport": "tennis", "pts": 1200},
+  "matchId": null
+}
+```
+
+### offers/{offerId} (accepted)
+```json
+{
+  "fromUid": "user_456",
+  "toUid": "user_123",
+  "broadcastId": "broadcast_abc",
+  "sport": "tennis",
+  "proposedTime": "2026-02-03T18:00:00Z",
+  "courtLocation": "Central Court, Athens",
+  "message": "Up for a game?",
+  "status": "accepted",
+  "expiresAt": "2026-02-03T10:05:00Z",
+  "createdAt": "2026-02-03T10:00:00Z",
+  "fromName": "Sam",
+  "fromRanking": {"sport": "tennis", "pts": 1100},
+  "toName": "Alex",
+  "toRanking": {"sport": "tennis", "pts": 1200},
+  "matchId": "match_789"
+}

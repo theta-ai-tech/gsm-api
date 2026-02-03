@@ -28,8 +28,20 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
   - resultByUser?: { uid: `W|L|D` }
   - score?: { sets: [{p1Games, p2Games, tiebreakScore?}], winnerUid?, retired (bool) }
 
+- `broadcasts/{broadcastId}`
+  - Fields: ownerUid, sport, availability (`today|tomorrow|weekend`), courtStatus (`have_court|need_court`), courtLocation?
+  - status (`active|expired|cancelled|matched`), expiresAt, createdAt
+  - Cache: ownerName, ownerRanking? (`{sport, pts}`), area?
+  - One active broadcast per user at a time; offers queue against it.
+
+- `offers/{offerId}`
+  - Fields: fromUid, toUid, broadcastId?, sport, proposedTime?, courtLocation?, message?
+  - status (`pending|accepted|declined|expired|cancelled`), expiresAt, createdAt
+  - Cache: fromName, fromRanking? (`{sport, pts}`), toName, toRanking? (`{sport, pts}`)
+  - matchId? (set on acceptance, references created match)
+
 ## Identity and IDs
-- Users, leagues, matches, and journal entries use deterministic IDs (uids or preset doc IDs) to make seeding idempotent and querying predictable.
+- Users, leagues, matches, journal entries, broadcasts, and offers use deterministic IDs (uids or preset doc IDs) to make seeding idempotent and querying predictable.
 
 ## Emulator Seeding
-- See `tools/README.md` for how the seed script populates the emulator with sample data.***
+- See `tools/README.md` for how the seed script populates the emulator with sample data.
