@@ -91,6 +91,10 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | preferences.levels.padel | string | optional | level | canonical | — | Enum value. |
 | preferences.levels.pickleball | string | optional | level | canonical | — | Enum value. |
 | preferences.sports | array<string> | optional | sport | canonical | — | Private; preferred sports. |
+| preferences.defaultGeo | map | optional | — | canonical | — | Home-base coordinates for "nearby me" discovery. |
+| preferences.defaultGeo.lat | number | required | — | canonical | — | Latitude (WGS84). |
+| preferences.defaultGeo.lng | number | required | — | canonical | — | Longitude (WGS84). |
+| preferences.defaultRadiusKm | number | optional | — | canonical | — | Default search radius in km (default 15). |
 | leaguesActive | array<map> | optional | — | cache | — | Active league summaries (cap <= 20). |
 | leaguesCompleted | array<map> | optional | — | cache | — | Completed league summaries (cap <= 20). |
 | upcomingMatches | array<map> | optional | — | cache | — | Upcoming match summaries (cap <= 10). |
@@ -203,6 +207,34 @@ Minimal examples (timestamps shown as ISO8601 UTC strings).
 }
 ```
 
+### users/{uid} cache snippets
+```json
+{
+  "upcomingMatches": [
+    {
+      "matchId": "match_123",
+      "sport": "tennis",
+      "scheduledAt": "2030-03-05T18:30:00Z",
+      "leagueId": "league_spring",
+      "courtId": "court_4",
+      "opponents": [{"uid": "user_456", "name": "Jamie"}]
+    }
+  ],
+  "completedMatches": [
+    {
+      "matchId": "match_456",
+      "sport": "tennis",
+      "finishedAt": "2030-02-15T20:05:00Z",
+      "result": "W",
+      "scoreText": "6-4 6-3",
+      "leagueId": "league_winter"
+    }
+  ],
+  "upcomingMatchIds": ["match_123"],
+  "recentCompletedMatchIds": ["match_456"]
+}
+```
+
 ## Collection: matches
 Path: `matches/{matchId}`
 
@@ -238,6 +270,75 @@ Purpose: scheduled and completed match records; supports user and league match q
 | scheduled | completed | Participants submit/confirm result. |
 | scheduled | cancelled | Organizer or league admin cancels. |
 | pending_confirmation | completed | Opponent confirms result. |
+
+### matches/{matchId} (scheduled)
+```json
+{
+  "sport": "padel",
+  "status": "scheduled",
+  "scheduledAt": "2030-03-01T19:00:00Z",
+  "leagueId": "league_abc",
+  "participantUids": ["user_1", "user_2"],
+  "participants": [
+    {"uid": "user_1", "team": 1, "role": "player"},
+    {"uid": "user_2", "team": 2, "role": "player"}
+  ]
+}
+```
+
+### matches/{matchId} (completed)
+```json
+{
+  "sport": "padel",
+  "status": "completed",
+  "scheduledAt": "2030-02-25T19:00:00Z",
+  "finishedAt": "2030-02-25T20:05:00Z",
+  "leagueId": "league_abc",
+  "participantUids": ["user_1", "user_2"],
+  "participants": [
+    {"uid": "user_1", "team": 1, "role": "player", "result": "W"},
+    {"uid": "user_2", "team": 2, "role": "player", "result": "L"}
+  ],
+  "resultByUser": {"user_1": "W", "user_2": "L"},
+  "score": {
+    "sets": [
+      {"p1Games": 6, "p2Games": 4},
+      {"p1Games": 6, "p2Games": 3}
+    ],
+    "winnerUid": "user_1",
+    "retired": false
+  }
+}
+```
+
+## Collection: leagues
+Path: `leagues/{leagueId}`
+
+### leagues/{leagueId}
+```json
+{
+  "name": "Athens Spring Ladder",
+  "sport": "tennis",
+  "season": "2026-spring",
+  "status": "active",
+  "ownerUid": "user_admin",
+  "meta": {"surface": "clay"}
+}
+```
+
+## Subcollection: leagues/{leagueId}/members
+Path: `leagues/{leagueId}/members/{uid}`
+
+### leagues/{leagueId}/members/{uid}
+```json
+{
+  "uid": "user_123",
+  "role": "player",
+  "status": "active",
+  "joinedAt": "2026-01-15T12:00:00Z",
+  "stats": {"wins": 3, "losses": 1}
+}
+```
 | pending_confirmation | disputed | Opponent disputes submitted result. |
 | completed | disputed | Result challenged after completion. |
 
@@ -363,3 +464,137 @@ Purpose: tennis/padel/pickleball court directory entries.
   "bookingUrl": "https://example.com/courts/central"
 }
 ```
+
+## Collection: broadcasts
+Path: `broadcasts/{broadcastId}`
+
+Purpose: availability broadcasts created when a user taps "I'm Ready to Play". One active broadcast per user at a time. Offers queue against an active broadcast.
+
+### Fields: broadcasts/{broadcastId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| ownerUid | string | required | — | canonical | index=filter | Broadcaster's UID. |
+| sport | string | required | sport | canonical | index=filter | Sport for the broadcast. |
+| availability | string | required | availability | canonical | — | `today` / `tomorrow` / `weekend`. |
+| courtStatus | string | required | courtStatus | canonical | — | `have_court` / `need_court`. |
+| courtLocation | string | optional | — | canonical | — | Free-text location (when courtStatus is `have_court`). |
+| status | string | required | broadcastStatus | canonical | index=filter | `active` / `expired` / `cancelled` / `matched`. |
+| expiresAt | timestamp | required | — | canonical | index=order-by | Hard cut-off TTL set by user. |
+| createdAt | timestamp | required | — | canonical | — | When broadcast was created. |
+| ownerName | string | required | — | cache | — | Denormalized from user profile for display. |
+| ownerRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from user rankings. |
+| location | map | required | — | canonical | — | Geographic scope; at least one of `area` or `geo` must be set. |
+| location.area | number | optional | — | canonical | index=filter | Predefined area code (coarse filter). |
+| location.geo | map | optional | — | canonical | — | Jittered WGS84 coordinates (privacy-safe). |
+| location.geo.lat | number | required | — | canonical | — | Latitude. |
+| location.geo.lng | number | required | — | canonical | — | Longitude. |
+| location.radiusKm | number | optional | — | canonical | — | Search radius in km (default 15). Only meaningful when `geo` is set. |
+
+### Required composite indexes
+- Active broadcasts by area/sport: `status` (ASC), `location.area` (ASC), `sport` (ASC), `expiresAt` (ASC)
+- Active broadcasts by owner: `ownerUid` (ASC), `status` (ASC)
+
+### Status transitions
+| From | To | Trigger |
+| --- | --- | --- |
+| active | expired | Broadcast TTL passes (freshness reconciliation or scheduled job). |
+| active | cancelled | User cancels via DELETE /me/broadcast. |
+| active | matched | An offer against this broadcast is accepted. |
+
+### broadcasts/{broadcastId} (active)
+```json
+{
+  "ownerUid": "user_123",
+  "sport": "tennis",
+  "availability": "today",
+  "courtStatus": "have_court",
+  "courtLocation": "Central Court, Athens",
+  "status": "active",
+  "expiresAt": "2026-02-03T16:00:00Z",
+  "createdAt": "2026-02-03T08:00:00Z",
+  "ownerName": "Alex",
+  "ownerRanking": {"sport": "tennis", "pts": 1200},
+  "location": {
+    "area": 101,
+    "geo": {"lat": 37.98, "lng": 23.73},
+    "radiusKm": 10
+  }
+}
+```
+
+## Collection: offers
+Path: `offers/{offerId}`
+
+Purpose: match proposals (challenges) sent between users. An offer may target an active broadcast or be a direct challenge. Offers have a short TTL (e.g. 5 minutes) to drive urgency.
+
+### Fields: offers/{offerId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| fromUid | string | required | — | canonical | index=filter | Sender UID. |
+| toUid | string | required | — | canonical | index=filter | Recipient UID. |
+| broadcastId | string | optional | — | canonical | — | If offer targets an active broadcast. |
+| sport | string | required | sport | canonical | — | Sport for the proposed match. |
+| proposedTime | timestamp | optional | — | canonical | — | Suggested match time. |
+| courtLocation | string | optional | — | canonical | — | Proposed court location. |
+| message | string | optional | — | canonical | — | Free-text message from sender. |
+| status | string | required | offerStatus | canonical | index=filter | `pending` / `accepted` / `declined` / `expired` / `cancelled`. |
+| expiresAt | timestamp | required | — | canonical | index=order-by | Auto-expiry timestamp. |
+| createdAt | timestamp | required | — | canonical | index=order-by | When offer was created. |
+| fromName | string | required | — | cache | — | Denormalized sender name. |
+| fromRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from sender. |
+| toName | string | required | — | cache | — | Denormalized recipient name. |
+| toRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from recipient. |
+| matchId | string | optional | — | canonical | — | Set when status transitions to `accepted`; references the created match. |
+
+### Required composite indexes
+- Pending offers by recipient: `toUid` (ASC), `status` (ASC), `createdAt` (ASC)
+- Pending offers by sender: `fromUid` (ASC), `status` (ASC), `createdAt` (ASC)
+
+### Status transitions
+| From | To | Trigger |
+| --- | --- | --- |
+| pending | accepted | Recipient accepts via POST /me/offers/{id}/accept. |
+| pending | declined | Recipient declines via POST /me/offers/{id}/decline. |
+| pending | cancelled | Sender withdraws via POST /me/offers/{id}/cancel. |
+| pending | expired | Offer TTL passes (freshness reconciliation). |
+
+### offers/{offerId} (pending)
+```json
+{
+  "fromUid": "user_456",
+  "toUid": "user_123",
+  "broadcastId": "broadcast_abc",
+  "sport": "tennis",
+  "proposedTime": "2026-02-03T18:00:00Z",
+  "courtLocation": "Central Court, Athens",
+  "message": "Up for a game?",
+  "status": "pending",
+  "expiresAt": "2026-02-03T10:05:00Z",
+  "createdAt": "2026-02-03T10:00:00Z",
+  "fromName": "Sam",
+  "fromRanking": {"sport": "tennis", "pts": 1100},
+  "toName": "Alex",
+  "toRanking": {"sport": "tennis", "pts": 1200},
+  "matchId": null
+}
+```
+
+### offers/{offerId} (accepted)
+```json
+{
+  "fromUid": "user_456",
+  "toUid": "user_123",
+  "broadcastId": "broadcast_abc",
+  "sport": "tennis",
+  "proposedTime": "2026-02-03T18:00:00Z",
+  "courtLocation": "Central Court, Athens",
+  "message": "Up for a game?",
+  "status": "accepted",
+  "expiresAt": "2026-02-03T10:05:00Z",
+  "createdAt": "2026-02-03T10:00:00Z",
+  "fromName": "Sam",
+  "fromRanking": {"sport": "tennis", "pts": 1100},
+  "toName": "Alex",
+  "toRanking": {"sport": "tennis", "pts": 1200},
+  "matchId": "match_789"
+}

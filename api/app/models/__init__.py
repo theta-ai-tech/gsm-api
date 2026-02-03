@@ -22,6 +22,7 @@ from app.models.enums import (
     MatchResultEnum,
     MatchStatusEnum,
     ParticipantRoleEnum,
+    PlayTabStateEnum,
     SportEnum,
 )
 from app.models.journal import JournalEntry
@@ -44,6 +45,7 @@ __all__ = [
     "LeagueMemberStatusEnum",
     "ParticipantRoleEnum",
     "JournalVisibilityEnum",
+    "PlayTabStateEnum",
     # common value objects
     "SportRanking",
     "PerSportRankings",
