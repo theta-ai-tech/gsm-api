@@ -6,7 +6,7 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
 - `users/{uid}`
   - Fields: uid, name, email, profileUrl, phone
   - rankings: { tennis?: {sport, pts, globalRanking}, padel?: {...}, pickleball?: {...} }
-  - preferences: { area: int, levels: {tennis?, padel?, pickleball?}, sports: [sport] }
+  - preferences: { area: int, levels: {tennis?, padel?, pickleball?}, sports: [sport], defaultGeo?: {lat, lng}, defaultRadiusKm?: int }
   - leaguesActive: [ {leagueId, name, sport, status, role?} ]
   - leaguesCompleted: [ {leagueId, name, sport, status, role?} ]
   - upcomingMatches: [ {matchId, sport, scheduledAt, leagueId?, courtId?, opponents: [{uid, name?}]} ]
@@ -31,7 +31,8 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
 - `broadcasts/{broadcastId}`
   - Fields: ownerUid, sport, availability (`today|tomorrow|weekend`), courtStatus (`have_court|need_court`), courtLocation?
   - status (`active|expired|cancelled|matched`), expiresAt, createdAt
-  - Cache: ownerName, ownerRanking? (`{sport, pts}`), area?
+  - location: { area?: int, geo?: {lat, lng}, radiusKm?: int } (at least one of area or geo required)
+  - Cache: ownerName, ownerRanking? (`{sport, pts}`)
   - One active broadcast per user at a time; offers queue against it.
 
 - `offers/{offerId}`

@@ -91,6 +91,10 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | preferences.levels.padel | string | optional | level | canonical | — | Enum value. |
 | preferences.levels.pickleball | string | optional | level | canonical | — | Enum value. |
 | preferences.sports | array<string> | optional | sport | canonical | — | Private; preferred sports. |
+| preferences.defaultGeo | map | optional | — | canonical | — | Home-base coordinates for "nearby me" discovery. |
+| preferences.defaultGeo.lat | number | required | — | canonical | — | Latitude (WGS84). |
+| preferences.defaultGeo.lng | number | required | — | canonical | — | Longitude (WGS84). |
+| preferences.defaultRadiusKm | number | optional | — | canonical | — | Default search radius in km (default 15). |
 | leaguesActive | array<map> | optional | — | cache | — | Active league summaries (cap <= 20). |
 | leaguesCompleted | array<map> | optional | — | cache | — | Completed league summaries (cap <= 20). |
 | upcomingMatches | array<map> | optional | — | cache | — | Upcoming match summaries (cap <= 10). |
@@ -479,10 +483,15 @@ Purpose: availability broadcasts created when a user taps "I'm Ready to Play". O
 | createdAt | timestamp | required | — | canonical | — | When broadcast was created. |
 | ownerName | string | required | — | cache | — | Denormalized from user profile for display. |
 | ownerRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from user rankings. |
-| area | number | optional | — | cache | — | From user preferences; enables geo-scoped discovery queries. |
+| location | map | required | — | canonical | — | Geographic scope; at least one of `area` or `geo` must be set. |
+| location.area | number | optional | — | canonical | index=filter | Predefined area code (coarse filter). |
+| location.geo | map | optional | — | canonical | — | Jittered WGS84 coordinates (privacy-safe). |
+| location.geo.lat | number | required | — | canonical | — | Latitude. |
+| location.geo.lng | number | required | — | canonical | — | Longitude. |
+| location.radiusKm | number | optional | — | canonical | — | Search radius in km (default 15). Only meaningful when `geo` is set. |
 
 ### Required composite indexes
-- Active broadcasts by area/sport: `status` (ASC), `area` (ASC), `sport` (ASC), `expiresAt` (ASC)
+- Active broadcasts by area/sport: `status` (ASC), `location.area` (ASC), `sport` (ASC), `expiresAt` (ASC)
 - Active broadcasts by owner: `ownerUid` (ASC), `status` (ASC)
 
 ### Status transitions
@@ -505,7 +514,11 @@ Purpose: availability broadcasts created when a user taps "I'm Ready to Play". O
   "createdAt": "2026-02-03T08:00:00Z",
   "ownerName": "Alex",
   "ownerRanking": {"sport": "tennis", "pts": 1200},
-  "area": 101
+  "location": {
+    "area": 101,
+    "geo": {"lat": 37.98, "lng": 23.73},
+    "radiusKm": 10
+  }
 }
 ```
 

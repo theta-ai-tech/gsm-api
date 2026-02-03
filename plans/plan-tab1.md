@@ -156,7 +156,10 @@ Tests for PlayService logic, router endpoints, state reconciliation.
 | createdAt      | timestamp | yes      | —                 | When broadcast was created               |
 | ownerName      | string    | yes      | —                 | Denormalized for read                    |
 | ownerRanking   | map       | optional | —                 | Denormalized `{sport, pts}`              |
-| area           | number    | optional | —                 | From user preferences (geo queries)      |
+| location       | map       | yes      | —                 | At least one of `area` or `geo` required |
+| location.area  | number    | optional | —                 | Predefined area code (coarse filter)     |
+| location.geo   | map       | optional | —                 | Jittered WGS84 `{lat, lng}`             |
+| location.radiusKm | number | optional | —                 | Search radius in km (default 15)         |
 
 ### Firestore: offers/{offerId}
 
