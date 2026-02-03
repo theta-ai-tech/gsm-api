@@ -143,6 +143,18 @@ def get_user(
     return profile
 
 
+@app.get("/me/state")
+def get_me_state(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    # Placeholder for the aggregated "home/me state" payload.
+    return {
+        "uid": current_user.uid,
+        "state": "placeholder",
+        "message": "D6 /me/state logic is not implemented yet",
+    }
+
+
 @app.post(
     "/leagues/{league_id}/members",
     status_code=status.HTTP_201_CREATED,
