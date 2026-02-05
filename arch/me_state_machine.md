@@ -2,6 +2,7 @@
 
 ## Core state diagram
 
+
 ```mermaid
 stateDiagram-v2
     [*] --> DISCOVERY

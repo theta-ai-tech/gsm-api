@@ -481,6 +481,7 @@ Required (must be the offer sender).
 
 ---
 
+
 ## Cross-cutting behavior
 
 ### Headers
