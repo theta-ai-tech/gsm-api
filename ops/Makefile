@@ -48,6 +48,7 @@ help:
 	@echo "make deploy-functions - deploy Firebase Functions (dev project)"
 	@echo "make smoke-functions  - curl GSM_PING_URL to verify deployed function"
 	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
+	@echo "make cache-integrity-emu - run read-only cache integrity checks on emulator"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
 
 # --- Python env ---
@@ -84,6 +85,13 @@ rebuild-caches-emu:
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	python -m tools.rebuild_caches --env emu --all
+
+.PHONY: cache-integrity-emu
+cache-integrity-emu:
+	$(ACT) && \
+	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
+	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
+	python -m tools.check_cache_integrity --env emu --limit 50
 
 # --- API local runs ---
 # Local dev against Firestore emulator; sets FIREBASE_PROJECT_ID, GOOGLE_CLOUD_PROJECT, FIRESTORE_EMULATOR_HOST

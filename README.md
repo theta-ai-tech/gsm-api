@@ -170,6 +170,8 @@ Notes:
   Console → Cloud Functions for the same project/region).
 - Each deploy appends a line to `deploy/last_good_revision_dev.txt`:
   `<sha> DEPLOYED <utc-timestamp>`.
+- Trigger kill switch: set `GSM_TRIGGERS_ENABLED=false` to make trigger handlers no-op
+  (safe stop for cache writes during incidents); set back to `true` to resume.
 
 Make target (uses `DEV_PROJECT_ID` from `ops/Makefile`):
 ```bash
@@ -212,6 +214,17 @@ Notes:
   after synthetic writes, then verifies cache fields on the user doc.
 - `deploy_functions.sh` runs smoke checks automatically after deploy (env defaults to `dev`;
   override with `SMOKE_ENV=emu` if needed).
+
+---
+
+## Debugging triggers
+- Trigger handlers emit structured JSON log lines with fields such as:
+  `trigger`, `action`, `reason`, `matchId`/`leagueId`, `uid`/uid counts,
+  `changed`, `revision`, and summary counters (`processed_count`, `ignored_count`, `writes_count`).
+- Example:
+  ```json
+  {"action":"migrate_upcoming_to_recent","changed":true,"matchId":"m_101","revision":"abc1234","trigger":"onMatchWrite.D2","uid":"user_1"}
+  ```
 
 ---
 
@@ -284,6 +297,24 @@ Notes:
   - league summaries: from `leagues/{leagueId}/members/{uid}` + `leagues/{leagueId}`, dedup by
     `leagueId`, cap 20
 - In `--dry-run` mode, no writes happen; the tool prints before/after for changed fields.
+
+## Cache integrity check (D6.4)
+Read-only validator for cache invariants (caps, duplicates, types, canonical references).
+
+Emulator (sample users):
+```bash
+make cache-integrity-emu
+```
+
+Single user:
+```bash
+python -m tools.check_cache_integrity --env emu --uid user_ignatios
+```
+
+Notes:
+- Fails with non-zero exit code when violations are found.
+- Validates upcoming/completed cache references against canonical `matches` docs.
+- Validates league summary references against canonical `leagues` docs.
 
 ## Auth Tests
 - Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.

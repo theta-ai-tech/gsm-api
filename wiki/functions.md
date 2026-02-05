@@ -110,3 +110,35 @@ Purpose: Remove league summaries when membership is deleted or becomes non-activ
 - Role/status changes reflect immediately via cache upsert.
 - Leave/ban removes the league from cached lists to prevent stale cards.
 - Trigger retries are safe: dedupe and idempotent removal keep stable state.
+
+## D6.2 — Trigger kill switch
+Purpose: stop trigger cache writes immediately without redeploying code.
+
+### Behavior summary
+- Controlled by env var: `GSM_TRIGGERS_ENABLED` (`true` by default).
+- When set to `false`, trigger entry handlers exit early and perform no Firestore writes.
+- Applies to:
+  - match write upcoming updates (D1)
+  - match completion migration (D2)
+  - league member upsert/removal summaries (D3)
+
+## D6.3 — Structured logs + counters
+Purpose: make trigger behavior inspectable and incident debugging faster.
+
+### Behavior summary
+- Trigger paths emit structured JSON logs with fields:
+  - `trigger`, `action`
+  - `matchId` / `leagueId`
+  - `uid` (per-user actions) or `uids_count` + `uids_preview` (batch context)
+  - `changed`
+  - `reason` (for ignores/non-qualification)
+- Each trigger invocation emits aggregated summary counters:
+  - `processed_count`
+  - `ignored_count`
+  - `writes_count`
+
+### Typical flow
+- `qualify` log (qualifies + reason)
+- `ignore` log when early-exiting (disabled/missing data/not qualified)
+- per-user write log (`upsert`/`migrate`/`remove`) with `changed`
+- `summary` log with counters

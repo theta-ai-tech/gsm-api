@@ -101,3 +101,17 @@ jobs:
           CORS_ORIGINS: http://localhost:3000
         # Runs auth regressions, health/readiness, and observability-related tests.
         run: pytest -q
+
+      - name: Seed emulator for cache integrity check
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8082
+          GOOGLE_CLOUD_PROJECT: gsm-dev-f70d0
+          FIREBASE_PROJECT_ID: gsm-dev-f70d0
+        run: python -m tools.seed_firestore --env=emu
+
+      - name: Cache integrity check (read-only)
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8082
+          GOOGLE_CLOUD_PROJECT: gsm-dev-f70d0
+          FIREBASE_PROJECT_ID: gsm-dev-f70d0
+        run: python -m tools.check_cache_integrity --env emu --limit 50
