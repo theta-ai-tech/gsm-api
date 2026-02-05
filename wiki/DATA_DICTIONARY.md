@@ -49,6 +49,31 @@ Values below match the C1 enums in code.
 - API/Pydantic representation: string enum
 - Allowed values: `private`, `friends`
 
+### playTabState
+- Firestore representation: string (UPPER_CASE)
+- API/Pydantic representation: string enum
+- Allowed values: `DISCOVERY`, `BROADCAST_ACTIVE`, `OUTGOING_OFFER_PENDING`, `INCOMING_OFFER_PENDING`, `MATCH_SCHEDULED`, `POST_MATCH_LOG_AVAILABLE`, `POST_MATCH_WAITING_OPPONENT`, `POST_MATCH_CONFIRM_REQUIRED`, `MATCH_DISPUTED`
+
+### broadcastStatus
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `active`, `expired`, `cancelled`, `matched`
+
+### availability
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `today`, `tomorrow`, `weekend`
+
+### courtStatus
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `have_court`, `need_court`
+
+### offerStatus
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `pending`, `accepted`, `declined`, `expired`, `cancelled`
+
 ## Collection: users
 Path: `users/{uid}`
 
@@ -101,6 +126,13 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | completedMatches | array<map> | optional | — | cache | — | Completed match summaries (cap <= 10). |
 | journalRecent | array<map> | optional | — | cache | — | Recent journal summaries (cap <= 10). |
 | cursors | map | optional | — | cache | — | Cursor bundle for pagination. |
+| playTab | map | optional | — | cache | — | Tab 1 (Play) state cache. Managed by API transactions; triggers as backstops. |
+| playTab.state | string | optional | playTabState | cache | — | Current `PlayTabStateEnum` value. Default: `DISCOVERY`. |
+| playTab.activeBroadcastId | string | optional | — | cache | — | Doc ID of the user's active broadcast (null when none). |
+| playTab.activeMatchId | string | optional | — | cache | — | Doc ID of the user's current match (scheduled through post-match). |
+| playTab.activeOutgoingOfferId | string | optional | — | cache | — | Doc ID of the user's pending outgoing offer (null when none). |
+| playTab.pendingIncomingOfferIds | array&lt;string&gt; | optional | — | cache | — | Doc IDs of pending incoming offers (empty when none). |
+| playTab.updatedAt | timestamp | optional | — | cache | — | Last state transition timestamp. |
 
 ## Subcollection: users/{uid}/journalEntries
 Path: `users/{uid}/journalEntries/{entryId}`
@@ -190,7 +222,15 @@ Minimal examples (timestamps shown as ISO8601 UTC strings).
   "journalRecent": [
     {"entryId": "journal_1", "createdAt": "2020-01-21T09:00:00Z", "title": "Padel win"}
   ],
-  "cursors": {"upcomingMatches": null, "completedMatches": null, "journal": null}
+  "cursors": {"upcomingMatches": null, "completedMatches": null, "journal": null},
+  "playTab": {
+    "state": "BROADCAST_ACTIVE",
+    "activeBroadcastId": "broadcast_abc",
+    "activeMatchId": null,
+    "activeOutgoingOfferId": null,
+    "pendingIncomingOfferIds": ["offer_1", "offer_2"],
+    "updatedAt": "2026-02-03T08:00:00Z"
+  }
 }
 ```
 
