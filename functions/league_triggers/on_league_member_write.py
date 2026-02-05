@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from google.cloud import firestore  # type: ignore[import-untyped]
+from functions.logging_utils import log_event
 
 
 @dataclass(frozen=True)
@@ -262,15 +263,52 @@ def handle_league_member_upsert(
     league_id: str,
     before: dict[str, Any] | None,
     after: dict[str, Any] | None,
-) -> None:
+) -> bool:
     # Trigger entry point: compose summary from league + member doc and upsert into user cache.
+    trigger_name = "onLeagueMemberWrite.D3.1"
+    processed_count = 1
+    ignored_count = 0
+    writes_count = 0
+
     result = qualify_league_member_upsert(league_id, before, after)
+    log_event(
+        trigger=trigger_name,
+        action="qualify",
+        leagueId=league_id,
+        uid=result.uid,
+        reason=result.reason,
+        qualifies=result.qualifies,
+        changed=False,
+    )
     if not result.qualifies or after is None:
-        return
+        ignored_count = 1
+        log_event(
+            trigger=trigger_name,
+            action="summary",
+            leagueId=league_id,
+            uid=result.uid,
+            changed=False,
+            processed_count=processed_count,
+            ignored_count=ignored_count,
+            writes_count=writes_count,
+        )
+        return False
 
     league_doc = client.collection("leagues").document(league_id).get()
     if not league_doc.exists:
-        return
+        ignored_count = 1
+        log_event(
+            trigger=trigger_name,
+            action="ignore",
+            leagueId=league_id,
+            uid=result.uid,
+            reason="league_not_found",
+            changed=False,
+            processed_count=processed_count,
+            ignored_count=ignored_count,
+            writes_count=writes_count,
+        )
+        return False
     league_data = league_doc.to_dict() or {}
 
     summary = {
@@ -282,14 +320,46 @@ def handle_league_member_upsert(
     }
 
     if not summary.get("sport") or not summary.get("status"):
-        return
+        ignored_count = 1
+        log_event(
+            trigger=trigger_name,
+            action="ignore",
+            leagueId=league_id,
+            uid=result.uid,
+            reason="league_summary_missing_fields",
+            changed=False,
+            processed_count=processed_count,
+            ignored_count=ignored_count,
+            writes_count=writes_count,
+        )
+        return False
 
-    _upsert_user_league_summary(
+    changed = _upsert_user_league_summary(
         client=client,
         uid=result.uid,
         league_id=league_id,
         summary=summary,
     )
+    if changed:
+        writes_count = 1
+    log_event(
+        trigger=trigger_name,
+        action="upsert",
+        leagueId=league_id,
+        uid=result.uid,
+        changed=changed,
+    )
+    log_event(
+        trigger=trigger_name,
+        action="summary",
+        leagueId=league_id,
+        uid=result.uid,
+        changed=changed,
+        processed_count=processed_count,
+        ignored_count=ignored_count,
+        writes_count=writes_count,
+    )
+    return changed
 
 
 def handle_league_member_removal(
@@ -297,11 +367,67 @@ def handle_league_member_removal(
     league_id: str,
     before: dict[str, Any] | None,
     after: dict[str, Any] | None,
-) -> None:
+) -> bool:
     # Trigger entry point: remove summary on member deletion or removal status.
+    trigger_name = "onLeagueMemberWrite.D3.2"
+    processed_count = 1
+    ignored_count = 0
+    writes_count = 0
+
     result = qualify_league_member_removal(league_id, before, after)
+    log_event(
+        trigger=trigger_name,
+        action="qualify",
+        leagueId=league_id,
+        uid=result.uid,
+        reason=result.reason,
+        qualifies=result.qualifies,
+        changed=False,
+    )
     if not result.qualifies:
-        return
+        ignored_count = 1
+        log_event(
+            trigger=trigger_name,
+            action="summary",
+            leagueId=league_id,
+            uid=result.uid,
+            changed=False,
+            processed_count=processed_count,
+            ignored_count=ignored_count,
+            writes_count=writes_count,
+        )
+        return False
     if not result.uid:
-        return
-    _remove_user_league_summary(client=client, uid=result.uid, league_id=league_id)
+        ignored_count = 1
+        log_event(
+            trigger=trigger_name,
+            action="ignore",
+            leagueId=league_id,
+            reason="uid_missing",
+            changed=False,
+            processed_count=processed_count,
+            ignored_count=ignored_count,
+            writes_count=writes_count,
+        )
+        return False
+    changed = _remove_user_league_summary(client=client, uid=result.uid, league_id=league_id)
+    if changed:
+        writes_count = 1
+    log_event(
+        trigger=trigger_name,
+        action="remove",
+        leagueId=league_id,
+        uid=result.uid,
+        changed=changed,
+    )
+    log_event(
+        trigger=trigger_name,
+        action="summary",
+        leagueId=league_id,
+        uid=result.uid,
+        changed=changed,
+        processed_count=processed_count,
+        ignored_count=ignored_count,
+        writes_count=writes_count,
+    )
+    return changed

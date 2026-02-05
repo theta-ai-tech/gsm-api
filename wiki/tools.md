@@ -13,6 +13,7 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 | `make seed-emu` / `python -m tools.seed_firestore --env emu` | Seed Firestore emulator data | Manual | Local terminal |
 | `make check-queries-emu` / `python -m tools.check_queries` | Verify repo query contracts on emulator | Manual (and can be CI-added later) | Local terminal |
 | `python -m tools.rebuild_caches ...` | Rebuild user cache fields from canonical data | Manual (repair/backfill) | Local terminal |
+| `python -m tools.check_cache_integrity ...` | Read-only cache invariant checker | Manual (verification/guardrail) | Local terminal |
 | `./scripts/deploy_functions.sh ...` / `make deploy-functions` | Deploy Firebase Functions + run smoke | Manual | Local terminal |
 | `./scripts/rollback_functions.sh ...` | Roll back Functions to known-good revision | Manual | Local terminal |
 | `./scripts/smoke_triggers.sh --env emu|dev ...` | Smoke test trigger cache behavior | Manual (also auto after deploy script) | Local terminal |
@@ -46,6 +47,15 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 - **When:** cache drift after missed triggers, schema migrations, bad deployments, bulk imports.
 - **Trigger:** manual local.
 - **Safety:** use `--dry-run` first.
+
+### 3b) Cache integrity checker (D6.4)
+- **Command (sample):**
+  - `python -m tools.check_cache_integrity --env emu --limit 50`
+- **Command (single user):**
+  - `python -m tools.check_cache_integrity --env emu --uid <uid>`
+- **When:** before/after deploys, after cache rebuilds, or during incident triage.
+- **Trigger:** manual local.
+- **Behavior:** read-only; exits non-zero on violations.
 
 ### 4) Functions deploy
 - **Command:** `make deploy-functions` or `./scripts/deploy_functions.sh --project <id>`
