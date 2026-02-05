@@ -53,7 +53,8 @@ def test_match_completion_handler_noops_when_disabled(monkeypatch) -> None:
         return True
 
     monkeypatch.setattr(
-        "functions.match_triggers.main.migrate_upcoming_to_completed_for_user", _should_not_call
+        "functions.match_triggers.main.migrate_upcoming_to_completed_for_user",
+        _should_not_call,
     )
 
     handle_match_write_migrate_on_completion(
@@ -88,8 +89,12 @@ def test_league_handlers_noop_when_disabled(monkeypatch) -> None:
     def _remove(**kwargs):
         called["remove"] = True
 
-    monkeypatch.setattr("functions.league_triggers.main.handle_league_member_upsert", _upsert)
-    monkeypatch.setattr("functions.league_triggers.main.handle_league_member_removal", _remove)
+    monkeypatch.setattr(
+        "functions.league_triggers.main.handle_league_member_upsert", _upsert
+    )
+    monkeypatch.setattr(
+        "functions.league_triggers.main.handle_league_member_removal", _remove
+    )
 
     handle_league_member_write_upsert_summary(
         client=object(),
