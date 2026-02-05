@@ -13,6 +13,7 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
   - completedMatches: [ {matchId, sport, finishedAt, result?, scoreText?, leagueId?} ]
   - journalRecent: [ {entryId, createdAt, title, matchId?, sport?} ]
   - cursors?: { upcomingMatches?, completedMatches?, journal? }
+  - playTab?: { state (`PlayTabStateEnum`), activeBroadcastId?, activeMatchId?, activeOutgoingOfferId?, pendingIncomingOfferIds: [offerId], updatedAt? }
   - Subcollection: `journalEntries/{entryId}`
     - Fields: title, body, tags[], createdAt, matchId?, sport?, visibility (`private|friends`)
 
