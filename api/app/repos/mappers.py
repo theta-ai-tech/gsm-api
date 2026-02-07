@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Any, List, Optional
 
 from app.models import (
+    AvailabilityEnum,
+    Broadcast,
+    BroadcastLocation,
+    BroadcastStatusEnum,
+    CourtStatusEnum,
     CursorBundle,
+    GeoLocation,
     JournalEntry,
     JournalEntrySummary,
     JournalVisibilityEnum,
@@ -20,6 +26,8 @@ from app.models import (
     MatchResultEnum,
     MatchScore,
     MatchStatusEnum,
+    Offer,
+    OfferStatusEnum,
     ParticipantRoleEnum,
     PerSportLevels,
     PerSportRankings,
@@ -266,4 +274,66 @@ def to_journal_entry(
         match_id=doc.get("matchId"),
         sport=SportEnum(sport) if sport else None,
         visibility=JournalVisibilityEnum(visibility),
+    )
+
+
+def _parse_geo_location(data: dict[str, Any] | None) -> Optional[GeoLocation]:
+    if not data:
+        return None
+    return GeoLocation(lat=data.get("lat", 0.0), lng=data.get("lng", 0.0))
+
+
+def _parse_broadcast_location(data: dict[str, Any]) -> BroadcastLocation:
+    return BroadcastLocation(
+        area=data.get("area"),
+        geo=_parse_geo_location(data.get("geo")),
+        radius_km=data.get("radiusKm"),
+    )
+
+
+def to_broadcast(doc: dict[str, Any], broadcast_id: str | None = None) -> Broadcast:
+    sport_val = _require(doc, "sport")
+    availability_val = _require(doc, "availability")
+    court_status_val = _require(doc, "courtStatus")
+    status_val = _require(doc, "status")
+    owner_ranking = _parse_sport_ranking(doc.get("ownerRanking"))
+
+    return Broadcast(
+        broadcast_id=broadcast_id or doc.get("id") or "",
+        owner_uid=_require(doc, "ownerUid"),
+        owner_name=doc.get("ownerName", ""),
+        owner_ranking=owner_ranking,
+        sport=SportEnum(sport_val),
+        availability=AvailabilityEnum(availability_val),
+        court_status=CourtStatusEnum(court_status_val),
+        court_location=doc.get("courtLocation"),
+        status=BroadcastStatusEnum(status_val),
+        expires_at=_require(doc, "expiresAt"),
+        created_at=_require(doc, "createdAt"),
+        location=_parse_broadcast_location(doc.get("location", {}) or {}),
+    )
+
+
+def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
+    sport_val = _require(doc, "sport")
+    status_val = _require(doc, "status")
+    from_ranking = _parse_sport_ranking(doc.get("fromRanking"))
+    to_ranking = _parse_sport_ranking(doc.get("toRanking"))
+
+    return Offer(
+        offer_id=offer_id or doc.get("id") or "",
+        from_uid=_require(doc, "fromUid"),
+        from_name=doc.get("fromName", ""),
+        from_ranking=from_ranking,
+        to_uid=_require(doc, "toUid"),
+        to_name=doc.get("toName", ""),
+        to_ranking=to_ranking,
+        sport=SportEnum(sport_val),
+        proposed_time=_require(doc, "proposedTime"),
+        court_location=doc.get("courtLocation"),
+        message=doc.get("message"),
+        status=OfferStatusEnum(status_val),
+        expires_at=_require(doc, "expiresAt"),
+        created_at=_require(doc, "createdAt"),
+        match_id=doc.get("matchId"),
     )

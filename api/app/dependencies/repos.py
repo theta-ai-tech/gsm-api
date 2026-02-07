@@ -3,8 +3,10 @@ from functools import lru_cache
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.deps import get_settings
+from app.repos.broadcasts_repo import BroadcastsRepo
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
+from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
 from app.repos.journal_repo import JournalRepo
 
@@ -29,3 +31,11 @@ def get_leagues_repo() -> LeaguesRepo:
 
 def get_journal_repo() -> JournalRepo:
     return JournalRepo(get_firestore_client())
+
+
+def get_broadcasts_repo() -> BroadcastsRepo:
+    return BroadcastsRepo(get_firestore_client())
+
+
+def get_offers_repo() -> OffersRepo:
+    return OffersRepo(get_firestore_client())

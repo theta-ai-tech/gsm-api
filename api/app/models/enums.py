@@ -66,3 +66,29 @@ class PlayTabStateEnum(StrEnum):
     POST_MATCH_WAITING_OPPONENT = "POST_MATCH_WAITING_OPPONENT"
     POST_MATCH_CONFIRM_REQUIRED = "POST_MATCH_CONFIRM_REQUIRED"
     MATCH_DISPUTED = "MATCH_DISPUTED"
+
+
+class BroadcastStatusEnum(StrEnum):
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    MATCHED = "matched"
+
+
+class AvailabilityEnum(StrEnum):
+    TODAY = "today"
+    TOMORROW = "tomorrow"
+    WEEKEND = "weekend"
+
+
+class CourtStatusEnum(StrEnum):
+    HAVE_COURT = "have_court"
+    NEED_COURT = "need_court"
+
+
+class OfferStatusEnum(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
