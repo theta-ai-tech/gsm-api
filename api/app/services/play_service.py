@@ -391,6 +391,8 @@ class PlayService:
 
         sender_play_tab = sender_doc.get("playTab", {}) or {}
         sender_state = sender_play_tab.get("state", "DISCOVERY")
+        if sender_play_tab.get("activeOutgoingOfferId"):
+            raise ValueError("Sender already has an active outgoing offer")
 
         if sender_state not in ["DISCOVERY", "BROADCAST_ACTIVE"]:
             raise ValueError(f"Cannot send offer: sender is in {sender_state} state")

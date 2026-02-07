@@ -19,10 +19,11 @@ from app.models.play import (
     SendOfferRequest,
     SendOfferResponse,
 )
+from app.deps import get_current_user
 from app.repos.broadcasts_repo import BroadcastsRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
-from app.security import CurrentUser, get_current_user
+from app.security import CurrentUser
 from app.services.play_service import PlayService
 
 router = APIRouter(prefix="/me", tags=["play"])
