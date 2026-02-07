@@ -58,7 +58,9 @@ def get_me_state(
 # ===== POST /me/broadcast =====
 
 
-@router.post("/broadcast", response_model=CreateBroadcastResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/broadcast", response_model=CreateBroadcastResponse, status_code=status.HTTP_201_CREATED
+)
 def create_broadcast(
     request: CreateBroadcastRequest,
     current_user: CurrentUser = Depends(get_current_user),

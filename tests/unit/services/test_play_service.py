@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 import pytest
 
@@ -15,7 +15,6 @@ from app.models.play import (
     Broadcast,
     CreateBroadcastRequest,
     BroadcastLocation,
-    GeoLocation,
     Offer,
     SendOfferRequest,
 )
@@ -46,12 +45,11 @@ def mock_firestore_client():
 
 
 @pytest.fixture
-def play_service(mock_users_repo, mock_broadcasts_repo, mock_offers_repo, mock_firestore_client):
+def play_service(
+    mock_users_repo, mock_broadcasts_repo, mock_offers_repo, mock_firestore_client
+):
     return PlayService(
-        mock_users_repo,
-        mock_broadcasts_repo,
-        mock_offers_repo,
-        mock_firestore_client
+        mock_users_repo, mock_broadcasts_repo, mock_offers_repo, mock_firestore_client
     )
 
 
@@ -69,9 +67,7 @@ class TestGetMeState:
         """Returns DISCOVERY mode with empty payload"""
         mock_users_repo.get_user_doc.return_value = {
             "name": "Alice",
-            "playTab": {
-                "state": "DISCOVERY"
-            }
+            "playTab": {"state": "DISCOVERY"},
         }
 
         response = play_service.get_me_state("alice")
@@ -79,7 +75,9 @@ class TestGetMeState:
         assert response.mode == PlayTabStateEnum.DISCOVERY
         assert response.payload == {}
 
-    def test_get_me_state_broadcast_active(self, play_service, mock_users_repo, mock_broadcasts_repo, mock_offers_repo):
+    def test_get_me_state_broadcast_active(
+        self, play_service, mock_users_repo, mock_broadcasts_repo, mock_offers_repo
+    ):
         """Returns BROADCAST_ACTIVE with BroadcastActivePayload"""
         now = datetime.now(timezone.utc)
         mock_users_repo.get_user_doc.return_value = {
@@ -87,8 +85,8 @@ class TestGetMeState:
             "playTab": {
                 "state": "BROADCAST_ACTIVE",
                 "activeBroadcastId": "broadcast123",
-                "pendingIncomingOfferIds": ["offer1", "offer2"]
-            }
+                "pendingIncomingOfferIds": ["offer1", "offer2"],
+            },
         }
 
         mock_broadcast = Broadcast(
@@ -103,7 +101,7 @@ class TestGetMeState:
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=now + timedelta(hours=2),
             created_at=now,
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
         mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
 
@@ -122,7 +120,7 @@ class TestGetMeState:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offer2 = Offer(
             offer_id="offer2",
@@ -139,7 +137,7 @@ class TestGetMeState:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_ids.return_value = [mock_offer1, mock_offer2]
 
@@ -160,8 +158,8 @@ class TestGetMeState:
             "playTab": {
                 "state": "BROADCAST_ACTIVE",
                 "activeBroadcastId": "broadcast123",
-                "pendingIncomingOfferIds": []
-            }
+                "pendingIncomingOfferIds": [],
+            },
         }
 
         mock_broadcast = Broadcast(
@@ -176,7 +174,7 @@ class TestGetMeState:
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=now + timedelta(hours=2),
             created_at=now,
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
         mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
         mock_offers_repo.get_by_ids.return_value = []
@@ -195,8 +193,8 @@ class TestGetMeState:
             "name": "Alice",
             "playTab": {
                 "state": "OUTGOING_OFFER_PENDING",
-                "activeOutgoingOfferId": "offer123"
-            }
+                "activeOutgoingOfferId": "offer123",
+            },
         }
 
         mock_offer = Offer(
@@ -214,7 +212,7 @@ class TestGetMeState:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -233,8 +231,8 @@ class TestGetMeState:
             "name": "Bob",
             "playTab": {
                 "state": "INCOMING_OFFER_PENDING",
-                "pendingIncomingOfferIds": ["offer123"]
-            }
+                "pendingIncomingOfferIds": ["offer123"],
+            },
         }
 
         mock_offer = Offer(
@@ -252,7 +250,7 @@ class TestGetMeState:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -275,8 +273,8 @@ class TestFreshnessReconciliation:
             "name": "Alice",
             "playTab": {
                 "state": "BROADCAST_ACTIVE",
-                "activeBroadcastId": "broadcast123"
-            }
+                "activeBroadcastId": "broadcast123",
+            },
         }
 
         mock_broadcast = Broadcast(
@@ -291,14 +289,16 @@ class TestFreshnessReconciliation:
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=past,  # Expired
             created_at=past - timedelta(hours=2),
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
         mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
 
         response = play_service.get_me_state("alice")
 
         assert response.mode == PlayTabStateEnum.DISCOVERY
-        mock_broadcasts_repo.update_status.assert_called_once_with("broadcast123", BroadcastStatusEnum.EXPIRED)
+        mock_broadcasts_repo.update_status.assert_called_once_with(
+            "broadcast123", BroadcastStatusEnum.EXPIRED
+        )
         mock_users_repo.update_play_tab.assert_called_once()
         assert len(response.ui_events) > 0
         assert response.ui_events[0].type == "broadcast_expired"
@@ -314,8 +314,8 @@ class TestFreshnessReconciliation:
             "playTab": {
                 "state": "BROADCAST_ACTIVE",
                 "activeBroadcastId": "broadcast123",
-                "pendingIncomingOfferIds": []
-            }
+                "pendingIncomingOfferIds": [],
+            },
         }
 
         mock_broadcast = Broadcast(
@@ -330,7 +330,7 @@ class TestFreshnessReconciliation:
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=now + timedelta(hours=1),  # Not expired
             created_at=now - timedelta(hours=1),
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
         mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
         mock_offers_repo.get_by_ids.return_value = []
@@ -352,8 +352,8 @@ class TestFreshnessReconciliation:
             "playTab": {
                 "state": "OUTGOING_OFFER_PENDING",
                 "activeOutgoingOfferId": "offer123",
-                "activeBroadcastId": None
-            }
+                "activeBroadcastId": None,
+            },
         }
 
         mock_offer = Offer(
@@ -371,14 +371,16 @@ class TestFreshnessReconciliation:
             status=OfferStatusEnum.PENDING,
             expires_at=past,  # Expired
             created_at=past - timedelta(minutes=5),
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
         response = play_service.get_me_state("alice")
 
         assert response.mode == PlayTabStateEnum.DISCOVERY
-        mock_offers_repo.update_status.assert_called_once_with("offer123", OfferStatusEnum.EXPIRED)
+        mock_offers_repo.update_status.assert_called_once_with(
+            "offer123", OfferStatusEnum.EXPIRED
+        )
         assert len(response.ui_events) > 0
 
     def test_freshness_outgoing_offer_expired_with_broadcast(
@@ -394,8 +396,8 @@ class TestFreshnessReconciliation:
                 "state": "OUTGOING_OFFER_PENDING",
                 "activeOutgoingOfferId": "offer123",
                 "activeBroadcastId": "broadcast123",
-                "pendingIncomingOfferIds": []
-            }
+                "pendingIncomingOfferIds": [],
+            },
         }
 
         mock_offer = Offer(
@@ -413,7 +415,7 @@ class TestFreshnessReconciliation:
             status=OfferStatusEnum.PENDING,
             expires_at=past,  # Expired
             created_at=past - timedelta(minutes=5),
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -429,7 +431,7 @@ class TestFreshnessReconciliation:
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=now + timedelta(hours=1),
             created_at=now - timedelta(hours=1),
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
         mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
         mock_offers_repo.get_by_ids.return_value = []
@@ -437,7 +439,9 @@ class TestFreshnessReconciliation:
         response = play_service.get_me_state("alice")
 
         assert response.mode == PlayTabStateEnum.BROADCAST_ACTIVE
-        mock_offers_repo.update_status.assert_called_once_with("offer123", OfferStatusEnum.EXPIRED)
+        mock_offers_repo.update_status.assert_called_once_with(
+            "offer123", OfferStatusEnum.EXPIRED
+        )
 
     def test_freshness_incoming_offer_expired(
         self, play_service, mock_users_repo, mock_offers_repo
@@ -450,8 +454,8 @@ class TestFreshnessReconciliation:
             "name": "Bob",
             "playTab": {
                 "state": "INCOMING_OFFER_PENDING",
-                "pendingIncomingOfferIds": ["offer123"]
-            }
+                "pendingIncomingOfferIds": ["offer123"],
+            },
         }
 
         mock_offer = Offer(
@@ -469,14 +473,16 @@ class TestFreshnessReconciliation:
             status=OfferStatusEnum.PENDING,
             expires_at=past,  # Expired
             created_at=past - timedelta(minutes=5),
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
         response = play_service.get_me_state("bob")
 
         assert response.mode == PlayTabStateEnum.DISCOVERY
-        mock_offers_repo.update_status.assert_called_once_with("offer123", OfferStatusEnum.EXPIRED)
+        mock_offers_repo.update_status.assert_called_once_with(
+            "offer123", OfferStatusEnum.EXPIRED
+        )
 
 
 class TestCreateBroadcast:
@@ -488,7 +494,7 @@ class TestCreateBroadcast:
         mock_users_repo.get_user_doc.return_value = {
             "name": "Alice",
             "rankings": {"tennis": {"sport": "tennis", "pts": 1200}},
-            "playTab": {"state": "DISCOVERY"}
+            "playTab": {"state": "DISCOVERY"},
         }
 
         mock_transaction = Mock()
@@ -498,6 +504,7 @@ class TestCreateBroadcast:
         def transactional_decorator(func):
             def wrapper(txn):
                 return func(txn)
+
             return wrapper
 
         mock_firestore_client.transaction.return_value = mock_transaction
@@ -505,10 +512,13 @@ class TestCreateBroadcast:
         # Mock document ref
         mock_doc_ref = Mock()
         mock_doc_ref.id = "broadcast123"
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         # Patch the transactional decorator
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -523,7 +533,7 @@ class TestCreateBroadcast:
                 court_status=CourtStatusEnum.HAVE_COURT,
                 court_location="Central Park",
                 expires_at=now + timedelta(hours=2),
-                location=BroadcastLocation(area=10001)
+                location=BroadcastLocation(area=10001),
             )
 
             response = play_service.create_broadcast("alice", request)
@@ -545,7 +555,7 @@ class TestCreateBroadcast:
             court_status=CourtStatusEnum.NEED_COURT,
             court_location=None,
             expires_at=now + timedelta(hours=2),
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
 
         with pytest.raises(ValueError, match="User not found"):
@@ -558,7 +568,7 @@ class TestCreateBroadcast:
         now = datetime.now(timezone.utc)
         mock_users_repo.get_user_doc.return_value = {
             "name": "Alice",
-            "playTab": {"state": "BROADCAST_ACTIVE"}
+            "playTab": {"state": "BROADCAST_ACTIVE"},
         }
 
         request = CreateBroadcastRequest(
@@ -567,7 +577,7 @@ class TestCreateBroadcast:
             court_status=CourtStatusEnum.NEED_COURT,
             court_location=None,
             expires_at=now + timedelta(hours=2),
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
 
         with pytest.raises(ValueError, match="Cannot create broadcast"):
@@ -580,7 +590,7 @@ class TestCreateBroadcast:
 
         mock_users_repo.get_user_doc.return_value = {
             "name": "Alice",
-            "playTab": {"state": "DISCOVERY"}
+            "playTab": {"state": "DISCOVERY"},
         }
 
         request = CreateBroadcastRequest(
@@ -589,7 +599,7 @@ class TestCreateBroadcast:
             court_status=CourtStatusEnum.NEED_COURT,
             court_location=None,
             expires_at=past,
-            location=BroadcastLocation(area=10001)
+            location=BroadcastLocation(area=10001),
         )
 
         with pytest.raises(ValueError, match="expiresAt must be in the future"):
@@ -605,14 +615,17 @@ class TestCreateBroadcast:
             "rankings": {
                 "tennis": {"sport": "tennis", "pts": 1200, "globalRanking": 42}
             },
-            "playTab": {"state": "DISCOVERY"}
+            "playTab": {"state": "DISCOVERY"},
         }
 
         mock_doc_ref = Mock()
         mock_doc_ref.id = "broadcast123"
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -627,7 +640,7 @@ class TestCreateBroadcast:
                 court_status=CourtStatusEnum.NEED_COURT,
                 court_location=None,
                 expires_at=now + timedelta(hours=2),
-                location=BroadcastLocation(area=10001)
+                location=BroadcastLocation(area=10001),
             )
 
             response = play_service.create_broadcast("alice", request)
@@ -646,23 +659,18 @@ class TestSendOffer:
         """Sender and recipient both in DISCOVERY"""
         now = datetime.now(timezone.utc)
         mock_users_repo.get_user_doc.side_effect = [
-            {
-                "name": "Alice",
-                "rankings": {},
-                "playTab": {"state": "DISCOVERY"}
-            },
-            {
-                "name": "Bob",
-                "rankings": {},
-                "playTab": {"state": "DISCOVERY"}
-            }
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {"name": "Bob", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
         ]
 
         mock_doc_ref = Mock()
         mock_doc_ref.id = "offer123"
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -676,7 +684,7 @@ class TestSendOffer:
                 sport=SportEnum.TENNIS,
                 proposed_time=now + timedelta(hours=2),
                 court_location="Central Park",
-                message="Let's play!"
+                message="Let's play!",
             )
 
             response = play_service.send_offer("alice", request)
@@ -697,7 +705,7 @@ class TestSendOffer:
             sport=SportEnum.TENNIS,
             proposed_time=now + timedelta(hours=2),
             court_location=None,
-            message=None
+            message=None,
         )
 
         with pytest.raises(ValueError, match="Sender not found"):
@@ -707,11 +715,8 @@ class TestSendOffer:
         """Recipient doesn't exist - raises ValueError"""
         now = datetime.now(timezone.utc)
         mock_users_repo.get_user_doc.side_effect = [
-            {
-                "name": "Alice",
-                "playTab": {"state": "DISCOVERY"}
-            },
-            None
+            {"name": "Alice", "playTab": {"state": "DISCOVERY"}},
+            None,
         ]
 
         request = SendOfferRequest(
@@ -719,7 +724,7 @@ class TestSendOffer:
             sport=SportEnum.TENNIS,
             proposed_time=now + timedelta(hours=2),
             court_location=None,
-            message=None
+            message=None,
         )
 
         with pytest.raises(ValueError, match="Recipient not found"):
@@ -734,8 +739,8 @@ class TestSendOffer:
             "name": "Alice",
             "playTab": {
                 "state": "OUTGOING_OFFER_PENDING",
-                "activeOutgoingOfferId": "existing_offer"
-            }
+                "activeOutgoingOfferId": "existing_offer",
+            },
         }
 
         request = SendOfferRequest(
@@ -743,7 +748,7 @@ class TestSendOffer:
             sport=SportEnum.TENNIS,
             proposed_time=now + timedelta(hours=2),
             court_location=None,
-            message=None
+            message=None,
         )
 
         with pytest.raises(ValueError, match="already has an active outgoing offer"):
@@ -772,7 +777,7 @@ class TestAcceptOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now - timedelta(minutes=1),
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -781,19 +786,20 @@ class TestAcceptOffer:
                 "name": "Bob",
                 "playTab": {
                     "state": "INCOMING_OFFER_PENDING",
-                    "pendingIncomingOfferIds": ["offer123"]
-                }
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
             },
             {
                 "name": "Alice",
                 "playTab": {
                     "state": "OUTGOING_OFFER_PENDING",
-                    "activeOutgoingOfferId": "offer123"
-                }
-            }
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
         ]
 
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -836,7 +842,7 @@ class TestAcceptOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -863,7 +869,7 @@ class TestAcceptOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=past,  # Expired
             created_at=past - timedelta(minutes=5),
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -893,7 +899,7 @@ class TestDeclineOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -902,19 +908,20 @@ class TestDeclineOffer:
                 "name": "Bob",
                 "playTab": {
                     "state": "INCOMING_OFFER_PENDING",
-                    "pendingIncomingOfferIds": ["offer123"]
-                }
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
             },
             {
                 "name": "Alice",
                 "playTab": {
                     "state": "OUTGOING_OFFER_PENDING",
-                    "activeOutgoingOfferId": "offer123"
-                }
-            }
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
         ]
 
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -949,7 +956,7 @@ class TestDeclineOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -979,7 +986,7 @@ class TestCancelOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 
@@ -988,19 +995,20 @@ class TestCancelOffer:
                 "name": "Alice",
                 "playTab": {
                     "state": "OUTGOING_OFFER_PENDING",
-                    "activeOutgoingOfferId": "offer123"
-                }
+                    "activeOutgoingOfferId": "offer123",
+                },
             },
             {
                 "name": "Bob",
                 "playTab": {
                     "state": "INCOMING_OFFER_PENDING",
-                    "pendingIncomingOfferIds": ["offer123"]
-                }
-            }
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
         ]
 
         import app.services.play_service as play_service_module
+
         original_transactional = play_service_module.firestore.transactional
 
         def mock_transactional(func):
@@ -1035,7 +1043,7 @@ class TestCancelOffer:
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
             created_at=now,
-            match_id=None
+            match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
 

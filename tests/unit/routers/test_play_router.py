@@ -55,7 +55,7 @@ class TestGetMeState:
             server_time=now,
             primary=MeStatePrimary(),
             payload={},
-            ui_events=[]
+            ui_events=[],
         )
         mock_play_service.get_me_state.return_value = mock_response
 
@@ -81,7 +81,7 @@ class TestCreateBroadcast:
             court_location="Central Park",
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=expires_at,
-            created_at=now
+            created_at=now,
         )
         mock_play_service.create_broadcast.return_value = mock_response
 
@@ -91,7 +91,7 @@ class TestCreateBroadcast:
             "court_status": "have_court",
             "court_location": "Central Park",
             "expires_at": expires_at.isoformat(),
-            "location": {"area": 10001}
+            "location": {"area": 10001},
         }
 
         response = client.post("/me/broadcast", json=payload)
@@ -104,14 +104,16 @@ class TestCreateBroadcast:
     def test_create_broadcast_invalid_state(self, client, mock_play_service):
         """Service raises ValueError - returns 409"""
         now = datetime.now(timezone.utc)
-        mock_play_service.create_broadcast.side_effect = ValueError("Cannot create broadcast: user is in BROADCAST_ACTIVE state")
+        mock_play_service.create_broadcast.side_effect = ValueError(
+            "Cannot create broadcast: user is in BROADCAST_ACTIVE state"
+        )
 
         payload = {
             "sport": "tennis",
             "availability": "today",
             "court_status": "need_court",
             "expires_at": (now + timedelta(hours=2)).isoformat(),
-            "location": {"area": 10001}
+            "location": {"area": 10001},
         }
 
         response = client.post("/me/broadcast", json=payload)
@@ -123,7 +125,7 @@ class TestCreateBroadcast:
         payload = {
             "availability": "today",
             "court_status": "need_court",
-            "location": {"area": 10001}
+            "location": {"area": 10001},
             # Missing sport
         }
 
@@ -139,7 +141,7 @@ class TestCreateBroadcast:
             "availability": "today",
             "court_status": "need_court",
             "expires_at": (now + timedelta(hours=2)).isoformat(),
-            "location": {"area": 10001}
+            "location": {"area": 10001},
         }
 
         response = client.post("/me/broadcast", json=payload)
@@ -159,7 +161,9 @@ class TestCancelBroadcast:
 
     def test_cancel_broadcast_no_active_broadcast(self, client, mock_play_service):
         """Service raises ValueError - returns 409"""
-        mock_play_service.cancel_broadcast.side_effect = ValueError("No active broadcast to cancel")
+        mock_play_service.cancel_broadcast.side_effect = ValueError(
+            "No active broadcast to cancel"
+        )
 
         response = client.delete("/me/broadcast")
 
@@ -181,7 +185,7 @@ class TestSendOffer:
             proposed_time=proposed_time,
             status=OfferStatusEnum.PENDING,
             expires_at=expires_at,
-            created_at=now
+            created_at=now,
         )
         mock_play_service.send_offer.return_value = mock_response
 
@@ -190,7 +194,7 @@ class TestSendOffer:
             "sport": "tennis",
             "proposed_time": proposed_time.isoformat(),
             "court_location": "Central Park",
-            "message": "Let's play!"
+            "message": "Let's play!",
         }
 
         response = client.post("/me/offers", json=payload)
@@ -208,7 +212,7 @@ class TestSendOffer:
         payload = {
             "to_uid": "nonexistent",
             "sport": "tennis",
-            "proposed_time": (now + timedelta(hours=2)).isoformat()
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
         }
 
         response = client.post("/me/offers", json=payload)
@@ -218,12 +222,14 @@ class TestSendOffer:
     def test_send_offer_sender_invalid_state(self, client, mock_play_service):
         """Service raises ValueError - returns 409"""
         now = datetime.now(timezone.utc)
-        mock_play_service.send_offer.side_effect = ValueError("Cannot send offer: sender is in MATCH_SCHEDULED state")
+        mock_play_service.send_offer.side_effect = ValueError(
+            "Cannot send offer: sender is in MATCH_SCHEDULED state"
+        )
 
         payload = {
             "to_uid": "bob",
             "sport": "tennis",
-            "proposed_time": (now + timedelta(hours=2)).isoformat()
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
         }
 
         response = client.post("/me/offers", json=payload)
@@ -235,7 +241,7 @@ class TestSendOffer:
         now = datetime.now(timezone.utc)
         payload = {
             "sport": "tennis",
-            "proposed_time": (now + timedelta(hours=2)).isoformat()
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
             # Missing toUid
         }
 
@@ -252,7 +258,7 @@ class TestAcceptOffer:
             offer_id="offer123",
             status=OfferStatusEnum.ACCEPTED,
             match_id="match456",
-            scheduled_at=now + timedelta(hours=1)
+            scheduled_at=now + timedelta(hours=1),
         )
         mock_play_service.accept_offer.return_value = mock_response
 
@@ -275,7 +281,9 @@ class TestAcceptOffer:
 
     def test_accept_offer_not_recipient(self, client, mock_play_service):
         """Service raises ValueError with 'not the recipient' - returns 403"""
-        mock_play_service.accept_offer.side_effect = ValueError("You are not the recipient of this offer")
+        mock_play_service.accept_offer.side_effect = ValueError(
+            "You are not the recipient of this offer"
+        )
 
         response = client.post("/me/offers/offer123/accept")
 
@@ -291,7 +299,9 @@ class TestAcceptOffer:
 
     def test_accept_offer_already_accepted(self, client, mock_play_service):
         """Service raises ValueError (status mismatch) - returns 409"""
-        mock_play_service.accept_offer.side_effect = ValueError("Offer is accepted, not pending")
+        mock_play_service.accept_offer.side_effect = ValueError(
+            "Offer is accepted, not pending"
+        )
 
         response = client.post("/me/offers/offer123/accept")
 
@@ -305,7 +315,7 @@ class TestDeclineOffer:
             offer_id="offer123",
             status=OfferStatusEnum.DECLINED,
             match_id=None,
-            scheduled_at=None
+            scheduled_at=None,
         )
         mock_play_service.decline_offer.return_value = mock_response
 
@@ -326,7 +336,9 @@ class TestDeclineOffer:
 
     def test_decline_offer_not_recipient(self, client, mock_play_service):
         """Service raises ValueError with 'not the recipient' - returns 403"""
-        mock_play_service.decline_offer.side_effect = ValueError("You are not the recipient of this offer")
+        mock_play_service.decline_offer.side_effect = ValueError(
+            "You are not the recipient of this offer"
+        )
 
         response = client.post("/me/offers/offer123/decline")
 
@@ -340,7 +352,7 @@ class TestCancelOffer:
             offer_id="offer123",
             status=OfferStatusEnum.CANCELLED,
             match_id=None,
-            scheduled_at=None
+            scheduled_at=None,
         )
         mock_play_service.cancel_offer.return_value = mock_response
 
@@ -353,7 +365,9 @@ class TestCancelOffer:
 
     def test_cancel_offer_not_sender(self, client, mock_play_service):
         """Service raises ValueError with 'not the sender' - returns 403"""
-        mock_play_service.cancel_offer.side_effect = ValueError("You are not the sender of this offer")
+        mock_play_service.cancel_offer.side_effect = ValueError(
+            "You are not the sender of this offer"
+        )
 
         response = client.post("/me/offers/offer123/cancel")
 

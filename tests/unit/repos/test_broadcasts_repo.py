@@ -1,9 +1,14 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 import pytest
 
-from app.models.enums import BroadcastStatusEnum, SportEnum, AvailabilityEnum, CourtStatusEnum
+from app.models.enums import (
+    BroadcastStatusEnum,
+    SportEnum,
+    AvailabilityEnum,
+    CourtStatusEnum,
+)
 from app.repos.broadcasts_repo import BroadcastsRepo
 
 
@@ -34,17 +39,21 @@ def sample_broadcast_data():
         "location": {
             "area": 10001,
             "geo": {"lat": 40.7128, "lng": -74.0060},
-            "radiusKm": 5.0
-        }
+            "radiusKm": 5.0,
+        },
     }
 
 
 class TestBroadcastsRepoCreate:
-    def test_create_broadcast(self, broadcasts_repo, mock_firestore_client, sample_broadcast_data):
+    def test_create_broadcast(
+        self, broadcasts_repo, mock_firestore_client, sample_broadcast_data
+    ):
         """Creates broadcast doc with auto-generated ID"""
         mock_doc_ref = Mock()
         mock_doc_ref.id = "broadcast123"
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         broadcast_id = broadcasts_repo.create(sample_broadcast_data)
 
@@ -55,7 +64,9 @@ class TestBroadcastsRepoCreate:
 
 
 class TestBroadcastsRepoGetById:
-    def test_get_by_id_exists(self, broadcasts_repo, mock_firestore_client, sample_broadcast_data):
+    def test_get_by_id_exists(
+        self, broadcasts_repo, mock_firestore_client, sample_broadcast_data
+    ):
         """Returns Broadcast Pydantic model with correct field mapping"""
         mock_doc = Mock()
         mock_doc.exists = True
@@ -91,7 +102,9 @@ class TestBroadcastsRepoGetById:
 
 
 class TestBroadcastsRepoGetActiveByOwner:
-    def test_get_active_by_owner_exists(self, broadcasts_repo, mock_firestore_client, sample_broadcast_data):
+    def test_get_active_by_owner_exists(
+        self, broadcasts_repo, mock_firestore_client, sample_broadcast_data
+    ):
         """Returns user's active broadcast"""
         mock_doc = Mock()
         mock_doc.id = "broadcast123"
@@ -111,7 +124,9 @@ class TestBroadcastsRepoGetActiveByOwner:
         assert broadcast.owner_uid == "user123"
         assert broadcast.status == BroadcastStatusEnum.ACTIVE
 
-    def test_get_active_by_owner_multiple_broadcasts(self, broadcasts_repo, mock_firestore_client, sample_broadcast_data):
+    def test_get_active_by_owner_multiple_broadcasts(
+        self, broadcasts_repo, mock_firestore_client, sample_broadcast_data
+    ):
         """Returns only the active one when user has multiple broadcasts"""
         mock_doc = Mock()
         mock_doc.id = "active_broadcast"
@@ -120,7 +135,9 @@ class TestBroadcastsRepoGetActiveByOwner:
         mock_query = Mock()
         mock_query.where.return_value = mock_query
         mock_query.limit.return_value = mock_query
-        mock_query.stream.return_value = [mock_doc]  # limit(1) ensures only one returned
+        mock_query.stream.return_value = [
+            mock_doc
+        ]  # limit(1) ensures only one returned
 
         mock_firestore_client.collection.return_value = mock_query
 
@@ -147,18 +164,24 @@ class TestBroadcastsRepoUpdateStatus:
     def test_update_status(self, broadcasts_repo, mock_firestore_client):
         """Updates status field"""
         mock_doc_ref = Mock()
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         broadcasts_repo.update_status("broadcast123", BroadcastStatusEnum.EXPIRED)
 
         mock_firestore_client.collection.assert_called_once_with("broadcasts")
-        mock_firestore_client.collection.return_value.document.assert_called_once_with("broadcast123")
+        mock_firestore_client.collection.return_value.document.assert_called_once_with(
+            "broadcast123"
+        )
         mock_doc_ref.update.assert_called_once_with({"status": "expired"})
 
     def test_update_status_idempotent(self, broadcasts_repo, mock_firestore_client):
         """Multiple updates to same status don't fail"""
         mock_doc_ref = Mock()
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         broadcasts_repo.update_status("broadcast123", BroadcastStatusEnum.EXPIRED)
         broadcasts_repo.update_status("broadcast123", BroadcastStatusEnum.EXPIRED)
@@ -170,10 +193,14 @@ class TestBroadcastsRepoDelete:
     def test_delete_broadcast(self, broadcasts_repo, mock_firestore_client):
         """Deletes doc"""
         mock_doc_ref = Mock()
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         broadcasts_repo.delete("broadcast123")
 
         mock_firestore_client.collection.assert_called_once_with("broadcasts")
-        mock_firestore_client.collection.return_value.document.assert_called_once_with("broadcast123")
+        mock_firestore_client.collection.return_value.document.assert_called_once_with(
+            "broadcast123"
+        )
         mock_doc_ref.delete.assert_called_once()

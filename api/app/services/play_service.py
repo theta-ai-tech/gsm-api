@@ -10,7 +10,6 @@ Handles:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
@@ -20,14 +19,12 @@ from app.models.enums import (
     PlayTabStateEnum,
 )
 from app.models.play import (
-    Broadcast,
     BroadcastActivePayload,
     CreateBroadcastRequest,
     CreateBroadcastResponse,
     IncomingOfferPayload,
     MeStatePrimary,
     MeStateResponse,
-    Offer,
     OfferActionResponse,
     OutgoingOfferPayload,
     PendingOfferSummary,
@@ -118,7 +115,9 @@ class PlayService:
                 if offer and offer.expires_at < now:
                     # Offer expired
                     self.offers_repo.update_status(offer_id, OfferStatusEnum.EXPIRED)
-                    ui_events.append({"type": "offer_expired", "message": "Your offer has expired."})
+                    ui_events.append(
+                        {"type": "offer_expired", "message": "Your offer has expired."}
+                    )
                     # Check if user still has active broadcast
                     broadcast_id = play_tab.get("activeBroadcastId")
                     if broadcast_id:
@@ -155,7 +154,11 @@ class PlayService:
             broadcast_id=play_tab.get("activeBroadcastId"),
             match_id=play_tab.get("activeMatchId"),
             active_offer_ids=play_tab.get("pendingIncomingOfferIds", [])
-            + ([play_tab.get("activeOutgoingOfferId")] if play_tab.get("activeOutgoingOfferId") else []),
+            + (
+                [play_tab.get("activeOutgoingOfferId")]
+                if play_tab.get("activeOutgoingOfferId")
+                else []
+            ),
         )
 
         payload: dict = {}
@@ -255,7 +258,9 @@ class PlayService:
         state = play_tab.get("state", "DISCOVERY")
 
         if state != "DISCOVERY":
-            raise ValueError(f"Cannot create broadcast: user is in {state} state, must be DISCOVERY")
+            raise ValueError(
+                f"Cannot create broadcast: user is in {state} state, must be DISCOVERY"
+            )
 
         now = datetime.now(timezone.utc)
         if request.expires_at <= now:
@@ -519,7 +524,6 @@ class PlayService:
             raise ValueError("User not found")
 
         recipient_play_tab = recipient_doc.get("playTab", {}) or {}
-        sender_play_tab = sender_doc.get("playTab", {}) or {}
 
         recipient_broadcast_id = recipient_play_tab.get("activeBroadcastId")
         all_pending_offers = recipient_play_tab.get("pendingIncomingOfferIds", [])
@@ -542,7 +546,9 @@ class PlayService:
 
             # Cancel recipient's broadcast if active
             if recipient_broadcast_id:
-                broadcast_ref = self.client.collection("broadcasts").document(recipient_broadcast_id)
+                broadcast_ref = self.client.collection("broadcasts").document(
+                    recipient_broadcast_id
+                )
                 txn.update(broadcast_ref, {"status": "matched"})
 
             # Decline all other pending offers

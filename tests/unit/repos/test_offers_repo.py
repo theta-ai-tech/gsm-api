@@ -34,7 +34,7 @@ def sample_offer_data():
         "status": "pending",
         "expiresAt": now + timedelta(minutes=5),
         "createdAt": now,
-        "matchId": None
+        "matchId": None,
     }
 
 
@@ -43,7 +43,9 @@ class TestOffersRepoCreate:
         """Creates offer doc and returns created offer ID"""
         mock_doc_ref = Mock()
         mock_doc_ref.id = "offer123"
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         offer_id = offers_repo.create(sample_offer_data)
 
@@ -53,7 +55,9 @@ class TestOffersRepoCreate:
 
 
 class TestOffersRepoGetById:
-    def test_get_by_id_exists(self, offers_repo, mock_firestore_client, sample_offer_data):
+    def test_get_by_id_exists(
+        self, offers_repo, mock_firestore_client, sample_offer_data
+    ):
         """Returns Offer Pydantic model with correct mapping"""
         mock_doc = Mock()
         mock_doc.exists = True
@@ -86,7 +90,9 @@ class TestOffersRepoGetById:
 
 
 class TestOffersRepoGetByIds:
-    def test_get_by_ids_batch(self, offers_repo, mock_firestore_client, sample_offer_data):
+    def test_get_by_ids_batch(
+        self, offers_repo, mock_firestore_client, sample_offer_data
+    ):
         """Returns list of Offer objects, skips non-existent IDs"""
         mock_doc1 = Mock()
         mock_doc1.exists = True
@@ -132,7 +138,9 @@ class TestOffersRepoGetByIds:
 
 
 class TestOffersRepoGetActiveOutgoing:
-    def test_get_active_outgoing_exists(self, offers_repo, mock_firestore_client, sample_offer_data):
+    def test_get_active_outgoing_exists(
+        self, offers_repo, mock_firestore_client, sample_offer_data
+    ):
         """Returns user's pending outgoing offer"""
         mock_doc = Mock()
         mock_doc.id = "offer123"
@@ -167,7 +175,9 @@ class TestOffersRepoGetActiveOutgoing:
 
 
 class TestOffersRepoGetPendingForUser:
-    def test_get_pending_for_user(self, offers_repo, mock_firestore_client, sample_offer_data):
+    def test_get_pending_for_user(
+        self, offers_repo, mock_firestore_client, sample_offer_data
+    ):
         """Returns all pending incoming offers for toUid"""
         mock_doc1 = Mock()
         mock_doc1.id = "offer1"
@@ -200,7 +210,9 @@ class TestOffersRepoGetPendingForUser:
 
         assert offers == []
 
-    def test_get_pending_for_user_multiple(self, offers_repo, mock_firestore_client, sample_offer_data):
+    def test_get_pending_for_user_multiple(
+        self, offers_repo, mock_firestore_client, sample_offer_data
+    ):
         """User has 3 pending offers from different senders"""
         mock_docs = []
         for i in range(3):
@@ -224,7 +236,9 @@ class TestOffersRepoUpdateStatus:
     def test_update_status_without_match_id(self, offers_repo, mock_firestore_client):
         """Updates status to declined without match ID"""
         mock_doc_ref = Mock()
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
         offers_repo.update_status("offer123", OfferStatusEnum.DECLINED)
 
@@ -233,11 +247,17 @@ class TestOffersRepoUpdateStatus:
     def test_update_status_with_match_id(self, offers_repo, mock_firestore_client):
         """Updates status to accepted and sets matchId"""
         mock_doc_ref = Mock()
-        mock_firestore_client.collection.return_value.document.return_value = mock_doc_ref
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
 
-        offers_repo.update_status("offer123", OfferStatusEnum.ACCEPTED, match_id="match456")
+        offers_repo.update_status(
+            "offer123", OfferStatusEnum.ACCEPTED, match_id="match456"
+        )
 
-        mock_doc_ref.update.assert_called_once_with({"status": "accepted", "matchId": "match456"})
+        mock_doc_ref.update.assert_called_once_with(
+            {"status": "accepted", "matchId": "match456"}
+        )
 
 
 class TestOffersRepoBatchUpdateStatus:
@@ -252,15 +272,20 @@ class TestOffersRepoBatchUpdateStatus:
             mock_doc_refs.append(mock_doc_ref)
 
         call_count = 0
+
         def document_side_effect(offer_id):
             nonlocal call_count
             result = mock_doc_refs[call_count]
             call_count += 1
             return result
 
-        mock_firestore_client.collection.return_value.document.side_effect = document_side_effect
+        mock_firestore_client.collection.return_value.document.side_effect = (
+            document_side_effect
+        )
 
-        offers_repo.batch_update_status(["offer1", "offer2", "offer3"], OfferStatusEnum.DECLINED)
+        offers_repo.batch_update_status(
+            ["offer1", "offer2", "offer3"], OfferStatusEnum.DECLINED
+        )
 
         assert mock_batch.update.call_count == 3
         mock_batch.commit.assert_called_once()
@@ -284,13 +309,16 @@ class TestOffersRepoBatchUpdateStatus:
         mock_doc_refs = [Mock() for _ in range(500)]
 
         call_count = 0
+
         def document_side_effect(offer_id):
             nonlocal call_count
             result = mock_doc_refs[call_count]
             call_count += 1
             return result
 
-        mock_firestore_client.collection.return_value.document.side_effect = document_side_effect
+        mock_firestore_client.collection.return_value.document.side_effect = (
+            document_side_effect
+        )
 
         offers_repo.batch_update_status(offer_ids, OfferStatusEnum.EXPIRED)
 

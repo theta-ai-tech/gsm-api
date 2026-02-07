@@ -1,9 +1,19 @@
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
-from app.models.enums import SportEnum, BroadcastStatusEnum, AvailabilityEnum, CourtStatusEnum, OfferStatusEnum
-from app.repos.mappers import to_broadcast, to_offer, _parse_geo_location, _parse_broadcast_location
+from app.models.enums import (
+    SportEnum,
+    BroadcastStatusEnum,
+    AvailabilityEnum,
+    CourtStatusEnum,
+    OfferStatusEnum,
+)
+from app.repos.mappers import (
+    to_broadcast,
+    to_offer,
+    _parse_geo_location,
+    _parse_broadcast_location,
+)
 
 
 class TestToBroadcast:
@@ -24,8 +34,8 @@ class TestToBroadcast:
             "location": {
                 "area": 10001,
                 "geo": {"lat": 40.7128, "lng": -74.0060},
-                "radiusKm": 5.0
-            }
+                "radiusKm": 5.0,
+            },
         }
 
         broadcast = to_broadcast(doc, broadcast_id="broadcast123")
@@ -58,7 +68,7 @@ class TestToBroadcast:
             "status": "active",
             "expiresAt": now + timedelta(hours=2),
             "createdAt": now,
-            "location": {}
+            "location": {},
         }
 
         broadcast = to_broadcast(doc, broadcast_id="broadcast123")
@@ -91,7 +101,7 @@ class TestToOffer:
             "status": "pending",
             "expiresAt": now + timedelta(minutes=5),
             "createdAt": now,
-            "matchId": None
+            "matchId": None,
         }
 
         offer = to_offer(doc, offer_id="offer123")
@@ -160,10 +170,7 @@ class TestParseBroadcastLocation:
 
     def test_parse_broadcast_location_geo_only(self):
         """geo set, area=None, radiusKm set"""
-        data = {
-            "geo": {"lat": 40.7128, "lng": -74.0060},
-            "radiusKm": 5.0
-        }
+        data = {"geo": {"lat": 40.7128, "lng": -74.0060}, "radiusKm": 5.0}
         result = _parse_broadcast_location(data)
 
         assert result.area is None
@@ -177,7 +184,7 @@ class TestParseBroadcastLocation:
         data = {
             "area": 10001,
             "geo": {"lat": 40.7128, "lng": -74.0060},
-            "radiusKm": 5.0
+            "radiusKm": 5.0,
         }
         result = _parse_broadcast_location(data)
 
