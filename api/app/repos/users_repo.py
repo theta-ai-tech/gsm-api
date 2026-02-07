@@ -30,3 +30,16 @@ class UsersRepo(RepoBase):
         if profile is None:
             return [], []
         return profile.leagues_active, profile.leagues_completed
+
+    def update_play_tab(self, uid: str, updates: dict) -> None:
+        """
+        Update the playTab map on the user document.
+
+        Args:
+            uid: User ID
+            updates: Dictionary of playTab fields to update (camelCase keys)
+                    Example: {"state": "DISCOVERY", "activeBroadcastId": None}
+        """
+        # Prefix all keys with "playTab."
+        prefixed_updates = {f"playTab.{key}": value for key, value in updates.items()}
+        self.client.collection("users").document(uid).update(prefixed_updates)

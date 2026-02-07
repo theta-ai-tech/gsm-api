@@ -9,11 +9,15 @@ from fastapi.exceptions import RequestValidationError
 
 from app.deps import get_current_user, get_role_service
 from app.deps import get_firestore_client
+from app.routers.play import router as play_router
 from app.security import CurrentUser, require_league_member, require_self
 from app.settings import get_settings
 from app.dependencies.repos import get_users_repo
 
 app = FastAPI(title="GSM API", version="0.1.0")
+
+# Include routers
+app.include_router(play_router)
 
 settings = get_settings()
 logger = logging.getLogger("gsm-api")
@@ -141,18 +145,6 @@ def get_user(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return profile
-
-
-@app.get("/me/state")
-def get_me_state(
-    current_user: CurrentUser = Depends(get_current_user),
-):
-    # Placeholder for the aggregated "home/me state" payload.
-    return {
-        "uid": current_user.uid,
-        "state": "placeholder",
-        "message": "D6 /me/state logic is not implemented yet",
-    }
 
 
 @app.post(

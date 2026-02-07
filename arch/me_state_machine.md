@@ -57,3 +57,27 @@ These transitions cannot be driven by Firestore triggers alone (no "cron" on doc
 | `MATCH_SCHEDULED` | `match.scheduledAt < now` | → `POST_MATCH_LOG_AVAILABLE` |
 
 The API reads the persisted `playTab.state`, checks the relevant timestamps, and corrects + writes back if stale. This ensures the client always sees accurate state.
+
+## Implementation: Repository Operations per Transition
+
+This table shows which repositories and operations are involved in each state transition for developers implementing the business logic.
+
+| Transition | Endpoint | Repository Operations |
+|------------|----------|----------------------|
+| DISCOVERY → BROADCAST_ACTIVE | `POST /me/broadcast` | • BroadcastsRepo.create()<br>• UsersRepo.update_play_tab(state=BROADCAST_ACTIVE, activeBroadcastId=...) |
+| BROADCAST_ACTIVE → DISCOVERY (manual) | `DELETE /me/broadcast` | • BroadcastsRepo.update_status(cancelled)<br>• OffersRepo.batch_update_status(declined) for all pending<br>• UsersRepo.update_play_tab(state=DISCOVERY, clear fields) |
+| BROADCAST_ACTIVE → DISCOVERY (expired) | `GET /me/state` (freshness) | • BroadcastsRepo.update_status(expired)<br>• UsersRepo.update_play_tab(state=DISCOVERY) |
+| DISCOVERY → OUTGOING_OFFER_PENDING | `POST /me/offers` (direct) | • OffersRepo.create()<br>• UsersRepo.update_play_tab(sender: state=OUTGOING_OFFER_PENDING, activeOutgoingOfferId=...)<br>• UsersRepo.update_play_tab(recipient: state=INCOMING_OFFER_PENDING, append to pendingIncomingOfferIds) |
+| BROADCAST_ACTIVE → OUTGOING_OFFER_PENDING | `POST /me/offers` (while broadcasting) | • OffersRepo.create()<br>• UsersRepo.update_play_tab(sender: state=OUTGOING_OFFER_PENDING, keep activeBroadcastId)<br>• UsersRepo.update_play_tab(recipient: append to pendingIncomingOfferIds, state unchanged if BROADCAST_ACTIVE) |
+| OUTGOING_OFFER_PENDING → DISCOVERY | offer expired/declined/cancelled | • OffersRepo.update_status()<br>• UsersRepo.update_play_tab(sender: state=DISCOVERY)<br>• UsersRepo.update_play_tab(recipient: remove from pendingIncomingOfferIds, recalc state) |
+| OUTGOING_OFFER_PENDING → BROADCAST_ACTIVE | offer resolved, broadcast still active | • OffersRepo.update_status()<br>• UsersRepo.update_play_tab(sender: state=BROADCAST_ACTIVE, clear activeOutgoingOfferId)<br>• UsersRepo.update_play_tab(recipient: remove from pendingIncomingOfferIds) |
+| INCOMING_OFFER_PENDING → DISCOVERY | `POST /me/offers/{id}/decline` | • OffersRepo.update_status(declined)<br>• UsersRepo.update_play_tab(recipient: state=DISCOVERY, clear pendingIncomingOfferIds)<br>• UsersRepo.update_play_tab(sender: recalc state) |
+| INCOMING_OFFER_PENDING → MATCH_SCHEDULED | `POST /me/offers/{id}/accept` | • OffersRepo.update_status(accepted, matchId=...)<br>• MatchesRepo.create()<br>• BroadcastsRepo.update_status(matched) if recipient had broadcast<br>• OffersRepo.batch_update_status(declined) for all other pending<br>• UsersRepo.update_play_tab(both users: state=MATCH_SCHEDULED, activeMatchId=..., clear broadcast/offer fields) |
+| BROADCAST_ACTIVE → MATCH_SCHEDULED | `POST /me/offers/{id}/accept` (from queue) | • OffersRepo.update_status(accepted, matchId=...)<br>• MatchesRepo.create()<br>• BroadcastsRepo.update_status(matched)<br>• OffersRepo.batch_update_status(declined) for all other pending<br>• UsersRepo.update_play_tab(both users: state=MATCH_SCHEDULED, clear all fields) |
+| OUTGOING_OFFER_PENDING → MATCH_SCHEDULED | opponent accepts | • OffersRepo.update_status(accepted, matchId=...)<br>• MatchesRepo.create()<br>• UsersRepo.update_play_tab(both users: state=MATCH_SCHEDULED) |
+| MATCH_SCHEDULED → POST_MATCH_LOG_AVAILABLE | `GET /me/state` (freshness) | • MatchesRepo.get() to check scheduledAt<br>• UsersRepo.update_play_tab(state=POST_MATCH_LOG_AVAILABLE) |
+
+**Notes**:
+- All write operations within a single endpoint call use **Firestore transactions** to ensure atomic multi-document updates
+- `batch_update_status()` refers to updating multiple offer docs in a single transaction (e.g., declining all pending offers when accepting one)
+- "recalc state" means checking if user has active broadcast → BROADCAST_ACTIVE, else → DISCOVERY
