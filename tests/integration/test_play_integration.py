@@ -1173,3 +1173,56 @@ class TestConcurrentBroadcastCreation:
         # The offer must be in a terminal state
         offer_doc = db.collection("offers").document(offer_id).get()
         assert offer_doc.to_dict()["status"] in ("cancelled", "accepted")
+
+    def test_race_broadcast_create_and_cancel(self, db):
+        """
+        Alice's create_broadcast and cancel_broadcast run concurrently.
+
+        Possible outcomes depending on scheduling:
+        - Cancel runs first → ValueError (no active broadcast), create succeeds
+          → Alice ends up BROADCAST_ACTIVE
+        - Create runs first, cancel also succeeds → Alice ends up DISCOVERY
+
+        Either way, the final state must be internally consistent.
+        """
+        alice_uid = "alice_create_cancel_race"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        outcomes = []
+
+        def try_create():
+            try:
+                resp = service.create_broadcast(alice_uid, make_broadcast_request())
+                outcomes.append(("created", resp.broadcast_id))
+            except ValueError:
+                outcomes.append(("create_failed", None))
+
+        def try_cancel():
+            try:
+                service.cancel_broadcast(alice_uid)
+                outcomes.append(("cancelled", None))
+            except ValueError:
+                outcomes.append(("cancel_failed", None))
+
+        t1 = threading.Thread(target=try_create)
+        t2 = threading.Thread(target=try_cancel)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(outcomes) == 2
+
+        alice_tab = get_play_tab(db, alice_uid)
+        result_types = {o[0] for o in outcomes}
+
+        if "cancelled" in result_types:
+            # Create succeeded then cancel succeeded → DISCOVERY
+            assert alice_tab["state"] == "DISCOVERY"
+            assert alice_tab.get("activeBroadcastId") is None
+        else:
+            # Cancel failed (no broadcast yet) → create succeeded → BROADCAST_ACTIVE
+            assert "created" in result_types
+            assert alice_tab["state"] == "BROADCAST_ACTIVE"
+            assert alice_tab.get("activeBroadcastId") is not None
