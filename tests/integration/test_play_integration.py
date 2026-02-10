@@ -24,6 +24,7 @@ from app.models.enums import (
 from app.models.play import (
     BroadcastLocation,
     CreateBroadcastRequest,
+    GeoLocation,
     SendOfferRequest,
 )
 from app.repos.broadcasts_repo import BroadcastsRepo
@@ -647,3 +648,528 @@ class TestConcurrentRace:
         # Alice must be in a consistent state
         alice_tab = get_play_tab(db, alice_uid)
         assert alice_tab["state"] == "MATCH_SCHEDULED"
+
+
+# ===== Test: Time-Based Edge Cases =====
+
+
+class TestTimeBasedEdgeCases:
+    def test_expires_at_exactly_now_rejected(self, db):
+        """expiresAt == now is treated as not in future (uses strict < check)."""
+        alice_uid = "alice_expires_now"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        now = datetime.now(timezone.utc)
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            expires_at=now,  # exactly now — not in the future
+            location=BroadcastLocation(area=10001),
+        )
+
+        with pytest.raises(ValueError, match="future"):
+            service.create_broadcast(alice_uid, request)
+
+    def test_expires_at_one_second_future_accepted(self, db):
+        """expiresAt = now + 1s is a valid future time and the broadcast is created."""
+        alice_uid = "alice_expires_1s"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(seconds=1),
+            location=BroadcastLocation(area=10001),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        assert response.broadcast_id
+
+    def test_naive_datetime_coerced_to_utc(self, db):
+        """
+        GsmBaseModel._ensure_aware_datetime coerces naive datetimes to UTC,
+        so a naive expiresAt is accepted rather than raising TypeError.
+        Naive datetime + 2h is a valid future time after coercion.
+        """
+        alice_uid = "alice_naive_dt"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        import datetime as dt_module
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            expires_at=dt_module.datetime.now() + dt_module.timedelta(hours=2),  # naive
+            location=BroadcastLocation(area=10001),
+        )
+
+        # Coerced to UTC by GsmBaseModel — broadcast is created successfully
+        response = service.create_broadcast(alice_uid, request)
+        assert response.broadcast_id
+        assert response.expires_at.tzinfo is not None  # confirmed UTC-aware after coercion
+
+
+# ===== Test: State Machine Edge Cases =====
+
+
+class TestStateMachineEdgeCases:
+    def test_broadcast_from_incoming_offer_pending(self, db):
+        """User in INCOMING_OFFER_PENDING cannot create a broadcast."""
+        alice_uid = "alice_incoming_no_broadcast"
+        bob_uid = "bob_incoming_no_broadcast"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        # Bob sends offer to Alice → Alice enters INCOMING_OFFER_PENDING
+        service.send_offer(bob_uid, make_offer_request(alice_uid))
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "INCOMING_OFFER_PENDING"
+
+        with pytest.raises(ValueError, match="INCOMING_OFFER_PENDING"):
+            service.create_broadcast(alice_uid, make_broadcast_request())
+
+    def test_broadcast_from_outgoing_offer_pending(self, db):
+        """User in OUTGOING_OFFER_PENDING cannot create a broadcast."""
+        alice_uid = "alice_outgoing_no_broadcast"
+        bob_uid = "bob_outgoing_no_broadcast"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        # Alice sends offer to Bob → Alice enters OUTGOING_OFFER_PENDING
+        service.send_offer(alice_uid, make_offer_request(bob_uid))
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "OUTGOING_OFFER_PENDING"
+
+        with pytest.raises(ValueError, match="OUTGOING_OFFER_PENDING"):
+            service.create_broadcast(alice_uid, make_broadcast_request())
+
+    def test_send_offer_to_self(self, db):
+        """
+        Sending an offer to yourself has no explicit validation.
+        Documents current behavior: the operation completes because both
+        sender and recipient lookups find the same user doc. The resulting
+        Firestore state is inconsistent (both outgoing and incoming fields set),
+        but no error is raised.
+        """
+        alice_uid = "alice_self_offer"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        # No ValueError raised — no self-offer guard exists
+        offer_resp = service.send_offer(alice_uid, make_offer_request(alice_uid))
+        assert offer_resp.offer_id
+
+        # Offer doc is created with fromUid == toUid
+        offer_doc = db.collection("offers").document(offer_resp.offer_id).get()
+        data = offer_doc.to_dict()
+        assert data["fromUid"] == alice_uid
+        assert data["toUid"] == alice_uid
+
+    def test_accept_own_offer(self, db):
+        """Sender cannot accept their own outgoing offer (not the recipient)."""
+        alice_uid = "alice_accept_own"
+        bob_uid = "bob_accept_own"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
+
+        with pytest.raises(ValueError, match="not the recipient"):
+            service.accept_offer(alice_uid, offer_resp.offer_id)
+
+    def test_decline_after_accept(self, db):
+        """Declining an already-accepted offer raises ValueError."""
+        alice_uid = "alice_decline_after_accept"
+        bob_uid = "bob_decline_after_accept"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
+        service.accept_offer(bob_uid, offer_resp.offer_id)
+
+        with pytest.raises(ValueError):
+            service.decline_offer(bob_uid, offer_resp.offer_id)
+
+    def test_cancel_after_accept(self, db):
+        """Sender cannot cancel an already-accepted offer."""
+        alice_uid = "alice_cancel_after_accept"
+        bob_uid = "bob_cancel_after_accept"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
+        service.accept_offer(bob_uid, offer_resp.offer_id)
+
+        with pytest.raises(ValueError):
+            service.cancel_offer(alice_uid, offer_resp.offer_id)
+
+    def test_match_scheduled_user_cannot_send_offer(self, db):
+        """User in MATCH_SCHEDULED state cannot send a new offer."""
+        alice_uid = "alice_match_no_offer"
+        bob_uid = "bob_match_no_offer"
+        charlie_uid = "charlie_match_no_offer"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        seed_discovery_user(db, charlie_uid, "Charlie")
+        service = make_play_service(db)
+
+        # Alice and Bob reach MATCH_SCHEDULED
+        offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
+        service.accept_offer(bob_uid, offer_resp.offer_id)
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "MATCH_SCHEDULED"
+
+        with pytest.raises(ValueError, match="MATCH_SCHEDULED"):
+            service.send_offer(alice_uid, make_offer_request(charlie_uid))
+
+
+# ===== Test: Offer Queue Edge Cases =====
+
+
+class TestOfferQueueEdgeCases:
+    def test_large_queue_accepting_one_declines_rest(self, db):
+        """
+        User receives 5 pending offers.
+        Accepting one declines all 4 others atomically.
+        """
+        alice_uid = "alice_large_queue"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        service.create_broadcast(alice_uid, make_broadcast_request())
+
+        # 5 senders each queue an offer for Alice
+        senders = []
+        offer_ids = []
+        for i in range(5):
+            uid = f"sender_large_{i}"
+            seed_discovery_user(db, uid, f"Sender{i}")
+            senders.append(uid)
+            resp = service.send_offer(uid, make_offer_request(alice_uid))
+            offer_ids.append(resp.offer_id)
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert len(alice_tab["pendingIncomingOfferIds"]) == 5
+
+        # Alice accepts the third offer
+        service.accept_offer(alice_uid, offer_ids[2])
+
+        # Accepted offer is accepted
+        accepted_doc = db.collection("offers").document(offer_ids[2]).get()
+        assert accepted_doc.to_dict()["status"] == "accepted"
+
+        # All other 4 offers are declined
+        for i, offer_id in enumerate(offer_ids):
+            if i == 2:
+                continue
+            doc = db.collection("offers").document(offer_id).get()
+            assert doc.to_dict()["status"] == "declined", (
+                f"offer_ids[{i}] should be declined"
+            )
+
+        # Alice → MATCH_SCHEDULED, pending list cleared
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "MATCH_SCHEDULED"
+        assert alice_tab.get("pendingIncomingOfferIds") == []
+
+    def test_get_me_state_with_stale_offer_ids(self, db):
+        """
+        pendingIncomingOfferIds pointing to deleted/non-existent docs
+        do not crash get_me_state. get_by_ids silently skips missing docs.
+        """
+        alice_uid = "alice_stale_offer_ids"
+        broadcast_id = "broadcast_stale_test"
+        now = datetime.now(timezone.utc)
+
+        # Seed user in BROADCAST_ACTIVE with stale offer IDs
+        db.collection("users").document(alice_uid).set(
+            {
+                "name": "Alice",
+                "email": "alice@test.com",
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": broadcast_id,
+                    "pendingIncomingOfferIds": ["nonexistent_1", "nonexistent_2"],
+                    "updatedAt": now,
+                },
+            }
+        )
+
+        # Seed the broadcast doc so the service can fetch it
+        db.collection("broadcasts").document(broadcast_id).set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "tennis",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(hours=2),
+                "createdAt": now,
+                "location": {"area": 10001},
+            }
+        )
+
+        service = make_play_service(db)
+        state = service.get_me_state(alice_uid)
+
+        # No crash — returns BROADCAST_ACTIVE with empty pending offers list
+        assert state.mode == PlayTabStateEnum.BROADCAST_ACTIVE
+        assert state.ui_events == []
+
+    def test_get_me_state_broadcast_active_empty_pending_list(self, db):
+        """BROADCAST_ACTIVE user with empty pendingIncomingOfferIds returns correct state."""
+        alice_uid = "alice_empty_pending"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        service.create_broadcast(alice_uid, make_broadcast_request())
+
+        state = service.get_me_state(alice_uid)
+
+        assert state.mode == PlayTabStateEnum.BROADCAST_ACTIVE
+        assert state.ui_events == []
+
+    def test_declining_reduces_pending_list(self, db):
+        """
+        Recipient with 3 pending offers declines one; list reduces to 2
+        and state stays INCOMING_OFFER_PENDING.
+        """
+        alice_uid = "alice_decline_one_of_three"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        offer_ids = []
+        for i in range(3):
+            uid = f"sender_decline_{i}"
+            seed_discovery_user(db, uid, f"Sender{i}")
+            resp = service.send_offer(uid, make_offer_request(alice_uid))
+            offer_ids.append(resp.offer_id)
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert len(alice_tab["pendingIncomingOfferIds"]) == 3
+
+        # Alice declines the first offer
+        service.decline_offer(alice_uid, offer_ids[0])
+
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "INCOMING_OFFER_PENDING"
+        assert len(alice_tab["pendingIncomingOfferIds"]) == 2
+        assert offer_ids[0] not in alice_tab["pendingIncomingOfferIds"]
+
+
+# ===== Test: Data Validation Edge Cases =====
+
+
+class TestDataValidationEdgeCases:
+    def test_broadcast_location_area_only(self, db):
+        """Broadcast with only area set (no geo) is valid."""
+        alice_uid = "alice_area_only"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(area=10001, geo=None, radius_km=None),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        assert response.broadcast_id
+
+        doc = db.collection("broadcasts").document(response.broadcast_id).get()
+        assert doc.to_dict()["location"]["area"] == 10001
+        assert doc.to_dict()["location"]["geo"] is None
+
+    def test_broadcast_location_geo_only(self, db):
+        """Broadcast with only geo set (no area) is valid."""
+        alice_uid = "alice_geo_only"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(
+                area=None,
+                geo=GeoLocation(lat=40.7128, lng=-74.0060),
+                radius_km=5.0,
+            ),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        assert response.broadcast_id
+
+        doc = db.collection("broadcasts").document(response.broadcast_id).get()
+        assert doc.to_dict()["location"]["area"] is None
+        assert doc.to_dict()["location"]["geo"]["lat"] == 40.7128
+
+    def test_broadcast_location_both_none_currently_allowed(self, db):
+        """
+        Broadcast with neither area nor geo is currently allowed (no validation).
+        Documents current behavior — product may add validation later.
+        """
+        alice_uid = "alice_no_location"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(area=None, geo=None, radius_km=None),
+        )
+
+        # No ValueError — passes through without location validation
+        response = service.create_broadcast(alice_uid, request)
+        assert response.broadcast_id
+
+    def test_offer_proposed_time_in_past_currently_allowed(self, db):
+        """
+        proposedTime in the past is currently allowed (no validation).
+        Documents current behavior — product may add validation later.
+        """
+        alice_uid = "alice_past_proposed"
+        bob_uid = "bob_past_proposed"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        past_time = datetime.now(timezone.utc) - timedelta(hours=1)
+        request = SendOfferRequest(
+            to_uid=bob_uid,
+            sport=SportEnum.TENNIS,
+            proposed_time=past_time,
+        )
+
+        # No ValueError — past proposed time is not validated
+        offer_resp = service.send_offer(alice_uid, request)
+        assert offer_resp.offer_id
+
+    def test_offer_message_large_currently_allowed(self, db):
+        """
+        Very long offer messages have no max-length enforcement currently.
+        Documents current behavior — product may add Pydantic max_length later.
+        """
+        alice_uid = "alice_long_message"
+        bob_uid = "bob_long_message"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        request = SendOfferRequest(
+            to_uid=bob_uid,
+            sport=SportEnum.TENNIS,
+            proposed_time=datetime.now(timezone.utc) + timedelta(hours=2),
+            message="x" * 10_000,
+        )
+
+        offer_resp = service.send_offer(alice_uid, request)
+        assert offer_resp.offer_id
+
+        doc = db.collection("offers").document(offer_resp.offer_id).get()
+        assert len(doc.to_dict()["message"]) == 10_000
+
+
+# ===== Test: Concurrent Broadcast Creation =====
+
+
+class TestConcurrentBroadcastCreation:
+    def test_concurrent_broadcast_creation_same_user(self, db):
+        """
+        Two concurrent create_broadcast calls for the same DISCOVERY user.
+
+        The service state check occurs outside the transaction, so both requests
+        may read DISCOVERY and proceed. The Firestore transaction itself does not
+        re-read the user doc to detect conflicts, meaning both may commit.
+        This test documents the current behavior and flags the race condition.
+        """
+        alice_uid = "alice_concurrent_broadcast"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        successes = []
+        failures = []
+
+        def try_create():
+            try:
+                resp = service.create_broadcast(alice_uid, make_broadcast_request())
+                successes.append(resp.broadcast_id)
+            except ValueError as e:
+                failures.append(e)
+
+        t1 = threading.Thread(target=try_create)
+        t2 = threading.Thread(target=try_create)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # At least one must succeed
+        assert len(successes) >= 1
+
+        # Alice's play tab must be in a consistent active state
+        alice_tab = get_play_tab(db, alice_uid)
+        assert alice_tab["state"] == "BROADCAST_ACTIVE"
+
+    def test_race_sender_cancels_while_recipient_accepts(self, db):
+        """
+        Alice sends offer to Bob. Alice cancels while Bob simultaneously accepts.
+        One operation wins; the other gets a ValueError (offer not pending).
+        """
+        alice_uid = "alice_cancel_race"
+        bob_uid = "bob_cancel_race"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+        service = make_play_service(db)
+
+        offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
+        offer_id = offer_resp.offer_id
+
+        outcomes = []
+
+        def alice_cancels():
+            try:
+                service.cancel_offer(alice_uid, offer_id)
+                outcomes.append("cancelled")
+            except ValueError:
+                outcomes.append("cancel_failed")
+
+        def bob_accepts():
+            try:
+                service.accept_offer(bob_uid, offer_id)
+                outcomes.append("accepted")
+            except ValueError:
+                outcomes.append("accept_failed")
+
+        t1 = threading.Thread(target=alice_cancels)
+        t2 = threading.Thread(target=bob_accepts)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(outcomes) == 2
+
+        # The offer must be in a terminal state
+        offer_doc = db.collection("offers").document(offer_id).get()
+        assert offer_doc.to_dict()["status"] in ("cancelled", "accepted")
