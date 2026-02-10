@@ -15,9 +15,7 @@ import pytest
 
 from app.models.enums import (
     AvailabilityEnum,
-    BroadcastStatusEnum,
     CourtStatusEnum,
-    OfferStatusEnum,
     PlayTabStateEnum,
     SportEnum,
 )
@@ -416,7 +414,9 @@ class TestFreshnessReconciliation:
         # UI event emitted
         assert any(e.type == "broadcast_expired" for e in alice_state.ui_events)
 
-    def test_outgoing_offer_expired_with_broadcast_returns_to_broadcast_active(self, db):
+    def test_outgoing_offer_expired_with_broadcast_returns_to_broadcast_active(
+        self, db
+    ):
         """If sender had active broadcast when offer expired, they return to BROADCAST_ACTIVE."""
         alice_uid = "alice_offer_expire_has_broadcast"
         bob_uid = "bob_offer_expire_has_broadcast"
@@ -425,8 +425,7 @@ class TestFreshnessReconciliation:
         service = make_play_service(db)
 
         # Alice broadcasts first
-        bc_resp = service.create_broadcast(alice_uid, make_broadcast_request())
-        broadcast_id = bc_resp.broadcast_id
+        service.create_broadcast(alice_uid, make_broadcast_request())
 
         # Alice sends offer to Bob (now in OUTGOING_OFFER_PENDING but retains broadcast)
         offer_resp = service.send_offer(alice_uid, make_offer_request(bob_uid))
@@ -634,7 +633,9 @@ class TestConcurrentRace:
 
         def accept_charlie():
             try:
-                successes.append(service.accept_offer(alice_uid, charlie_offer.offer_id))
+                successes.append(
+                    service.accept_offer(alice_uid, charlie_offer.offer_id)
+                )
             except Exception as e:
                 failures.append(("charlie", e))
 
@@ -712,7 +713,9 @@ class TestTimeBasedEdgeCases:
         # Coerced to UTC by GsmBaseModel — broadcast is created successfully
         response = service.create_broadcast(alice_uid, request)
         assert response.broadcast_id
-        assert response.expires_at.tzinfo is not None  # confirmed UTC-aware after coercion
+        assert (
+            response.expires_at.tzinfo is not None
+        )  # confirmed UTC-aware after coercion
 
 
 # ===== Test: State Machine Edge Cases =====
