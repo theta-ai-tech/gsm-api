@@ -2,6 +2,10 @@
 
 The project implements the backend for GSM - a web/mobile app that builds a social match making application with  features like leagues/matches and journal for self development.
 
+## Working Rules
+- Do not run tests unless explicitly instructed; the user will run them manually.
+- After any code edits, run `make fmt format type` inside the active venv and ensure they pass.
+
 ## Context
 We need a managed, autoscaling runtime for a containerized Python API, plus native event triggers for Firestore/Storage/PubSub.
 
@@ -58,4 +62,3 @@ pytest -q tests/integration
 3. FastAPI dependency verifies token via `firebase_admin.auth.verify_id_token`.  
 4. Handler uses `request.state.uid` to authorize and query Firestore.  
 5. Response returned.  
-
