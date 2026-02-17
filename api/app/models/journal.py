@@ -57,9 +57,7 @@ class CreateJournalEntryRequest(GsmBaseModel):
     @model_validator(mode="after")
     def _validate_entry_type_fields(self) -> "CreateJournalEntryRequest":
         if self.entry_type == JournalEntryTypeEnum.MATCH and self.match_id is None:
-            logger.warning(
-                "CreateJournalEntryRequest: entry_type=MATCH but match_id not provided"
-            )
+            logger.warning("CreateJournalEntryRequest: entry_type=MATCH but match_id not provided")
         if self.entry_type == JournalEntryTypeEnum.TRAINING:
             if self.duration_minutes is None or self.duration_minutes <= 0:
                 raise ValueError("duration_minutes must be > 0 for training entries")

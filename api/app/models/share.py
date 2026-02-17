@@ -11,11 +11,11 @@ class ShareCardData(GsmBaseModel):
     added later.
     """
 
-    result_text: str        # "VICTORY" / "DEFEAT"
-    score_text: str         # "6-4 7-5"
+    result_text: str  # "VICTORY" / "DEFEAT"
+    score_text: str  # "6-4 7-5"
     opponent_name: str
     sport: SportEnum
-    rating_delta: int       # +100
+    rating_delta: int  # +100
     rank: int | None = None  # #42
     streak: str | None = None  # "5W"
-    date: str               # "February 16, 2026"
+    date: str  # "February 16, 2026"
