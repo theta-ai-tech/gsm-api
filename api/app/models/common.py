@@ -2,6 +2,7 @@ from datetime import datetime
 
 from app.models.base import GsmBaseModel
 from app.models.enums import (
+    JournalEntryTypeEnum,
     LeagueRoleEnum,
     LeagueStatusEnum,
     LevelEnum,
@@ -91,6 +92,7 @@ class JournalEntrySummary(GsmBaseModel):
     title: str
     match_id: str | None = None
     sport: SportEnum | None = None
+    entry_type: JournalEntryTypeEnum | None = None
 
 
 class CursorBundle(GsmBaseModel):

@@ -92,3 +92,17 @@ class OfferStatusEnum(StrEnum):
     DECLINED = "declined"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
+
+
+class JournalEntryTypeEnum(StrEnum):
+    MATCH = "match"
+    TRAINING = "training"
+
+
+class TrainingFocusEnum(StrEnum):
+    SERVE = "serve"
+    VOLLEY = "volley"
+    FOOTWORK = "footwork"
+    BACKHAND = "backhand"
+    CARDIO = "cardio"
+    STRATEGY = "strategy"

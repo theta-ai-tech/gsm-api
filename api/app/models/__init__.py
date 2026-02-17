@@ -17,6 +17,7 @@ from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
     CourtStatusEnum,
+    JournalEntryTypeEnum,
     JournalVisibilityEnum,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
@@ -28,8 +29,9 @@ from app.models.enums import (
     ParticipantRoleEnum,
     PlayTabStateEnum,
     SportEnum,
+    TrainingFocusEnum,
 )
-from app.models.journal import JournalEntry
+from app.models.journal import JournalEntry, MatchReflection
 from app.models.league import League, LeagueMember
 from app.models.match import Match, MatchParticipant
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
@@ -50,6 +52,8 @@ __all__ = [
     "LeagueMemberStatusEnum",
     "ParticipantRoleEnum",
     "JournalVisibilityEnum",
+    "JournalEntryTypeEnum",
+    "TrainingFocusEnum",
     "PlayTabStateEnum",
     "AvailabilityEnum",
     "BroadcastStatusEnum",
@@ -70,6 +74,7 @@ __all__ = [
     "CursorBundle",
     # journal
     "JournalEntry",
+    "MatchReflection",
     # league
     "League",
     "LeagueMember",
