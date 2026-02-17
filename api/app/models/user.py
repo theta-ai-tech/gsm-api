@@ -10,6 +10,7 @@ from app.models.common import (
     UserMatchSummary,
     UserPreferences,
 )
+from app.models.stats import NorthStarGoal
 
 
 class PublicUserProfile(GsmBaseModel):
@@ -33,3 +34,4 @@ class PrivateUserProfile(PublicUserProfile):
     completed_matches: list[UserCompletedMatchSummary] = []
     journal_recent: list[JournalEntrySummary] = []
     cursors: CursorBundle | None = None
+    north_star_goal: NorthStarGoal | None = None
