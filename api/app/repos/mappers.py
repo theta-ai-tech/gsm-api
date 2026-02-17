@@ -27,6 +27,7 @@ from app.models import (
     MatchScore,
     MatchStatusEnum,
     Offer,
+    NorthStarGoal,
     OfferStatusEnum,
     ParticipantRoleEnum,
     PerSportLevels,
@@ -131,6 +132,17 @@ def _parse_journal_entry_summary(data: dict[str, Any]) -> JournalEntrySummary:
     )
 
 
+def _parse_north_star_goal(data: dict[str, Any] | None) -> Optional[NorthStarGoal]:
+    if not data:
+        return None
+    return NorthStarGoal(
+        goal_text=data["goalText"],
+        progress_pct=data.get("progressPct", 0.0),
+        created_at=data["createdAt"],
+        target_date=data.get("targetDate"),
+    )
+
+
 def _parse_cursors(data: dict[str, Any] | None) -> Optional[CursorBundle]:
     if not data:
         return None
@@ -178,6 +190,7 @@ def to_private_user_profile(doc: dict[str, Any]) -> PrivateUserProfile:
             _parse_journal_entry_summary(item) for item in _list_or_empty("journalRecent")
         ],
         cursors=_parse_cursors(doc.get("cursors")),
+        north_star_goal=_parse_north_star_goal(doc.get("northStarGoal")),
     )
 
 

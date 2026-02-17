@@ -17,6 +17,7 @@ from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
     CourtStatusEnum,
+    JournalEntryTypeEnum,
     JournalVisibilityEnum,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
@@ -28,11 +29,20 @@ from app.models.enums import (
     ParticipantRoleEnum,
     PlayTabStateEnum,
     SportEnum,
+    TrainingFocusEnum,
 )
-from app.models.journal import JournalEntry
+from app.models.journal import (
+    CreateJournalEntryRequest,
+    CreateJournalEntryResponse,
+    JournalEntry,
+    MatchReflection,
+    UpdateJournalEntryRequest,
+)
 from app.models.league import League, LeagueMember
 from app.models.match import Match, MatchParticipant
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
+from app.models.share import ShareCardData
+from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.models.user import PrivateUserProfile, PublicUserProfile
 
 __all__ = [
@@ -50,6 +60,8 @@ __all__ = [
     "LeagueMemberStatusEnum",
     "ParticipantRoleEnum",
     "JournalVisibilityEnum",
+    "JournalEntryTypeEnum",
+    "TrainingFocusEnum",
     "PlayTabStateEnum",
     "AvailabilityEnum",
     "BroadcastStatusEnum",
@@ -70,6 +82,10 @@ __all__ = [
     "CursorBundle",
     # journal
     "JournalEntry",
+    "MatchReflection",
+    "CreateJournalEntryRequest",
+    "CreateJournalEntryResponse",
+    "UpdateJournalEntryRequest",
     # league
     "League",
     "LeagueMember",
@@ -81,6 +97,12 @@ __all__ = [
     "Offer",
     "BroadcastLocation",
     "GeoLocation",
+    # share
+    "ShareCardData",
+    # stats
+    "WeeklyActivity",
+    "NorthStarGoal",
+    "UserStats",
     # user
     "PublicUserProfile",
     "PrivateUserProfile",
