@@ -41,6 +41,7 @@ from app.models.journal import (
 from app.models.league import League, LeagueMember
 from app.models.match import Match, MatchParticipant
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
+from app.models.share import ShareCardData
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.models.user import PrivateUserProfile, PublicUserProfile
 
@@ -96,6 +97,8 @@ __all__ = [
     "Offer",
     "BroadcastLocation",
     "GeoLocation",
+    # share
+    "ShareCardData",
     # stats
     "WeeklyActivity",
     "NorthStarGoal",
