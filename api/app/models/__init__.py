@@ -31,7 +31,13 @@ from app.models.enums import (
     SportEnum,
     TrainingFocusEnum,
 )
-from app.models.journal import JournalEntry, MatchReflection
+from app.models.journal import (
+    CreateJournalEntryRequest,
+    CreateJournalEntryResponse,
+    JournalEntry,
+    MatchReflection,
+    UpdateJournalEntryRequest,
+)
 from app.models.league import League, LeagueMember
 from app.models.match import Match, MatchParticipant
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
@@ -76,6 +82,9 @@ __all__ = [
     # journal
     "JournalEntry",
     "MatchReflection",
+    "CreateJournalEntryRequest",
+    "CreateJournalEntryResponse",
+    "UpdateJournalEntryRequest",
     # league
     "League",
     "LeagueMember",
