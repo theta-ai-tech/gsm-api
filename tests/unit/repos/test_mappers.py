@@ -2,18 +2,26 @@ from datetime import datetime, timedelta, timezone
 
 
 from app.models.enums import (
-    SportEnum,
-    BroadcastStatusEnum,
     AvailabilityEnum,
+    BroadcastStatusEnum,
     CourtStatusEnum,
+    JournalEntryTypeEnum,
+    JournalVisibilityEnum,
+    MatchResultEnum,
     OfferStatusEnum,
+    SportEnum,
+    TrainingFocusEnum,
 )
 from app.repos.mappers import (
-    to_broadcast,
-    to_offer,
-    _parse_geo_location,
     _parse_broadcast_location,
+    _parse_geo_location,
+    _parse_journal_entry_summary,
+    to_broadcast,
+    to_journal_entry,
+    to_offer,
 )
+from app.models.journal import JournalEntry, MatchReflection
+from tools.seed_mapping import journal_entry_to_firestore_doc
 
 
 class TestToBroadcast:
@@ -202,3 +210,188 @@ class TestParseBroadcastLocation:
         assert result.area is None
         assert result.geo is None
         assert result.radius_km is None
+
+
+# ── to_journal_entry ──────────────────────────────────────────────────────────
+
+NOW = datetime.now(timezone.utc)
+
+
+def _base_entry_doc(**overrides) -> dict:
+    """Minimal valid Firestore journal entry document."""
+    doc = {
+        "uid": "user1",
+        "createdAt": NOW,
+        "title": "Match notes",
+        "body": "Good game",
+        "visibility": "private",
+    }
+    doc.update(overrides)
+    return doc
+
+
+class TestToJournalEntry:
+    def test_maps_entry_type_correctly(self):
+        """entryType='training' is parsed to JournalEntryTypeEnum.TRAINING."""
+        doc = _base_entry_doc(entryType="training", durationMinutes=60)
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.entry_type == JournalEntryTypeEnum.TRAINING
+        assert entry.duration_minutes == 60
+
+    def test_defaults_entry_type_to_match_when_absent(self):
+        """Missing entryType defaults to JournalEntryTypeEnum.MATCH."""
+        doc = _base_entry_doc()  # no entryType key
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.entry_type == JournalEntryTypeEnum.MATCH
+
+    def test_maps_training_focus_list(self):
+        """trainingFocus string list is parsed to list[TrainingFocusEnum]."""
+        doc = _base_entry_doc(
+            entryType="training",
+            durationMinutes=45,
+            trainingFocus=["serve", "footwork"],
+        )
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.training_focus == [
+            TrainingFocusEnum.SERVE,
+            TrainingFocusEnum.FOOTWORK,
+        ]
+
+    def test_maps_nested_reflection_object(self):
+        """reflection dict is parsed to a MatchReflection model."""
+        doc = _base_entry_doc(
+            reflection={
+                "wentWell": ["first_serve", "net_play"],
+                "wentWrong": ["double_faults"],
+                "opponentWeak": ["backhand"],
+                "opponentStrong": ["serve"],
+                "aiSummary": None,
+            }
+        )
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.reflection is not None
+        assert entry.reflection.went_well == ["first_serve", "net_play"]
+        assert entry.reflection.went_wrong == ["double_faults"]
+        assert entry.reflection.opponent_weak == ["backhand"]
+        assert entry.reflection.opponent_strong == ["serve"]
+        assert entry.reflection.ai_summary is None
+
+    def test_backward_compat_missing_new_fields(self):
+        """Old doc without new fields deserialises with correct defaults."""
+        doc = _base_entry_doc()  # no entryType, trainingFocus, reflection, etc.
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.entry_type == JournalEntryTypeEnum.MATCH
+        assert entry.training_focus == []
+        assert entry.reflection is None
+        assert entry.duration_minutes is None
+        assert entry.score_text is None
+        assert entry.result is None
+
+    def test_maps_result_and_score_text(self):
+        """result and scoreText are parsed correctly."""
+        doc = _base_entry_doc(result="W", scoreText="6-4 7-5")
+
+        entry = to_journal_entry(doc, entry_id="e1", uid="user1")
+
+        assert entry.result == MatchResultEnum.WIN
+        assert entry.score_text == "6-4 7-5"
+
+
+# ── _parse_journal_entry_summary ──────────────────────────────────────────────
+
+
+class TestParseJournalEntrySummary:
+    def test_includes_entry_type(self):
+        """entryType is parsed and exposed on JournalEntrySummary."""
+        data = {
+            "entryId": "e1",
+            "createdAt": NOW,
+            "title": "Training session",
+            "entryType": "training",
+        }
+
+        summary = _parse_journal_entry_summary(data)
+
+        assert summary.entry_id == "e1"
+        assert summary.entry_type == JournalEntryTypeEnum.TRAINING
+
+    def test_entry_type_none_when_absent(self):
+        """Missing entryType results in entry_type=None (not MATCH default)."""
+        data = {
+            "entryId": "e2",
+            "createdAt": NOW,
+            "title": "Old entry",
+        }
+
+        summary = _parse_journal_entry_summary(data)
+
+        assert summary.entry_type is None
+
+
+# ── journal_entry_to_firestore_doc ────────────────────────────────────────────
+
+
+class TestJournalEntryToFirestoreDoc:
+    def test_serializes_new_fields_to_camel_case(self):
+        """All new DM-01 fields appear in the Firestore dict with camelCase keys."""
+        entry = JournalEntry(
+            entry_id="e1",
+            uid="user1",
+            created_at=NOW,
+            title="Training day",
+            body="Hard session",
+            visibility=JournalVisibilityEnum.PRIVATE,
+            entry_type=JournalEntryTypeEnum.TRAINING,
+            duration_minutes=90,
+            training_focus=[TrainingFocusEnum.SERVE, TrainingFocusEnum.CARDIO],
+            reflection=MatchReflection(
+                went_well=["serve"],
+                went_wrong=["footwork"],
+            ),
+            score_text=None,
+            result=None,
+        )
+
+        doc = journal_entry_to_firestore_doc(entry)
+
+        assert doc["entryType"] == "training"
+        assert doc["durationMinutes"] == 90
+        assert doc["trainingFocus"] == ["serve", "cardio"]
+        assert doc["reflection"] == {
+            "wentWell": ["serve"],
+            "wentWrong": ["footwork"],
+            "opponentWeak": [],
+            "opponentStrong": [],
+            "aiSummary": None,
+        }
+        assert doc["scoreText"] is None
+        assert doc["result"] is None
+        # Legacy fields still present
+        assert doc["title"] == "Training day"
+        assert doc["visibility"] == "private"
+
+    def test_reflection_none_serializes_as_none(self):
+        """When reflection is None, the Firestore dict has reflection: None."""
+        entry = JournalEntry(
+            entry_id="e2",
+            uid="user1",
+            created_at=NOW,
+            title="Quick match",
+            body="",
+            visibility=JournalVisibilityEnum.PRIVATE,
+        )
+
+        doc = journal_entry_to_firestore_doc(entry)
+
+        assert doc["reflection"] is None
+        assert doc["trainingFocus"] == []

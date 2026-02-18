@@ -26,13 +26,14 @@ def _apply_cursor(
 
 
 class JournalRepo(RepoBase):
+    def _collection(self, uid: str):
+        return self.client.collection("users").document(uid).collection("journalEntries")
+
     def list_entries(
         self, uid: str, limit: int = 20, cursor: Optional[dict] = None
     ) -> List[JournalEntry]:
         query = (
-            self.client.collection("users")
-            .document(uid)
-            .collection("journalEntries")
+            self._collection(uid)
             .order_by("createdAt", direction=firestore.Query.DESCENDING)
             .order_by(FieldPath.document_id(), direction=firestore.Query.DESCENDING)
             .limit(limit)
@@ -40,3 +41,40 @@ class JournalRepo(RepoBase):
         query = _apply_cursor(query, cursor, self.client, uid)
         docs = query.stream()
         return [to_journal_entry(doc.to_dict() or {}, entry_id=doc.id, uid=uid) for doc in docs]
+
+    def get_entry(self, uid: str, entry_id: str) -> Optional[JournalEntry]:
+        """Read a single journal entry. Returns None if the document does not exist."""
+        doc = self._collection(uid).document(entry_id).get()
+        data = self._doc_to_dict(doc)
+        if data is None:
+            return None
+        return to_journal_entry(data, entry_id=entry_id, uid=uid)
+
+    def create_entry(self, uid: str, entry_data: dict) -> str:
+        """
+        Create a new journal entry document.
+
+        Args:
+            uid: Owner's user ID.
+            entry_data: Firestore-formatted dict (camelCase fields).
+
+        Returns:
+            The auto-generated entry ID.
+        """
+        doc_ref = self._collection(uid).document()
+        doc_ref.set(entry_data)
+        return doc_ref.id
+
+    def update_entry(self, uid: str, entry_id: str, updates: dict) -> None:
+        """
+        Partially update a journal entry.
+
+        Args:
+            uid: Owner's user ID.
+            entry_id: ID of the entry to update.
+            updates: Dict of camelCase fields to update (merged, not replaced).
+
+        Raises:
+            google.api_core.exceptions.NotFound: If the document does not exist.
+        """
+        self._collection(uid).document(entry_id).update(updates)

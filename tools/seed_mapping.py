@@ -9,6 +9,7 @@ from app.models import (
     LeagueSummary,
     Match,
     MatchParticipant,
+    MatchReflection,
     MatchScore,
     PerSportLevels,
     PerSportRankings,
@@ -83,6 +84,7 @@ def _journal_entry_summary_to_dict(summary: JournalEntrySummary) -> Dict[str, An
         "title": summary.title,
         "matchId": summary.match_id,
         "sport": summary.sport.value if summary.sport else None,
+        "entryType": summary.entry_type.value if summary.entry_type else None,
     }
 
 
@@ -185,6 +187,18 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
     }
 
 
+def _match_reflection_to_dict(reflection: MatchReflection | None) -> Dict[str, Any] | None:
+    if reflection is None:
+        return None
+    return {
+        "wentWell": reflection.went_well,
+        "wentWrong": reflection.went_wrong,
+        "opponentWeak": reflection.opponent_weak,
+        "opponentStrong": reflection.opponent_strong,
+        "aiSummary": reflection.ai_summary,
+    }
+
+
 def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
     return {
         "title": entry.title,
@@ -194,4 +208,10 @@ def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
         "matchId": entry.match_id,
         "sport": entry.sport.value if entry.sport else None,
         "visibility": entry.visibility.value,
+        "entryType": entry.entry_type.value,
+        "durationMinutes": entry.duration_minutes,
+        "trainingFocus": [f.value for f in entry.training_focus],
+        "reflection": _match_reflection_to_dict(entry.reflection),
+        "scoreText": entry.score_text,
+        "result": entry.result.value if entry.result else None,
     }

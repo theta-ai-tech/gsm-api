@@ -11,6 +11,7 @@ from app.models import (
     CursorBundle,
     GeoLocation,
     JournalEntry,
+    JournalEntryTypeEnum,
     JournalEntrySummary,
     JournalVisibilityEnum,
     League,
@@ -23,6 +24,7 @@ from app.models import (
     Match,
     MatchOpponentSummary,
     MatchParticipant,
+    MatchReflection,
     MatchResultEnum,
     MatchScore,
     MatchStatusEnum,
@@ -37,6 +39,7 @@ from app.models import (
     SetScore,
     SportEnum,
     SportRanking,
+    TrainingFocusEnum,
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
@@ -123,12 +126,26 @@ def _parse_user_completed_match_summary(data: dict[str, Any]) -> UserCompletedMa
 
 def _parse_journal_entry_summary(data: dict[str, Any]) -> JournalEntrySummary:
     sport = data.get("sport")
+    entry_type = data.get("entryType")
     return JournalEntrySummary(
         entry_id=str(_require(data, "entryId")),
         created_at=_require(data, "createdAt"),
         title=data.get("title", ""),
         match_id=data.get("matchId"),
         sport=SportEnum(sport) if sport else None,
+        entry_type=JournalEntryTypeEnum(entry_type) if entry_type else None,
+    )
+
+
+def _parse_match_reflection(data: dict[str, Any] | None) -> Optional[MatchReflection]:
+    if not data:
+        return None
+    return MatchReflection(
+        went_well=data.get("wentWell", []),
+        went_wrong=data.get("wentWrong", []),
+        opponent_weak=data.get("opponentWeak", []),
+        opponent_strong=data.get("opponentStrong", []),
+        ai_summary=data.get("aiSummary"),
     )
 
 
@@ -277,6 +294,8 @@ def to_journal_entry(
 ) -> JournalEntry:
     visibility = _require(doc, "visibility")
     sport = doc.get("sport")
+    entry_type = doc.get("entryType")
+    result = doc.get("result")
     return JournalEntry(
         entry_id=entry_id or doc.get("id") or "",
         uid=uid or doc.get("uid") or "",
@@ -287,6 +306,12 @@ def to_journal_entry(
         match_id=doc.get("matchId"),
         sport=SportEnum(sport) if sport else None,
         visibility=JournalVisibilityEnum(visibility),
+        entry_type=JournalEntryTypeEnum(entry_type) if entry_type else JournalEntryTypeEnum.MATCH,
+        duration_minutes=doc.get("durationMinutes"),
+        training_focus=[TrainingFocusEnum(f) for f in doc.get("trainingFocus", [])],
+        reflection=_parse_match_reflection(doc.get("reflection")),
+        score_text=doc.get("scoreText"),
+        result=MatchResultEnum(result) if result else None,
     )
 
 
