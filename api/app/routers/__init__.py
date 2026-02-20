@@ -1,3 +1,3 @@
-from . import play
+from . import improve, play
 
-__all__ = ["play"]
+__all__ = ["improve", "play"]
