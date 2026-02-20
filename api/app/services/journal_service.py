@@ -198,6 +198,16 @@ class JournalService:
 
     # ===== GET /me/journal =====
 
+    def get_entry(self, uid: str, entry_id: str) -> JournalEntry | None:
+        """
+        Fetch a single journal entry owned by uid.
+
+        Returns None if the entry does not exist or belongs to a different user.
+        Ownership is enforced implicitly by the subcollection path
+        (users/{uid}/journalEntries/{entry_id}).
+        """
+        return self.journal_repo.get_entry(uid, entry_id)
+
     def list_entries(
         self, uid: str, limit: int = 20, cursor: Optional[dict] = None
     ) -> list[JournalEntry]:
