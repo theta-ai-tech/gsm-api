@@ -1,3 +1,5 @@
+import base64
+import json
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -46,6 +48,11 @@ def _make_stats() -> UserStats:
         total_training_sessions=2,
         current_streak=1,
     )
+
+
+def _encode_cursor(created_at: datetime, entry_id: str) -> str:
+    raw = {"createdAt": created_at.isoformat(), "entryId": entry_id}
+    return base64.urlsafe_b64encode(json.dumps(raw).encode()).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +109,48 @@ class TestListJournalEntries:
         data = response.json()
         assert data["entries"] == []
         assert data["next_cursor"] is None
+
+    def test_list_entries_with_limit_sets_next_cursor(
+        self, client, mock_journal_service
+    ):
+        """When entries == limit, response includes a next_cursor token."""
+        entries = [_make_entry("e1"), _make_entry("e2")]
+        mock_journal_service.list_entries.return_value = entries
+
+        response = client.get("/me/journal?limit=2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["next_cursor"] is not None
+        mock_journal_service.list_entries.assert_called_once_with(
+            "test_user",
+            limit=2,
+            cursor=None,
+        )
+
+    def test_list_entries_with_cursor_decodes_and_passes_to_service(
+        self, client, mock_journal_service
+    ):
+        """Valid cursor query param is decoded before service call."""
+        mock_journal_service.list_entries.return_value = []
+        created_at = datetime.now(timezone.utc)
+        cursor = _encode_cursor(created_at, "e9")
+
+        response = client.get(f"/me/journal?cursor={cursor}")
+
+        assert response.status_code == 200
+        called_cursor = mock_journal_service.list_entries.call_args.kwargs["cursor"]
+        assert called_cursor["entryId"] == "e9"
+        assert called_cursor["createdAt"] == created_at
+
+    def test_list_entries_invalid_cursor_returns_400(
+        self, client, mock_journal_service
+    ):
+        """Malformed cursor returns 400 and does not call service."""
+        response = client.get("/me/journal?cursor=not-base64")
+
+        assert response.status_code == 400
+        mock_journal_service.list_entries.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +226,46 @@ class TestCreateJournalEntry:
         assert response.status_code == 422
         mock_journal_service.create_entry.assert_not_called()
 
+    def test_create_training_without_duration_returns_422(
+        self, client, mock_journal_service
+    ):
+        """Model validation error for training entries without duration."""
+        payload = {
+            "entry_type": "training",
+            "title": "No duration",
+            "sport": "tennis",
+        }
+        response = client.post("/me/journal", json=payload)
+
+        assert response.status_code == 422
+        mock_journal_service.create_entry.assert_not_called()
+
+    def test_create_entry_not_found_maps_to_404(self, client, mock_journal_service):
+        """Service ValueError containing 'not found' maps to 404."""
+        mock_journal_service.create_entry.side_effect = ValueError("User not found")
+
+        payload = {
+            "entry_type": "match",
+            "title": "My match",
+        }
+        response = client.post("/me/journal", json=payload)
+
+        assert response.status_code == 404
+
+    def test_create_entry_conflict_maps_to_409(self, client, mock_journal_service):
+        """Service ValueError without 'not found' maps to 409."""
+        mock_journal_service.create_entry.side_effect = ValueError(
+            "Duplicate journal entry"
+        )
+
+        payload = {
+            "entry_type": "match",
+            "title": "My match",
+        }
+        response = client.post("/me/journal", json=payload)
+
+        assert response.status_code == 409
+
 
 # ---------------------------------------------------------------------------
 # PATCH /me/journal/{entry_id}
@@ -211,6 +300,26 @@ class TestUpdateJournalEntry:
 
         assert response.status_code == 404
 
+    def test_update_entry_wrong_owner_returns_403(self, client, mock_journal_service):
+        """Service raises ownership error mapped to 403."""
+        mock_journal_service.update_entry.side_effect = ValueError(
+            "Entry does not belong to this user"
+        )
+
+        response = client.patch("/me/journal/e1", json={"tags": ["x"]})
+
+        assert response.status_code == 403
+
+    def test_update_entry_conflict_returns_409(self, client, mock_journal_service):
+        """Other service ValueError cases map to 409."""
+        mock_journal_service.update_entry.side_effect = ValueError(
+            "Cannot patch archived entry"
+        )
+
+        response = client.patch("/me/journal/e1", json={"tags": ["x"]})
+
+        assert response.status_code == 409
+
 
 # ---------------------------------------------------------------------------
 # GET /me/stats
@@ -230,6 +339,16 @@ class TestGetDashboardStats:
         assert data["total_matches"] == 5
         assert data["total_wins"] == 3
         mock_journal_service.get_dashboard_stats.assert_called_once_with("test_user")
+
+    def test_get_stats_user_not_found_returns_404(self, client, mock_journal_service):
+        """Service ValueError maps to 404."""
+        mock_journal_service.get_dashboard_stats.side_effect = ValueError(
+            "User not found"
+        )
+
+        response = client.get("/me/stats")
+
+        assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -259,6 +378,16 @@ class TestSetNorthStar:
             goal_text="Win 10 matches",
             target_date=None,
         )
+
+    def test_set_north_star_user_not_found_returns_404(
+        self, client, mock_journal_service
+    ):
+        """Service ValueError maps to 404."""
+        mock_journal_service.set_north_star.side_effect = ValueError("User not found")
+
+        response = client.put("/me/north-star", json={"goal_text": "Win 10 matches"})
+
+        assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------

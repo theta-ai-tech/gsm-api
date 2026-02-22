@@ -12,6 +12,7 @@ from app.models.common import (
 from app.models.enums import (
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
+    MatchResultEnum,
     SportEnum,
     TrainingFocusEnum,
 )
@@ -254,6 +255,101 @@ class TestCreateEntry:
             updated_recent = mock_txn.update.call_args[0][1]["journalRecent"]
             assert len(updated_recent) == 10
             assert updated_recent[0]["entryId"] == "new_entry"
+            assert updated_recent[1]["entryId"] == "old_0"
+        finally:
+            svc_module.firestore.transactional = original
+
+    def test_create_entry_denormalises_result_from_match(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_matches_repo,
+        mock_firestore_client,
+    ):
+        """When request.result is unset, resultByUser from match is denormalised."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        mock_txn, _, _ = _setup_create_mocks(mock_firestore_client, entry_id="entry123")
+        mock_matches_repo.get_by_id.return_value = Mock(
+            participant_uids=["test_user", "other"],
+            result_by_user={"test_user": MatchResultEnum.WIN},
+        )
+
+        import app.services.journal_service as svc_module
+
+        original = svc_module.firestore.transactional
+        svc_module.firestore.transactional = lambda func: func
+        try:
+            request = CreateJournalEntryRequest(
+                entry_type=JournalEntryTypeEnum.MATCH,
+                title="Great match",
+                match_id="m1",
+            )
+            journal_service.create_entry("test_user", request)
+
+            entry_data = mock_txn.set.call_args[0][1]
+            assert entry_data["result"] == MatchResultEnum.WIN.value
+            mock_matches_repo.get_by_id.assert_called_once_with("m1")
+        finally:
+            svc_module.firestore.transactional = original
+
+    def test_create_entry_preserves_explicit_result(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_matches_repo,
+        mock_firestore_client,
+    ):
+        """request.result takes precedence over denormalised match result."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        mock_txn, _, _ = _setup_create_mocks(mock_firestore_client, entry_id="entry123")
+        mock_matches_repo.get_by_id.return_value = Mock(
+            participant_uids=["test_user", "other"],
+            result_by_user={"test_user": MatchResultEnum.LOSS},
+        )
+
+        import app.services.journal_service as svc_module
+
+        original = svc_module.firestore.transactional
+        svc_module.firestore.transactional = lambda func: func
+        try:
+            request = CreateJournalEntryRequest(
+                entry_type=JournalEntryTypeEnum.MATCH,
+                title="Great match",
+                match_id="m1",
+                result=MatchResultEnum.WIN,
+            )
+            journal_service.create_entry("test_user", request)
+
+            entry_data = mock_txn.set.call_args[0][1]
+            assert entry_data["result"] == MatchResultEnum.WIN.value
+        finally:
+            svc_module.firestore.transactional = original
+
+    def test_create_training_entry_does_not_lookup_match(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_matches_repo,
+        mock_firestore_client,
+    ):
+        """Training entry should not hit matches_repo.get_by_id."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        _setup_create_mocks(mock_firestore_client, entry_id="entry123")
+
+        import app.services.journal_service as svc_module
+
+        original = svc_module.firestore.transactional
+        svc_module.firestore.transactional = lambda func: func
+        try:
+            request = CreateJournalEntryRequest(
+                entry_type=JournalEntryTypeEnum.TRAINING,
+                title="Serve session",
+                duration_minutes=30,
+                training_focus=[TrainingFocusEnum.SERVE],
+            )
+            journal_service.create_entry("test_user", request)
+
+            mock_matches_repo.get_by_id.assert_not_called()
         finally:
             svc_module.firestore.transactional = original
 
@@ -312,6 +408,36 @@ class TestUpdateEntry:
                 "test_user", "e1", UpdateJournalEntryRequest(tags=["x"])
             )
 
+    def test_update_entry_no_fields_is_noop(
+        self,
+        journal_service,
+        mock_journal_repo,
+    ):
+        """No provided update fields should skip repository write."""
+        mock_journal_repo.get_entry.return_value = _make_entry()
+
+        journal_service.update_entry("test_user", "e1", UpdateJournalEntryRequest())
+
+        mock_journal_repo.update_entry.assert_not_called()
+
+    def test_update_entry_tags_and_body(
+        self,
+        journal_service,
+        mock_journal_repo,
+    ):
+        """tags/body are forwarded in camelCase update payload."""
+        mock_journal_repo.get_entry.return_value = _make_entry()
+
+        journal_service.update_entry(
+            "test_user",
+            "e1",
+            UpdateJournalEntryRequest(tags=["focus"], body="Updated body"),
+        )
+
+        updates = mock_journal_repo.update_entry.call_args[0][2]
+        assert updates["tags"] == ["focus"]
+        assert updates["body"] == "Updated body"
+
 
 # ---------------------------------------------------------------------------
 # TestListEntries
@@ -334,6 +460,42 @@ class TestListEntries:
             "test_user", limit=5, cursor=None
         )
         assert result == expected
+
+    def test_list_entries_with_cursor_delegates_to_repo(
+        self,
+        journal_service,
+        mock_journal_repo,
+    ):
+        """Cursor is passed through unchanged to JournalRepo."""
+        cursor = {"createdAt": datetime.now(timezone.utc), "entryId": "e1"}
+        mock_journal_repo.list_entries.return_value = []
+
+        journal_service.list_entries("test_user", limit=3, cursor=cursor)
+
+        mock_journal_repo.list_entries.assert_called_once_with(
+            "test_user", limit=3, cursor=cursor
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestGetEntry
+# ---------------------------------------------------------------------------
+
+
+class TestGetEntry:
+    def test_get_entry_delegates_to_repo(
+        self,
+        journal_service,
+        mock_journal_repo,
+    ):
+        """Service get_entry is a thin pass-through."""
+        entry = _make_entry("e42")
+        mock_journal_repo.get_entry.return_value = entry
+
+        result = journal_service.get_entry("test_user", "e42")
+
+        assert result == entry
+        mock_journal_repo.get_entry.assert_called_once_with("test_user", "e42")
 
 
 # ---------------------------------------------------------------------------
@@ -422,3 +584,45 @@ class TestSetNorthStar:
         goal_data = update_mock.call_args[0][0]["northStarGoal"]
         assert goal_data["goalText"] == goal_text
         assert goal_data["progressPct"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# TestGetNorthStar
+# ---------------------------------------------------------------------------
+
+
+class TestGetNorthStar:
+    def test_get_north_star_returns_none_when_user_missing(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        """Missing user doc returns None."""
+        mock_users_repo.get_user_doc.return_value = None
+
+        result = journal_service.get_north_star("ghost")
+
+        assert result is None
+
+    def test_get_north_star_parses_existing_goal(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        """Existing northStarGoal payload is parsed into NorthStarGoal."""
+        created_at = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "northStarGoal": {
+                "goalText": "Win tournament",
+                "progressPct": 20.0,
+                "createdAt": created_at,
+                "targetDate": None,
+            }
+        }
+
+        result = journal_service.get_north_star("test_user")
+
+        assert result is not None
+        assert result.goal_text == "Win tournament"
+        assert result.progress_pct == 20.0
+        assert result.created_at == created_at
