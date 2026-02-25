@@ -35,6 +35,14 @@ from app.services.journal_service import JournalService
 
 router = APIRouter(prefix="/me", tags=["improve"])
 
+# ===== Common response descriptions =====
+
+_401 = {"description": "Missing or invalid Firebase ID token"}
+_403 = {"description": "Entry belongs to a different user"}
+_404_entry = {"description": "Journal entry not found"}
+_404_user = {"description": "User not found"}
+_422 = {"description": "Validation error — see `details` array in response body"}
+
 
 # ===== Dependency =====
 
@@ -90,7 +98,15 @@ class SetNorthStarRequest(GsmBaseModel):
 # ===== GET /me/journal =====
 
 
-@router.get("/journal", response_model=JournalListResponse)
+@router.get(
+    "/journal",
+    response_model=JournalListResponse,
+    summary="List journal entries",
+    responses={
+        400: {"description": "Invalid cursor token"},
+        401: _401,
+    },
+)
 def list_journal_entries(
     limit: int = Query(default=20, ge=1, le=50),
     cursor: str | None = Query(default=None),
@@ -114,7 +130,16 @@ def list_journal_entries(
 
 
 @router.post(
-    "/journal", response_model=CreateJournalEntryResponse, status_code=status.HTTP_201_CREATED
+    "/journal",
+    response_model=CreateJournalEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a journal entry",
+    responses={
+        401: _401,
+        404: _404_user,
+        409: {"description": "Business rule conflict (e.g. duplicate match entry)"},
+        422: _422,
+    },
 )
 def create_journal_entry(
     request: CreateJournalEntryRequest,
@@ -140,7 +165,17 @@ def create_journal_entry(
 # ===== PATCH /me/journal/{entry_id} =====
 
 
-@router.patch("/journal/{entry_id}", response_model=JournalUpdateResponse)
+@router.patch(
+    "/journal/{entry_id}",
+    response_model=JournalUpdateResponse,
+    summary="Update a journal entry",
+    responses={
+        401: _401,
+        403: _403,
+        404: _404_entry,
+        409: {"description": "Update rejected due to a business rule conflict"},
+    },
+)
 def update_journal_entry(
     entry_id: str,
     request: UpdateJournalEntryRequest,
@@ -169,7 +204,15 @@ def update_journal_entry(
 # ===== GET /me/stats =====
 
 
-@router.get("/stats", response_model=UserStats)
+@router.get(
+    "/stats",
+    response_model=UserStats,
+    summary="Get dashboard statistics",
+    responses={
+        401: _401,
+        404: _404_user,
+    },
+)
 def get_dashboard_stats(
     current_user: CurrentUser = Depends(get_current_user),
     journal_service: JournalService = Depends(get_journal_service),
@@ -190,7 +233,15 @@ def get_dashboard_stats(
 # ===== GET /me/journal/{entry_id} =====
 
 
-@router.get("/journal/{entry_id}", response_model=JournalEntry)
+@router.get(
+    "/journal/{entry_id}",
+    response_model=JournalEntry,
+    summary="Get a journal entry",
+    responses={
+        401: _401,
+        404: _404_entry,
+    },
+)
 def get_journal_entry(
     entry_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -216,7 +267,15 @@ def get_journal_entry(
 # ===== PUT /me/north-star =====
 
 
-@router.put("/north-star", response_model=NorthStarGoal)
+@router.put(
+    "/north-star",
+    response_model=NorthStarGoal,
+    summary="Set North Star goal",
+    responses={
+        401: _401,
+        404: _404_user,
+    },
+)
 def set_north_star(
     request: SetNorthStarRequest,
     current_user: CurrentUser = Depends(get_current_user),

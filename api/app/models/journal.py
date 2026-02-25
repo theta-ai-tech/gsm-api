@@ -42,6 +42,22 @@ class JournalEntry(GsmBaseModel):
 
 
 class CreateJournalEntryRequest(GsmBaseModel):
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "entry_type": "match",
+                "title": "Quarter-final win",
+                "body": "Stayed aggressive on second serve. Net approach worked well.",
+                "match_id": "match_abc123",
+                "sport": "tennis",
+                "score_text": "6-4 7-5",
+                "result": "W",
+                "visibility": "private",
+                "tags": ["tournament", "grass"],
+            }
+        }
+    }
+
     entry_type: JournalEntryTypeEnum
     title: str = Field(default="", max_length=200)
     body: str = Field(default="", max_length=5000)
@@ -65,6 +81,15 @@ class CreateJournalEntryRequest(GsmBaseModel):
 
 
 class CreateJournalEntryResponse(GsmBaseModel):
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "entry_id": "entry_xyz789",
+                "created_at": "2026-02-25T10:30:00Z",
+            }
+        }
+    }
+
     entry_id: str
     created_at: datetime
 
