@@ -21,7 +21,7 @@ def _apply_cursor(
         doc_ref = (
             client.collection("users").document(uid).collection("journalEntries").document(entry_id)
         )
-        return query.start_after(created_at, doc_ref)
+        return query.start_after([created_at, doc_ref])
     return query
 
 

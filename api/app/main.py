@@ -87,16 +87,22 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    details = []
-    for err in exc.errors():
-        serialized_err = dict(err)
-        ctx = serialized_err.get("ctx")
-        if isinstance(ctx, dict):
-            maybe_error = ctx.get("error")
-            if isinstance(maybe_error, Exception):
-                serialized_err["ctx"] = {**ctx, "error": str(maybe_error)}
-        details.append(serialized_err)
+    def _sanitize(obj):
+        """Recursively convert Exception objects to strings so the payload is JSON-safe.
 
+        Pydantic v2 model_validator errors embed the raw ValueError in
+        ctx["error"], which is not JSON-serializable. This handles that case
+        (and any future nesting) regardless of the exact error structure.
+        """
+        if isinstance(obj, Exception):
+            return str(obj)
+        if isinstance(obj, dict):
+            return {k: _sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_sanitize(v) for v in obj]
+        return obj
+
+    details = [_sanitize(err) for err in exc.errors()]
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={

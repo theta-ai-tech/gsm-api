@@ -203,4 +203,4 @@ class TestJournalRepoListEntries:
 
         repo.list_entries("user123", cursor=cursor)
 
-        mock_q.start_after.assert_called_once_with(NOW, mock_cursor_doc_ref)
+        mock_q.start_after.assert_called_once_with([NOW, mock_cursor_doc_ref])

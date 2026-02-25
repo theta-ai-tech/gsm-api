@@ -31,7 +31,7 @@ def firestore_client() -> firestore.Client:
     return firestore.Client(project=project)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def seeded_firestore(firestore_client: firestore.Client) -> firestore.Client:
     assert os.environ.get("FIRESTORE_EMULATOR_HOST"), (
         "Set FIRESTORE_EMULATOR_HOST for integration tests"

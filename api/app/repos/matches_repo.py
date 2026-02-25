@@ -20,7 +20,7 @@ def _apply_cursor(
     match_id = cursor.get("matchId")
     if ts and match_id:
         doc_ref = client.collection("matches").document(match_id)
-        return query.start_after(ts, doc_ref)
+        return query.start_after([ts, doc_ref])
     return query
 
 

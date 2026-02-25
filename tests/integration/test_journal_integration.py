@@ -1,0 +1,442 @@
+"""
+Integration tests for Tab 2 IMPROVE — Journal CRUD.
+
+Tests verify end-to-end behavior of JournalService against the real Firestore
+emulator, including atomic transactions, cache updates, reflection merges,
+cursor-based pagination, and the journalRecent cap invariant.
+
+Requires: FIRESTORE_EMULATOR_HOST env var set (e.g. via `make emu-all`)
+"""
+
+from datetime import datetime, timezone
+
+import pytest
+
+from app.models.enums import JournalEntryTypeEnum, SportEnum, TrainingFocusEnum
+from app.models.journal import (
+    CreateJournalEntryRequest,
+    MatchReflection,
+    UpdateJournalEntryRequest,
+)
+from app.repos.journal_repo import JournalRepo
+from app.repos.matches_repo import MatchesRepo
+from app.repos.users_repo import UsersRepo
+from app.services.journal_service import JournalService
+
+pytestmark = [pytest.mark.integration]
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def make_journal_service(db) -> JournalService:
+    """Create a JournalService backed by real repos against the emulator."""
+    return JournalService(
+        UsersRepo(db),
+        JournalRepo(db),
+        MatchesRepo(db),
+        db,
+    )
+
+
+def seed_user(db, uid: str, name: str = "Test User") -> None:
+    """Seed a minimal user doc (no journal activity)."""
+    db.collection("users").document(uid).set(
+        {
+            "name": name,
+            "email": f"{uid}@test.com",
+            "rankings": {},
+            "journalRecent": [],
+            "playTab": {
+                "state": "DISCOVERY",
+                "updatedAt": datetime.now(timezone.utc),
+            },
+        }
+    )
+
+
+def get_user_doc(db, uid: str) -> dict:
+    """Fetch the full user document as a dict."""
+    doc = db.collection("users").document(uid).get()
+    return doc.to_dict() if doc.exists else {}
+
+
+def get_entry_doc(db, uid: str, entry_id: str) -> dict:
+    """Fetch a single journal entry doc as a dict (empty if not found)."""
+    doc = (
+        db.collection("users")
+        .document(uid)
+        .collection("journalEntries")
+        .document(entry_id)
+        .get()
+    )
+    return doc.to_dict() if doc.exists else {}
+
+
+def make_match_request(**kwargs) -> CreateJournalEntryRequest:
+    """Return a minimal match CreateJournalEntryRequest."""
+    defaults = dict(
+        entry_type=JournalEntryTypeEnum.MATCH,
+        title="Test match",
+        body="",
+        sport=SportEnum.TENNIS,
+    )
+    defaults.update(kwargs)
+    return CreateJournalEntryRequest(**defaults)
+
+
+def make_training_request(**kwargs) -> CreateJournalEntryRequest:
+    """Return a minimal training CreateJournalEntryRequest."""
+    defaults = dict(
+        entry_type=JournalEntryTypeEnum.TRAINING,
+        title="Training session",
+        body="",
+        sport=SportEnum.TENNIS,
+        duration_minutes=60,
+        training_focus=[TrainingFocusEnum.SERVE],
+    )
+    defaults.update(kwargs)
+    return CreateJournalEntryRequest(**defaults)
+
+
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_journal_entries(db):
+    """Delete journal entry subcollections after each test.
+
+    The root conftest deletes user docs; subcollections survive unless explicitly
+    removed. Use unique UIDs per test to avoid cross-test contamination.
+    """
+    yield
+    for user_doc in db.collection("users").stream():
+        for entry_doc in user_doc.reference.collection("journalEntries").stream():
+            entry_doc.reference.delete()
+
+
+# ---------------------------------------------------------------------------
+# IT-01-1: Create match entry → verify Firestore doc and cache
+# ---------------------------------------------------------------------------
+
+
+class TestCreateMatchEntry:
+    def test_entry_doc_written_with_correct_fields(self, db):
+        """Entry document created with all expected camelCase fields."""
+        uid = "alice_create_match_doc"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        response = service.create_entry(uid, make_match_request(title="Great match"))
+
+        doc = get_entry_doc(db, uid, response.entry_id)
+        assert doc, "Journal entry doc should exist"
+        assert doc["title"] == "Great match"
+        assert doc["entryType"] == "match"
+        assert doc["sport"] == "tennis"
+        assert doc["reflection"] is None
+        assert "createdAt" in doc
+
+    def test_journal_recent_cache_updated_on_create(self, db):
+        """journalRecent on user doc is updated atomically when entry is created."""
+        uid = "alice_create_match_cache"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        response = service.create_entry(uid, make_match_request(title="My match"))
+
+        user = get_user_doc(db, uid)
+        recent = user.get("journalRecent", [])
+        assert len(recent) == 1
+        assert recent[0]["entryId"] == response.entry_id
+        assert recent[0]["title"] == "My match"
+        assert recent[0]["entryType"] == "match"
+
+    def test_multiple_entries_appear_newest_first_in_cache(self, db):
+        """journalRecent is ordered newest-first (prepend semantics)."""
+        uid = "alice_create_match_order"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        resp1 = service.create_entry(uid, make_match_request(title="First"))
+        resp2 = service.create_entry(uid, make_match_request(title="Second"))
+
+        user = get_user_doc(db, uid)
+        recent = user.get("journalRecent", [])
+        # Second (newer) should be first in the list
+        assert recent[0]["entryId"] == resp2.entry_id
+        assert recent[1]["entryId"] == resp1.entry_id
+
+
+# ---------------------------------------------------------------------------
+# IT-01-2: Create training entry → verify trainingFocus and durationMinutes
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTrainingEntry:
+    def test_training_fields_persisted(self, db):
+        """trainingFocus and durationMinutes are written to the entry doc."""
+        uid = "alice_create_training_fields"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        response = service.create_entry(
+            uid,
+            make_training_request(
+                title="Serve drill",
+                duration_minutes=45,
+                training_focus=[TrainingFocusEnum.SERVE],
+            ),
+        )
+
+        doc = get_entry_doc(db, uid, response.entry_id)
+        assert doc["entryType"] == "training"
+        assert doc["durationMinutes"] == 45
+        assert "serve" in doc["trainingFocus"]
+
+    def test_training_entry_appears_in_journal_recent(self, db):
+        """Training entries appear in journalRecent with correct entryType."""
+        uid = "alice_training_cache"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        response = service.create_entry(uid, make_training_request(title="Footwork"))
+
+        user = get_user_doc(db, uid)
+        recent = user.get("journalRecent", [])
+        assert len(recent) == 1
+        assert recent[0]["entryId"] == response.entry_id
+        assert recent[0]["entryType"] == "training"
+
+
+# ---------------------------------------------------------------------------
+# IT-01-3: Update with reflection → verify merge
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateEntryReflection:
+    def test_reflection_fields_persisted(self, db):
+        """Reflection tags are merged into the entry doc via PATCH."""
+        uid = "alice_update_reflection"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        create_resp = service.create_entry(uid, make_match_request(title="Post-match"))
+
+        service.update_entry(
+            uid,
+            create_resp.entry_id,
+            UpdateJournalEntryRequest(
+                reflection=MatchReflection(
+                    went_well=["first_serve", "net_play"],
+                    went_wrong=["double_faults"],
+                    opponent_weak=["backhand"],
+                    opponent_strong=["forehand"],
+                )
+            ),
+        )
+
+        doc = get_entry_doc(db, uid, create_resp.entry_id)
+        ref = doc["reflection"]
+        assert ref["wentWell"] == ["first_serve", "net_play"]
+        assert ref["wentWrong"] == ["double_faults"]
+        assert ref["opponentWeak"] == ["backhand"]
+        assert ref["opponentStrong"] == ["forehand"]
+
+    def test_tags_and_body_updated(self, db):
+        """tags and body can be updated independently via PATCH."""
+        uid = "alice_update_tags_body"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        create_resp = service.create_entry(
+            uid, make_match_request(title="Entry to update", body="Original body")
+        )
+
+        service.update_entry(
+            uid,
+            create_resp.entry_id,
+            UpdateJournalEntryRequest(
+                tags=["important", "tournament"],
+                body="Updated body text",
+            ),
+        )
+
+        doc = get_entry_doc(db, uid, create_resp.entry_id)
+        assert doc["tags"] == ["important", "tournament"]
+        assert doc["body"] == "Updated body text"
+
+    def test_update_not_found_raises_value_error(self, db):
+        """Updating a non-existent entry raises ValueError."""
+        uid = "alice_update_missing"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        with pytest.raises(ValueError, match="not found"):
+            service.update_entry(
+                uid, "nonexistent_id", UpdateJournalEntryRequest(tags=["x"])
+            )
+
+
+# ---------------------------------------------------------------------------
+# IT-01-4: List entries → verify pagination
+# ---------------------------------------------------------------------------
+
+
+class TestListEntriesPagination:
+    def test_list_entries_returns_all_without_cursor(self, db):
+        """Listing without a cursor returns the most recent entries up to limit."""
+        uid = "alice_list_no_cursor"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        for i in range(5):
+            service.create_entry(uid, make_match_request(title=f"Match {i}"))
+
+        entries = service.list_entries(uid, limit=10)
+        assert len(entries) == 5
+
+    def test_list_entries_respects_limit(self, db):
+        """limit parameter restricts the number of entries returned."""
+        uid = "alice_list_limit"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        for i in range(5):
+            service.create_entry(uid, make_match_request(title=f"Match {i}"))
+
+        page = service.list_entries(uid, limit=2)
+        assert len(page) == 2
+
+    def test_cursor_advances_to_next_page(self, db):
+        """Cursor returned from page 1 fetches a non-overlapping page 2."""
+        uid = "alice_list_cursor"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        for i in range(5):
+            service.create_entry(uid, make_match_request(title=f"Match {i}"))
+
+        page1 = service.list_entries(uid, limit=2)
+        assert len(page1) == 2
+
+        cursor = {"createdAt": page1[-1].created_at, "entryId": page1[-1].entry_id}
+        page2 = service.list_entries(uid, limit=2, cursor=cursor)
+        assert len(page2) >= 1
+
+        # No overlap between pages
+        page1_ids = {e.entry_id for e in page1}
+        page2_ids = {e.entry_id for e in page2}
+        assert page1_ids.isdisjoint(page2_ids)
+
+    def test_list_empty_for_new_user(self, db):
+        """User with no entries gets an empty list."""
+        uid = "alice_list_empty"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        entries = service.list_entries(uid, limit=10)
+        assert entries == []
+
+
+# ---------------------------------------------------------------------------
+# IT-01-5: Cache consistency — journalRecent capped at 10
+# ---------------------------------------------------------------------------
+
+
+class TestJournalRecentCacheCap:
+    def test_journal_recent_capped_at_10_after_12_creates(self, db):
+        """Creating 12 entries results in exactly 10 summaries in journalRecent."""
+        uid = "alice_cap_12"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        for i in range(12):
+            service.create_entry(uid, make_match_request(title=f"Match {i}"))
+
+        user = get_user_doc(db, uid)
+        recent = user.get("journalRecent", [])
+        assert len(recent) == 10
+
+    def test_journal_recent_contains_most_recent_entries(self, db):
+        """After 12 creates, journalRecent holds the most-recent 10 entry IDs."""
+        uid = "alice_cap_most_recent"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        all_ids = []
+        for i in range(12):
+            resp = service.create_entry(uid, make_match_request(title=f"Match {i}"))
+            all_ids.append(resp.entry_id)
+
+        # The last 10 created are the most recent
+        expected_ids = set(all_ids[-10:])
+
+        user = get_user_doc(db, uid)
+        cached_ids = {s["entryId"] for s in user.get("journalRecent", [])}
+        assert cached_ids == expected_ids
+
+    def test_journal_recent_exactly_10_is_not_truncated(self, db):
+        """Exactly 10 entries: cache stays at 10, no truncation."""
+        uid = "alice_cap_exactly_10"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        for i in range(10):
+            service.create_entry(uid, make_match_request(title=f"Match {i}"))
+
+        user = get_user_doc(db, uid)
+        recent = user.get("journalRecent", [])
+        assert len(recent) == 10
+
+
+# ---------------------------------------------------------------------------
+# IT-01-6: North Star goal persistence
+# ---------------------------------------------------------------------------
+
+
+class TestNorthStarGoal:
+    def test_set_north_star_written_to_user_doc(self, db):
+        """set_north_star writes northStarGoal to the user document."""
+        uid = "alice_north_star"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        result = service.set_north_star(uid, "Win 10 matches this month")
+
+        assert result.goal_text == "Win 10 matches this month"
+        assert result.progress_pct == 0.0
+
+        user = get_user_doc(db, uid)
+        goal = user.get("northStarGoal", {})
+        assert goal["goalText"] == "Win 10 matches this month"
+        assert goal["progressPct"] == 0.0
+        assert "createdAt" in goal
+
+    def test_get_north_star_reads_from_user_doc(self, db):
+        """get_north_star returns the goal that was previously set."""
+        uid = "alice_get_north_star"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        service.set_north_star(uid, "Reduce double faults")
+        result = service.get_north_star(uid)
+
+        assert result is not None
+        assert result.goal_text == "Reduce double faults"
+
+    def test_set_north_star_overwrites_previous_goal(self, db):
+        """Setting a new goal replaces the previous one."""
+        uid = "alice_overwrite_goal"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        service.set_north_star(uid, "First goal")
+        service.set_north_star(uid, "New goal")
+
+        result = service.get_north_star(uid)
+        assert result.goal_text == "New goal"
