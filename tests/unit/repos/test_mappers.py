@@ -272,6 +272,7 @@ class TestToJournalEntry:
                 "opponentWeak": ["backhand"],
                 "opponentStrong": ["serve"],
                 "aiSummary": None,
+                "reflectionVersion": "v1",
             }
         )
 
@@ -283,6 +284,7 @@ class TestToJournalEntry:
         assert entry.reflection.opponent_weak == ["backhand"]
         assert entry.reflection.opponent_strong == ["serve"]
         assert entry.reflection.ai_summary is None
+        assert entry.reflection.reflection_version == "v1"
 
     def test_backward_compat_missing_new_fields(self):
         """Old doc without new fields deserialises with correct defaults."""
@@ -296,6 +298,9 @@ class TestToJournalEntry:
         assert entry.duration_minutes is None
         assert entry.score_text is None
         assert entry.result is None
+        assert entry.client_request_id is None
+        assert entry.is_deleted is False
+        assert entry.deleted_at is None
 
     def test_maps_result_and_score_text(self):
         """result and scoreText are parsed correctly."""
@@ -357,9 +362,13 @@ class TestJournalEntryToFirestoreDoc:
             reflection=MatchReflection(
                 went_well=["serve"],
                 went_wrong=["footwork"],
+                reflection_version="v1",
             ),
             score_text=None,
             result=None,
+            client_request_id="req_123",
+            is_deleted=False,
+            deleted_at=None,
         )
 
         doc = journal_entry_to_firestore_doc(entry)
@@ -373,9 +382,13 @@ class TestJournalEntryToFirestoreDoc:
             "opponentWeak": [],
             "opponentStrong": [],
             "aiSummary": None,
+            "reflectionVersion": "v1",
         }
         assert doc["scoreText"] is None
         assert doc["result"] is None
+        assert doc["clientRequestId"] == "req_123"
+        assert doc["isDeleted"] is False
+        assert doc["deletedAt"] is None
         # Legacy fields still present
         assert doc["title"] == "Training day"
         assert doc["visibility"] == "private"

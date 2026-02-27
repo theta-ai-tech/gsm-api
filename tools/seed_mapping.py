@@ -196,6 +196,7 @@ def _match_reflection_to_dict(reflection: MatchReflection | None) -> Dict[str, A
         "opponentWeak": reflection.opponent_weak,
         "opponentStrong": reflection.opponent_strong,
         "aiSummary": reflection.ai_summary,
+        "reflectionVersion": reflection.reflection_version,
     }
 
 
@@ -214,4 +215,7 @@ def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
         "reflection": _match_reflection_to_dict(entry.reflection),
         "scoreText": entry.score_text,
         "result": entry.result.value if entry.result else None,
+        "clientRequestId": entry.client_request_id,
+        "isDeleted": entry.is_deleted,
+        "deletedAt": entry.deleted_at,
     }

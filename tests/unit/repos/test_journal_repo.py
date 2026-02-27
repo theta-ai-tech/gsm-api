@@ -155,6 +155,23 @@ class TestJournalRepoGetEntry:
 
         assert entry is None
 
+    def test_returns_none_for_soft_deleted_doc_by_default(
+        self, repo, mock_client, sample_entry_doc
+    ):
+        """Soft-deleted docs are hidden unless include_deleted=True."""
+        doc_data = {**sample_entry_doc, "isDeleted": True}
+        mock_doc_ref = Mock()
+        mock_doc_ref.exists = True
+        mock_doc_ref.id = "entry_deleted"
+        mock_doc_ref.to_dict.return_value = doc_data
+        mock_doc_ref.get.return_value = mock_doc_ref
+        _subcollection(mock_client).document.return_value = mock_doc_ref
+
+        assert repo.get_entry("user123", "entry_deleted") is None
+        assert (
+            repo.get_entry("user123", "entry_deleted", include_deleted=True) is not None
+        )
+
 
 # ── list_entries ──────────────────────────────────────────────────────────────
 
@@ -194,6 +211,9 @@ class TestJournalRepoListEntries:
         # _apply_cursor looks up the doc_ref for the cursor position;
         # wire a separate mock for that path.
         mock_cursor_doc_ref = Mock()
+        mock_cursor_snap = Mock()
+        mock_cursor_snap.exists = True
+        mock_cursor_doc_ref.get.return_value = mock_cursor_snap
         # The cursor call is: client.collection("users").document(uid)
         #   .collection("journalEntries").document(entry_id)
         # Our _make_query_mock already set .collection.return_value = mock_q,
@@ -203,4 +223,24 @@ class TestJournalRepoListEntries:
 
         repo.list_entries("user123", cursor=cursor)
 
-        mock_q.start_after.assert_called_once_with(NOW, mock_cursor_doc_ref)
+        mock_q.start_after.assert_called_once_with(mock_cursor_snap)
+
+    def test_excludes_soft_deleted_entries_by_default(
+        self, repo, mock_client, sample_entry_doc
+    ):
+        """list_entries excludes isDeleted=true docs unless include_deleted=True."""
+        active_doc = Mock()
+        active_doc.id = "active"
+        active_doc.to_dict.return_value = sample_entry_doc
+
+        deleted_doc = Mock()
+        deleted_doc.id = "deleted"
+        deleted_doc.to_dict.return_value = {**sample_entry_doc, "isDeleted": True}
+
+        self._make_query_mock(mock_client, [active_doc, deleted_doc])
+
+        entries = repo.list_entries("user123")
+        assert [e.entry_id for e in entries] == ["active"]
+
+        entries_with_deleted = repo.list_entries("user123", include_deleted=True)
+        assert {e.entry_id for e in entries_with_deleted} == {"active", "deleted"}

@@ -10,7 +10,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
+from pydantic import Field
 
+from app.constants import (
+    JOURNAL_LIST_DEFAULT_LIMIT,
+    JOURNAL_LIST_MAX_LIMIT,
+    NORTH_STAR_GOAL_MAX,
+)
 from app.dependencies.repos import (
     get_firestore_client,
     get_journal_repo,
@@ -18,8 +24,8 @@ from app.dependencies.repos import (
     get_users_repo,
 )
 from app.deps import get_current_user
-from pydantic import Field
 from app.models.base import GsmBaseModel
+from app.models.enums import JournalEntryTypeEnum, SportEnum
 from app.models.journal import (
     CreateJournalEntryRequest,
     CreateJournalEntryResponse,
@@ -31,9 +37,22 @@ from app.repos.journal_repo import JournalRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
-from app.services.journal_service import JournalService
+from app.services.journal_service import (
+    JournalEntryNotFoundError,
+    JournalInvalidCursorError,
+    JournalRateLimitError,
+    JournalService,
+    UnsupportedJournalFilterError,
+)
 
 router = APIRouter(prefix="/me", tags=["improve"])
+
+# ===== Common response descriptions =====
+
+_401 = {"description": "Missing or invalid Firebase ID token"}
+_404_entry = {"description": "Journal entry not found"}
+_404_user = {"description": "User not found"}
+_422 = {"description": "Validation error — see `details` array in response body"}
 
 
 # ===== Dependency =====
@@ -83,17 +102,28 @@ class JournalUpdateResponse(GsmBaseModel):
 
 
 class SetNorthStarRequest(GsmBaseModel):
-    goal_text: str = Field(max_length=500)
+    goal_text: str = Field(max_length=NORTH_STAR_GOAL_MAX)
     target_date: datetime | None = None
 
 
 # ===== GET /me/journal =====
 
 
-@router.get("/journal", response_model=JournalListResponse)
+@router.get(
+    "/journal",
+    response_model=JournalListResponse,
+    summary="List journal entries",
+    responses={
+        400: {"description": "Invalid cursor token or unsupported filter"},
+        401: _401,
+    },
+)
 def list_journal_entries(
-    limit: int = Query(default=20, ge=1, le=50),
+    limit: int = Query(default=JOURNAL_LIST_DEFAULT_LIMIT, ge=1, le=JOURNAL_LIST_MAX_LIMIT),
     cursor: str | None = Query(default=None),
+    entry_type: JournalEntryTypeEnum | None = Query(default=None),
+    sport: SportEnum | None = Query(default=None),
+    tag: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     journal_service: JournalService = Depends(get_journal_service),
 ):
@@ -105,7 +135,17 @@ def list_journal_entries(
     Returns an empty list for users with no entries.
     """
     parsed_cursor = _decode_cursor(cursor)
-    entries = journal_service.list_entries(current_user.uid, limit=limit, cursor=parsed_cursor)
+    try:
+        entries = journal_service.list_entries(
+            current_user.uid,
+            limit=limit,
+            cursor=parsed_cursor,
+            entry_type=entry_type.value if entry_type else None,
+            sport=sport.value if sport else None,
+            tag=tag,
+        )
+    except (JournalInvalidCursorError, UnsupportedJournalFilterError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     next_cursor = _encode_cursor(entries[-1]) if len(entries) == limit else None
     return JournalListResponse(entries=entries, next_cursor=next_cursor)
 
@@ -114,7 +154,17 @@ def list_journal_entries(
 
 
 @router.post(
-    "/journal", response_model=CreateJournalEntryResponse, status_code=status.HTTP_201_CREATED
+    "/journal",
+    response_model=CreateJournalEntryResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a journal entry",
+    responses={
+        401: _401,
+        404: _404_user,
+        409: {"description": "Business rule conflict (e.g. duplicate match entry)"},
+        429: {"description": "Rate limit exceeded"},
+        422: _422,
+    },
 )
 def create_journal_entry(
     request: CreateJournalEntryRequest,
@@ -130,6 +180,8 @@ def create_journal_entry(
     """
     try:
         return journal_service.create_entry(current_user.uid, request)
+    except JournalRateLimitError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg:
@@ -140,7 +192,16 @@ def create_journal_entry(
 # ===== PATCH /me/journal/{entry_id} =====
 
 
-@router.patch("/journal/{entry_id}", response_model=JournalUpdateResponse)
+@router.patch(
+    "/journal/{entry_id}",
+    response_model=JournalUpdateResponse,
+    summary="Update a journal entry",
+    responses={
+        401: _401,
+        404: _404_entry,
+        409: {"description": "Update rejected due to a business rule conflict"},
+    },
+)
 def update_journal_entry(
     entry_id: str,
     request: UpdateJournalEntryRequest,
@@ -151,25 +212,29 @@ def update_journal_entry(
     Enrich an existing journal entry with reflection data (tags, body, skill tags).
 
     Only fields set in the request body are written; unset fields are left
-    unchanged. Returns 404 if the entry does not exist, 403 if it belongs
-    to a different user.
+    unchanged. Returns 404 if the entry does not exist.
     """
     try:
         journal_service.update_entry(current_user.uid, entry_id, request)
         return JournalUpdateResponse(entry_id=entry_id)
+    except JournalEntryNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except ValueError as e:
-        error_msg = str(e)
-        if "not found" in error_msg:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
-        if "does not belong" in error_msg:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=error_msg)
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 # ===== GET /me/stats =====
 
 
-@router.get("/stats", response_model=UserStats)
+@router.get(
+    "/stats",
+    response_model=UserStats,
+    summary="Get dashboard statistics",
+    responses={
+        401: _401,
+        404: _404_user,
+    },
+)
 def get_dashboard_stats(
     current_user: CurrentUser = Depends(get_current_user),
     journal_service: JournalService = Depends(get_journal_service),
@@ -190,7 +255,15 @@ def get_dashboard_stats(
 # ===== GET /me/journal/{entry_id} =====
 
 
-@router.get("/journal/{entry_id}", response_model=JournalEntry)
+@router.get(
+    "/journal/{entry_id}",
+    response_model=JournalEntry,
+    summary="Get a journal entry",
+    responses={
+        401: _401,
+        404: _404_entry,
+    },
+)
 def get_journal_entry(
     entry_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -199,10 +272,8 @@ def get_journal_entry(
     """
     Fetch a single journal entry for the authenticated user.
 
-    Returns 404 if the entry does not exist or belongs to a different user.
-    Ownership is implicitly enforced by the Firestore subcollection path
-    (users/{uid}/journalEntries/{entry_id}), so no explicit 403 is needed —
-    another user's entry is simply not found under the caller's path.
+    Returns 404 if the entry does not exist. Cross-user IDs are invisible
+    under the user-scoped subcollection path.
     """
     entry = journal_service.get_entry(current_user.uid, entry_id)
     if entry is None:
@@ -213,10 +284,42 @@ def get_journal_entry(
     return entry
 
 
+# ===== DELETE /me/journal/{entry_id} =====
+
+
+@router.delete(
+    "/journal/{entry_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete a journal entry",
+    responses={
+        401: _401,
+        404: _404_entry,
+    },
+)
+def delete_journal_entry(
+    entry_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    journal_service: JournalService = Depends(get_journal_service),
+):
+    """Soft-delete a journal entry and remove its summary from journalRecent."""
+    try:
+        journal_service.delete_entry(current_user.uid, entry_id)
+    except JournalEntryNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
 # ===== PUT /me/north-star =====
 
 
-@router.put("/north-star", response_model=NorthStarGoal)
+@router.put(
+    "/north-star",
+    response_model=NorthStarGoal,
+    summary="Set North Star goal",
+    responses={
+        401: _401,
+        404: _404_user,
+    },
+)
 def set_north_star(
     request: SetNorthStarRequest,
     current_user: CurrentUser = Depends(get_current_user),
