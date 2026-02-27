@@ -14,4 +14,13 @@ Steps:
 
 Notes:
 - The seed script is designed **only** for the emulator.
-- It checks `FIRESTORE_EMULATOR_HOST` and refuses to run unless it points to localhost.***
+- It checks `FIRESTORE_EMULATOR_HOST` and refuses to run unless it points to localhost.
+
+## Journal field backfill
+
+Backfill missing fields on `users/{uid}/journalEntries/*`:
+
+```bash
+python -m tools.migrate_journal_fields --env emu --dry-run
+python -m tools.migrate_journal_fields --env emu --uid user_ignatios
+```

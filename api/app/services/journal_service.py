@@ -11,11 +11,17 @@ Handles:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
+from app.constants import (
+    JOURNAL_CREATE_RATE_LIMIT_PER_HOUR,
+    JOURNAL_LIST_DEFAULT_LIMIT,
+    JOURNAL_RECENT_MAX,
+)
+from app.logging import log_analytics_event
 from app.models.enums import JournalEntryTypeEnum
 from app.models.journal import (
     CreateJournalEntryRequest,
@@ -33,7 +39,21 @@ from app.repos.users_repo import UsersRepo
 
 logger = logging.getLogger(__name__)
 
-_JOURNAL_RECENT_MAX = 10
+
+class JournalRateLimitError(ValueError):
+    """Raised when the per-user journal create rate limit is exceeded."""
+
+
+class UnsupportedJournalFilterError(ValueError):
+    """Raised when journal list filters are requested but not implemented yet."""
+
+
+class JournalEntryNotFoundError(ValueError):
+    """Raised when a requested journal entry does not exist."""
+
+
+class JournalInvalidCursorError(ValueError):
+    """Raised when a list cursor is invalid for the current user."""
 
 
 def _reflection_to_dict(reflection: MatchReflection | None) -> dict | None:
@@ -46,6 +66,7 @@ def _reflection_to_dict(reflection: MatchReflection | None) -> dict | None:
         "opponentWeak": reflection.opponent_weak,
         "opponentStrong": reflection.opponent_strong,
         "aiSummary": reflection.ai_summary,
+        "reflectionVersion": reflection.reflection_version,
     }
 
 
@@ -84,6 +105,23 @@ class JournalService:
         user_doc = self.users_repo.get_user_doc(uid)
         if not user_doc:
             raise ValueError("User not found")
+
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        recent_count = self.journal_repo.count_entries_since(uid, one_hour_ago)
+        if recent_count >= JOURNAL_CREATE_RATE_LIMIT_PER_HOUR:
+            raise JournalRateLimitError(
+                f"Rate limit exceeded: max {JOURNAL_CREATE_RATE_LIMIT_PER_HOUR} entries per hour"
+            )
+
+        if request.client_request_id:
+            existing = self.journal_repo.get_entry_by_client_request_id(
+                uid, request.client_request_id
+            )
+            if existing is not None:
+                return CreateJournalEntryResponse(
+                    entry_id=existing.entry_id,
+                    created_at=existing.created_at,
+                )
 
         now = datetime.now(timezone.utc)
 
@@ -126,6 +164,9 @@ class JournalService:
             "reflection": None,
             "scoreText": score_text,
             "result": result.value if result else None,
+            "clientRequestId": request.client_request_id,
+            "isDeleted": False,
+            "deletedAt": None,
         }
 
         # Pre-allocate the DocumentReference so we have the entry ID before
@@ -155,12 +196,21 @@ class JournalService:
             current_recent = (snap.to_dict() or {}).get("journalRecent", []) or []
 
             updated_recent = [new_summary] + current_recent
-            updated_recent = updated_recent[:_JOURNAL_RECENT_MAX]
+            updated_recent = updated_recent[:JOURNAL_RECENT_MAX]
 
             txn.set(entry_ref, entry_data)
             txn.update(user_ref, {"journalRecent": updated_recent})
 
         _create_txn(transaction)
+
+        log_analytics_event(
+            logger,
+            event="journal_created",
+            uid=uid,
+            entry_type=request.entry_type.value,
+            sport=request.sport.value if request.sport else None,
+            match_id=request.match_id,
+        )
 
         return CreateJournalEntryResponse(entry_id=entry_id, created_at=now)
 
@@ -175,10 +225,7 @@ class JournalService:
         """
         entry = self.journal_repo.get_entry(uid, entry_id)
         if entry is None:
-            raise ValueError(f"Journal entry {entry_id!r} not found")
-
-        if entry.uid != uid:
-            raise ValueError("Entry does not belong to this user")
+            raise JournalEntryNotFoundError(f"Journal entry {entry_id!r} not found")
 
         updates: dict = {}
 
@@ -195,6 +242,14 @@ class JournalService:
             return
 
         self.journal_repo.update_entry(uid, entry_id, updates)
+        log_analytics_event(
+            logger,
+            event="journal_updated",
+            uid=uid,
+            entry_type=entry.entry_type.value,
+            sport=entry.sport.value if entry.sport else None,
+            match_id=entry.match_id,
+        )
 
     # ===== GET /me/journal =====
 
@@ -202,16 +257,31 @@ class JournalService:
         """
         Fetch a single journal entry owned by uid.
 
-        Returns None if the entry does not exist or belongs to a different user.
-        Ownership is enforced implicitly by the subcollection path
-        (users/{uid}/journalEntries/{entry_id}).
+        Returns None if the entry does not exist under the user's
+        subcollection path (users/{uid}/journalEntries/{entry_id}).
+        Cross-user IDs are invisible — they simply return None (→ 404).
         """
         return self.journal_repo.get_entry(uid, entry_id)
 
     def list_entries(
-        self, uid: str, limit: int = 20, cursor: Optional[dict] = None
+        self,
+        uid: str,
+        limit: int = JOURNAL_LIST_DEFAULT_LIMIT,
+        cursor: Optional[dict] = None,
+        entry_type: str | None = None,
+        sport: str | None = None,
+        tag: str | None = None,
     ) -> list[JournalEntry]:
-        """List journal entries for a user. Thin delegation to JournalRepo."""
+        """List journal entries for a user."""
+        if entry_type or sport or tag:
+            # API contract supports these params; Firestore-level filtering is deferred.
+            raise UnsupportedJournalFilterError("filter not supported yet")
+
+        cursor_entry_id = (cursor or {}).get("entryId")
+        if cursor_entry_id:
+            cursor_entry = self.journal_repo.get_entry(uid, str(cursor_entry_id))
+            if cursor_entry is None:
+                raise JournalInvalidCursorError("Invalid cursor")
         return self.journal_repo.list_entries(uid, limit=limit, cursor=cursor)
 
     # ===== GET /me/improve/stats =====
@@ -230,7 +300,36 @@ class JournalService:
         if profile is None:
             raise ValueError("User not found")
 
+        log_analytics_event(
+            logger,
+            event="stats_read",
+            uid=uid,
+        )
         return self.stats_repo.compute_user_stats(profile)
+
+    def delete_entry(self, uid: str, entry_id: str) -> None:
+        """Soft-delete a journal entry and remove it from journalRecent cache."""
+        entry = self.journal_repo.get_entry(uid, entry_id, include_deleted=True)
+        if entry is None:
+            raise JournalEntryNotFoundError(f"Journal entry {entry_id!r} not found")
+        if entry.is_deleted:
+            return
+
+        now = datetime.now(timezone.utc)
+        user_ref = self.client.collection("users").document(uid)
+        entry_ref = user_ref.collection("journalEntries").document(entry_id)
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _delete_txn(txn):
+            snap = user_ref.get(transaction=txn)
+            current_recent = (snap.to_dict() or {}).get("journalRecent", []) or []
+            updated_recent = [s for s in current_recent if s.get("entryId") != entry_id]
+
+            txn.update(entry_ref, {"isDeleted": True, "deletedAt": now})
+            txn.update(user_ref, {"journalRecent": updated_recent})
+
+        _delete_txn(transaction)
 
     # ===== PUT /me/improve/north-star =====
 

@@ -91,7 +91,7 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 - `leaguesCompleted[]`: `{leagueId, name, sport, status, role}` (cache, cap <= 20)
 - `upcomingMatches[]`: `{matchId, sport, scheduledAt, leagueId?, courtId?, opponents[]}` (cache, cap <= 10)
 - `completedMatches[]`: `{matchId, sport, finishedAt, result?, scoreText?, leagueId?}` (cache, cap <= 10)
-- `journalRecent[]`: `{entryId, createdAt, title, matchId?, sport?}` (cache, cap <= 10)
+- `journalRecent[]`: `{entryId, createdAt, title, matchId?, sport?, entryType?}` (cache, cap <= 10)
 - `cursors`: `{upcomingMatches?, completedMatches?, journal?}` (cache; last-seen pagination cursors)
 
 ### Fields: users/{uid}
@@ -153,6 +153,16 @@ Ordering: `createdAt` DESC with cursor-based pagination using `startAfter`.
 | matchId | string | optional | — | canonical | — | Optional match reference. |
 | sport | string | optional | sport | canonical | — | Optional sport enum. |
 | visibility | string | required | journalVisibility | canonical | — | Access scope. |
+| entryType | string | required | match/training | canonical | — | Entry mode (`match` or `training`). |
+| durationMinutes | number | optional | — | canonical | — | Required when `entryType=training`. |
+| trainingFocus | array<string> | optional | training focus tags | canonical | — | Training focus pills. |
+| reflection | map | optional | — | canonical | — | Post-match reflection payload. |
+| reflection.reflectionVersion | string | optional | — | canonical | — | Tag taxonomy version (e.g. `v1`). |
+| scoreText | string | optional | — | canonical | — | Denormalised match score text. |
+| result | string | optional | W/L/D | canonical | — | Denormalised result from match. |
+| clientRequestId | string | optional | — | canonical | — | Client idempotency key (scoped by uid). |
+| isDeleted | boolean | required | — | canonical | — | Soft-delete marker (default `false`). |
+| deletedAt | timestamp | optional | — | canonical | — | Soft-delete timestamp. |
 
 ## Field Table Template
 | Field | Type | Required | Enum | Canonical|Cache | Index | Notes |

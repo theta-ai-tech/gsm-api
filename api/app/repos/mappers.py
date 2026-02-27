@@ -146,6 +146,7 @@ def _parse_match_reflection(data: dict[str, Any] | None) -> Optional[MatchReflec
         opponent_weak=data.get("opponentWeak", []),
         opponent_strong=data.get("opponentStrong", []),
         ai_summary=data.get("aiSummary"),
+        reflection_version=data.get("reflectionVersion"),
     )
 
 
@@ -312,6 +313,9 @@ def to_journal_entry(
         reflection=_parse_match_reflection(doc.get("reflection")),
         score_text=doc.get("scoreText"),
         result=MatchResultEnum(result) if result else None,
+        client_request_id=doc.get("clientRequestId"),
+        is_deleted=bool(doc.get("isDeleted", False)),
+        deleted_at=doc.get("deletedAt"),
     )
 
 

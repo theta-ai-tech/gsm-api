@@ -34,10 +34,9 @@ FS_BASE="http://${FS_EMU}/v1/projects/${PROJECT_ID}/databases/(default)/document
 AUTH_BASE="http://${AUTH_EMU}/identitytoolkit.googleapis.com/v1"
 FAKE_API_KEY="fake-api-key"
 
-# Current API behavior (cross-user journal access resolves as not found).
-# You can override if/when API semantics change.
-EXPECT_CROSS_USER_PATCH="${EXPECT_CROSS_USER_PATCH:-404}"
-EXPECT_CROSS_USER_GET="${EXPECT_CROSS_USER_GET:-404}"
+# Cross-user ownership checks should return forbidden.
+EXPECT_CROSS_USER_PATCH="${EXPECT_CROSS_USER_PATCH:-403}"
+EXPECT_CROSS_USER_GET="${EXPECT_CROSS_USER_GET:-403}"
 
 RUN_ID=$(date +%s)
 

@@ -19,7 +19,13 @@ from app.models.journal import (
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.routers.improve import get_journal_service
 from app.security import CurrentUser
-from app.services.journal_service import JournalService
+from app.services.journal_service import (
+    JournalEntryNotFoundError,
+    JournalRateLimitError,
+    JournalService,
+    UnsupportedJournalFilterError,
+)
+from app.constants import NORTH_STAR_GOAL_MAX
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +132,9 @@ class TestListJournalEntries:
             "test_user",
             limit=2,
             cursor=None,
+            entry_type=None,
+            sport=None,
+            tag=None,
         )
 
     def test_list_entries_with_cursor_decodes_and_passes_to_service(
@@ -142,6 +151,18 @@ class TestListJournalEntries:
         called_cursor = mock_journal_service.list_entries.call_args.kwargs["cursor"]
         assert called_cursor["entryId"] == "e9"
         assert called_cursor["createdAt"] == created_at
+
+    def test_list_entries_unsupported_filter_returns_400(
+        self, client, mock_journal_service
+    ):
+        """Unsupported future filter params return 400 with a clear message."""
+        mock_journal_service.list_entries.side_effect = UnsupportedJournalFilterError(
+            "filter not supported yet"
+        )
+
+        response = client.get("/me/journal?entry_type=match")
+
+        assert response.status_code == 400
 
     def test_list_entries_invalid_cursor_returns_400(
         self, client, mock_journal_service
@@ -266,6 +287,20 @@ class TestCreateJournalEntry:
 
         assert response.status_code == 409
 
+    def test_create_entry_rate_limited_maps_to_429(self, client, mock_journal_service):
+        """Rate-limit errors map to HTTP 429."""
+        mock_journal_service.create_entry.side_effect = JournalRateLimitError(
+            "Rate limit exceeded"
+        )
+
+        payload = {
+            "entry_type": "match",
+            "title": "My match",
+        }
+        response = client.post("/me/journal", json=payload)
+
+        assert response.status_code == 429
+
 
 # ---------------------------------------------------------------------------
 # PATCH /me/journal/{entry_id}
@@ -292,23 +327,13 @@ class TestUpdateJournalEntry:
 
     def test_update_entry_not_found_returns_404(self, client, mock_journal_service):
         """Service raises ValueError('not found') → 404."""
-        mock_journal_service.update_entry.side_effect = ValueError(
+        mock_journal_service.update_entry.side_effect = JournalEntryNotFoundError(
             "Journal entry 'missing' not found"
         )
 
         response = client.patch("/me/journal/missing", json={"tags": ["x"]})
 
         assert response.status_code == 404
-
-    def test_update_entry_wrong_owner_returns_403(self, client, mock_journal_service):
-        """Service raises ownership error mapped to 403."""
-        mock_journal_service.update_entry.side_effect = ValueError(
-            "Entry does not belong to this user"
-        )
-
-        response = client.patch("/me/journal/e1", json={"tags": ["x"]})
-
-        assert response.status_code == 403
 
     def test_update_entry_conflict_returns_409(self, client, mock_journal_service):
         """Other service ValueError cases map to 409."""
@@ -389,6 +414,17 @@ class TestSetNorthStar:
 
         assert response.status_code == 404
 
+    def test_set_north_star_goal_text_too_long_returns_422(
+        self, client, mock_journal_service
+    ):
+        """Goal text max length is enforced by request model constants."""
+        response = client.put(
+            "/me/north-star", json={"goal_text": "x" * (NORTH_STAR_GOAL_MAX + 1)}
+        )
+
+        assert response.status_code == 422
+        mock_journal_service.set_north_star.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # GET /me/journal/{entry_id}
@@ -408,9 +444,33 @@ class TestGetJournalEntry:
         mock_journal_service.get_entry.assert_called_once_with("test_user", "e1")
 
     def test_get_entry_not_found_returns_404(self, client, mock_journal_service):
-        """Returns 404 when service returns None (entry not found or wrong user)."""
+        """Returns 404 when service returns None for a missing entry."""
         mock_journal_service.get_entry.return_value = None
 
         response = client.get("/me/journal/missing")
+
+        assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /me/journal/{entry_id}
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteJournalEntry:
+    def test_delete_entry_returns_204(self, client, mock_journal_service):
+        """Existing entry can be soft-deleted."""
+        response = client.delete("/me/journal/e1")
+
+        assert response.status_code == 204
+        mock_journal_service.delete_entry.assert_called_once_with("test_user", "e1")
+
+    def test_delete_entry_not_found_returns_404(self, client, mock_journal_service):
+        """Missing entry maps to 404."""
+        mock_journal_service.delete_entry.side_effect = JournalEntryNotFoundError(
+            "Journal entry 'missing' not found"
+        )
+
+        response = client.delete("/me/journal/missing")
 
         assert response.status_code == 404

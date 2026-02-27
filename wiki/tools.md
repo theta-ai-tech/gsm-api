@@ -14,6 +14,7 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 | `make check-queries-emu` / `python -m tools.check_queries` | Verify repo query contracts on emulator | Manual (and can be CI-added later) | Local terminal |
 | `python -m tools.rebuild_caches ...` | Rebuild user cache fields from canonical data | Manual (repair/backfill) | Local terminal |
 | `python -m tools.check_cache_integrity ...` | Read-only cache invariant checker | Manual (verification/guardrail) | Local terminal |
+| `python -m tools.migrate_journal_fields ...` | Backfill missing journal fields in `journalEntries` docs | Manual (one-off migration) | Local terminal |
 | `./scripts/deploy_functions.sh ...` / `make deploy-functions` | Deploy Firebase Functions + run smoke | Manual | Local terminal |
 | `./scripts/rollback_functions.sh ...` | Roll back Functions to known-good revision | Manual | Local terminal |
 | `./scripts/smoke_triggers.sh --env emu|dev ...` | Smoke test trigger cache behavior | Manual (also auto after deploy script) | Local terminal |
@@ -56,6 +57,16 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 - **When:** before/after deploys, after cache rebuilds, or during incident triage.
 - **Trigger:** manual local.
 - **Behavior:** read-only; exits non-zero on violations.
+- **Coverage:** upcoming/completed match caches, league summary references, and `journalRecent` invariants (cap/duplicates/existence/not-deleted).
+
+### 3c) Journal field migration tool (EX06)
+- **Command (dry-run):**
+  - `python -m tools.migrate_journal_fields --env emu --dry-run`
+- **Command (single user apply):**
+  - `python -m tools.migrate_journal_fields --env emu --uid <uid>`
+- **When:** legacy journal documents are missing newer fields (`entryType`, `trainingFocus`, soft-delete flags, etc.).
+- **Trigger:** manual local.
+- **Safety:** run `--dry-run` first; writes are batched and deterministic (stable user/doc ordering).
 
 ### 4) Functions deploy
 - **Command:** `make deploy-functions` or `./scripts/deploy_functions.sh --project <id>`

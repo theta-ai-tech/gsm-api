@@ -21,7 +21,7 @@ from app.models.journal import (
 from app.repos.journal_repo import JournalRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.users_repo import UsersRepo
-from app.services.journal_service import JournalService
+from app.services.journal_service import JournalInvalidCursorError, JournalService
 
 pytestmark = [pytest.mark.integration]
 
@@ -440,3 +440,116 @@ class TestNorthStarGoal:
 
         result = service.get_north_star(uid)
         assert result.goal_text == "New goal"
+
+
+# ---------------------------------------------------------------------------
+# EX-01/02/03 integration coverage
+# ---------------------------------------------------------------------------
+
+
+class TestOwnershipAndSoftDelete:
+    def test_cross_user_get_returns_none(self, db):
+        """Another user's entry is invisible (returns None → 404)."""
+        owner_uid = "owner_invisible"
+        other_uid = "other_invisible"
+        seed_user(db, owner_uid)
+        seed_user(db, other_uid)
+        service = make_journal_service(db)
+
+        create_resp = service.create_entry(
+            owner_uid, make_match_request(title="Owner entry")
+        )
+
+        # Cross-user get returns None (entry is scoped to owner's subcollection)
+        assert service.get_entry(other_uid, create_resp.entry_id) is None
+
+    def test_cross_user_update_returns_not_found(self, db):
+        """Updating another user's entry raises not-found."""
+        owner_uid = "owner_update_nf"
+        other_uid = "other_update_nf"
+        seed_user(db, owner_uid)
+        seed_user(db, other_uid)
+        service = make_journal_service(db)
+
+        create_resp = service.create_entry(
+            owner_uid, make_match_request(title="Owner entry")
+        )
+
+        with pytest.raises(ValueError, match="not found"):
+            service.update_entry(
+                other_uid,
+                create_resp.entry_id,
+                UpdateJournalEntryRequest(tags=["forbidden"]),
+            )
+
+    def test_cursor_referencing_other_users_entry_is_invalid(self, db):
+        """A forged cursor entry_id from another user is rejected as invalid."""
+        owner_uid = "owner_cursor_invalid"
+        other_uid = "other_cursor_invalid"
+        seed_user(db, owner_uid)
+        seed_user(db, other_uid)
+        service = make_journal_service(db)
+
+        created = service.create_entry(
+            owner_uid, make_match_request(title="Owner entry")
+        )
+        owner_entry = service.get_entry(owner_uid, created.entry_id)
+        assert owner_entry is not None
+
+        cursor = {"createdAt": owner_entry.created_at, "entryId": owner_entry.entry_id}
+        with pytest.raises(JournalInvalidCursorError, match="Invalid cursor"):
+            service.list_entries(other_uid, limit=2, cursor=cursor)
+
+    def test_soft_delete_hides_entry_but_keeps_document(self, db):
+        """Soft-deleted entries are hidden from reads/lists but remain in Firestore."""
+        uid = "soft_delete_user"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+        repo = JournalRepo(db)
+
+        created = service.create_entry(uid, make_match_request(title="Delete me"))
+        service.delete_entry(uid, created.entry_id)
+
+        # Hidden from normal reads
+        assert service.get_entry(uid, created.entry_id) is None
+        ids = {entry.entry_id for entry in service.list_entries(uid, limit=20)}
+        assert created.entry_id not in ids
+
+        # Still present canonically for recovery/audit
+        deleted_entry = repo.get_entry(uid, created.entry_id, include_deleted=True)
+        assert deleted_entry is not None
+        assert deleted_entry.is_deleted is True
+        assert deleted_entry.deleted_at is not None
+
+
+class TestIdempotentCreate:
+    def test_client_request_id_returns_existing_entry(self, db):
+        """Same client_request_id for same user returns existing entry id."""
+        uid = "idempotent_user"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        req = make_match_request(title="Idempotent", client_request_id="req-1")
+        first = service.create_entry(uid, req)
+        second = service.create_entry(uid, req)
+
+        assert first.entry_id == second.entry_id
+
+        docs = list(
+            db.collection("users").document(uid).collection("journalEntries").stream()
+        )
+        assert len(docs) == 1
+
+    def test_client_request_id_is_scoped_per_user(self, db):
+        """Different users can reuse same client_request_id without collisions."""
+        uid_a = "idempotent_user_a"
+        uid_b = "idempotent_user_b"
+        seed_user(db, uid_a)
+        seed_user(db, uid_b)
+        service = make_journal_service(db)
+
+        req = make_match_request(title="Scoped", client_request_id="same-id")
+        first = service.create_entry(uid_a, req)
+        second = service.create_entry(uid_b, req)
+
+        assert first.entry_id != second.entry_id

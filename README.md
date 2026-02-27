@@ -238,6 +238,7 @@ Notes:
 ## Responses & errors
 - All API responses, including errors, are JSON; no HTML error pages.
 - Statuses: 401 unauthorized (missing/invalid token), 403 forbidden (authz failure), 422 validation, 500 internal error (generic message, no stack trace).
+- Journal create endpoint `POST /me/journal` has a per-user spam guard (`JOURNAL_CREATE_RATE_LIMIT_PER_HOUR`, default `50` per rolling hour) and returns 429 when exceeded.
 - Each response includes `X-Request-Id` for correlation; pass your own header to propagate tracing.
 
 ## Environments & Credentials
@@ -314,7 +315,22 @@ python -m tools.check_cache_integrity --env emu --uid user_ignatios
 Notes:
 - Fails with non-zero exit code when violations are found.
 - Validates upcoming/completed cache references against canonical `matches` docs.
+- Validates `journalRecent` cap, duplicate entry IDs, and that referenced journal docs exist and are not soft-deleted.
 - Validates league summary references against canonical `leagues` docs.
+
+## Backfill journal fields (EX06)
+Use this migration tool to backfill missing journal fields (`entryType`, `trainingFocus`,
+`clientRequestId`, soft-delete fields, etc.) on existing documents.
+
+Dry-run on emulator:
+```bash
+python -m tools.migrate_journal_fields --env emu --dry-run
+```
+
+Apply for one user:
+```bash
+python -m tools.migrate_journal_fields --env emu --uid <uid>
+```
 
 ## Auth Tests
 - Regression tests cover the canonical protected route `GET /users/{uid}` for 401 (no/invalid token), 403 (wrong uid), and 200 (correct uid) to catch auth changes early.

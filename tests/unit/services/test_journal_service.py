@@ -26,7 +26,13 @@ from app.models.user import PrivateUserProfile
 from app.repos.journal_repo import JournalRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.users_repo import UsersRepo
-from app.services.journal_service import JournalService
+from app.services.journal_service import (
+    JournalEntryNotFoundError,
+    JournalInvalidCursorError,
+    JournalRateLimitError,
+    JournalService,
+    UnsupportedJournalFilterError,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +115,10 @@ def mock_users_repo():
 
 @pytest.fixture
 def mock_journal_repo():
-    return Mock(spec=JournalRepo)
+    repo = Mock(spec=JournalRepo)
+    repo.count_entries_since.return_value = 0
+    repo.get_entry_by_client_request_id.return_value = None
+    return repo
 
 
 @pytest.fixture
@@ -353,6 +362,76 @@ class TestCreateEntry:
         finally:
             svc_module.firestore.transactional = original
 
+    def test_create_entry_rate_limited_raises_error(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_journal_repo,
+    ):
+        """Create is rejected when the per-hour threshold is exceeded."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        mock_journal_repo.count_entries_since.return_value = 50
+
+        request = CreateJournalEntryRequest(
+            entry_type=JournalEntryTypeEnum.MATCH,
+            title="Rate-limited",
+        )
+
+        with pytest.raises(JournalRateLimitError, match="Rate limit exceeded"):
+            journal_service.create_entry("test_user", request)
+
+    def test_create_entry_with_client_request_id_returns_existing_entry(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_journal_repo,
+        mock_firestore_client,
+    ):
+        """Idempotency: existing clientRequestId returns existing entry and avoids writes."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        existing = _make_entry(entry_id="existing_1")
+        mock_journal_repo.get_entry_by_client_request_id.return_value = existing
+
+        request = CreateJournalEntryRequest(
+            entry_type=JournalEntryTypeEnum.MATCH,
+            title="Retry create",
+            client_request_id="client-req-123",
+        )
+        response = journal_service.create_entry("test_user", request)
+
+        assert response.entry_id == "existing_1"
+        assert response.created_at == existing.created_at
+        mock_firestore_client.transaction.assert_not_called()
+
+    def test_create_entry_with_client_request_id_scopes_to_user(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_journal_repo,
+        mock_firestore_client,
+    ):
+        """Idempotency lookup is user-scoped through JournalRepo(uid, clientRequestId)."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+        _setup_create_mocks(mock_firestore_client, entry_id="entry123")
+
+        import app.services.journal_service as svc_module
+
+        original = svc_module.firestore.transactional
+        svc_module.firestore.transactional = lambda func: func
+        try:
+            request = CreateJournalEntryRequest(
+                entry_type=JournalEntryTypeEnum.MATCH,
+                title="Create once",
+                client_request_id="client-req-123",
+            )
+            journal_service.create_entry("test_user", request)
+
+            mock_journal_repo.get_entry_by_client_request_id.assert_called_once_with(
+                "test_user", "client-req-123"
+            )
+        finally:
+            svc_module.firestore.transactional = original
+
 
 # ---------------------------------------------------------------------------
 # TestUpdateEntry
@@ -390,22 +469,22 @@ class TestUpdateEntry:
         """Raises ValueError when the entry does not exist."""
         mock_journal_repo.get_entry.return_value = None
 
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(JournalEntryNotFoundError, match="not found"):
             journal_service.update_entry(
                 "test_user", "missing", UpdateJournalEntryRequest(tags=["x"])
             )
 
-    def test_update_entry_wrong_user(
+    def test_update_entry_cross_user_returns_not_found(
         self,
         journal_service,
         mock_journal_repo,
     ):
-        """Raises ValueError when the entry belongs to a different user."""
-        mock_journal_repo.get_entry.return_value = _make_entry(uid="other_user")
+        """Entry not found under the caller's subcollection raises not-found."""
+        mock_journal_repo.get_entry.return_value = None
 
-        with pytest.raises(ValueError, match="does not belong"):
+        with pytest.raises(JournalEntryNotFoundError, match="not found"):
             journal_service.update_entry(
-                "test_user", "e1", UpdateJournalEntryRequest(tags=["x"])
+                "test_user", "foreign_entry", UpdateJournalEntryRequest(tags=["x"])
             )
 
     def test_update_entry_no_fields_is_noop(
@@ -468,6 +547,7 @@ class TestListEntries:
     ):
         """Cursor is passed through unchanged to JournalRepo."""
         cursor = {"createdAt": datetime.now(timezone.utc), "entryId": "e1"}
+        mock_journal_repo.get_entry.return_value = _make_entry("e1")
         mock_journal_repo.list_entries.return_value = []
 
         journal_service.list_entries("test_user", limit=3, cursor=cursor)
@@ -475,6 +555,33 @@ class TestListEntries:
         mock_journal_repo.list_entries.assert_called_once_with(
             "test_user", limit=3, cursor=cursor
         )
+
+    def test_list_entries_rejects_invalid_cursor(
+        self, journal_service, mock_journal_repo
+    ):
+        """Cursor entry IDs that do not exist for caller are rejected."""
+        cursor = {"createdAt": datetime.now(timezone.utc), "entryId": "missing"}
+        mock_journal_repo.get_entry.return_value = None
+
+        with pytest.raises(JournalInvalidCursorError, match="Invalid cursor"):
+            journal_service.list_entries("test_user", limit=3, cursor=cursor)
+
+    def test_list_entries_rejects_foreign_cursor(
+        self, journal_service, mock_journal_repo
+    ):
+        """Foreign cursor entry IDs are rejected as invalid cursor (not found under user)."""
+        cursor = {"createdAt": datetime.now(timezone.utc), "entryId": "foreign"}
+        mock_journal_repo.get_entry.return_value = None
+
+        with pytest.raises(JournalInvalidCursorError, match="Invalid cursor"):
+            journal_service.list_entries("test_user", limit=3, cursor=cursor)
+
+    def test_list_entries_rejects_filters_for_now(self, journal_service):
+        """Filter params are part of contract but not implemented yet."""
+        with pytest.raises(
+            UnsupportedJournalFilterError, match="filter not supported yet"
+        ):
+            journal_service.list_entries("test_user", entry_type="match")
 
 
 # ---------------------------------------------------------------------------
@@ -496,6 +603,16 @@ class TestGetEntry:
 
         assert result == entry
         mock_journal_repo.get_entry.assert_called_once_with("test_user", "e42")
+
+    def test_get_entry_cross_user_returns_none(
+        self, journal_service, mock_journal_repo
+    ):
+        """Entry not found under the caller's subcollection returns None (→ 404)."""
+        mock_journal_repo.get_entry.return_value = None
+
+        result = journal_service.get_entry("test_user", "foreign_entry")
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -626,3 +743,66 @@ class TestGetNorthStar:
         assert result.goal_text == "Win tournament"
         assert result.progress_pct == 20.0
         assert result.created_at == created_at
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteEntry
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteEntry:
+    def test_delete_entry_soft_deletes_and_updates_cache(
+        self,
+        journal_service,
+        mock_journal_repo,
+        mock_firestore_client,
+    ):
+        """delete_entry marks doc as deleted and removes summary from journalRecent."""
+        mock_journal_repo.get_entry.return_value = _make_entry("e1", uid="test_user")
+
+        mock_txn = Mock()
+        mock_firestore_client.transaction.return_value = mock_txn
+
+        mock_snap = Mock()
+        mock_snap.to_dict.return_value = {
+            "journalRecent": [{"entryId": "e1"}, {"entryId": "e2"}]
+        }
+        mock_user_doc = Mock()
+        mock_user_doc.get.return_value = mock_snap
+        mock_entry_doc = Mock()
+        mock_user_doc.collection.return_value.document.return_value = mock_entry_doc
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_user_doc
+        )
+
+        import app.services.journal_service as svc_module
+
+        original = svc_module.firestore.transactional
+        svc_module.firestore.transactional = lambda func: func
+        try:
+            journal_service.delete_entry("test_user", "e1")
+        finally:
+            svc_module.firestore.transactional = original
+
+        assert mock_txn.update.call_count == 2
+        first_update = mock_txn.update.call_args_list[0][0][1]
+        second_update = mock_txn.update.call_args_list[1][0][1]
+        assert first_update["isDeleted"] is True
+        assert "deletedAt" in first_update
+        assert second_update["journalRecent"] == [{"entryId": "e2"}]
+
+    def test_delete_entry_not_found_raises(self, journal_service, mock_journal_repo):
+        """Unknown entry ID is treated as not found."""
+        mock_journal_repo.get_entry.return_value = None
+
+        with pytest.raises(JournalEntryNotFoundError, match="not found"):
+            journal_service.delete_entry("test_user", "missing")
+
+    def test_delete_entry_cross_user_returns_not_found(
+        self, journal_service, mock_journal_repo
+    ):
+        """Entry not found under the caller's subcollection raises not-found."""
+        mock_journal_repo.get_entry.return_value = None
+
+        with pytest.raises(JournalEntryNotFoundError, match="not found"):
+            journal_service.delete_entry("test_user", "foreign")

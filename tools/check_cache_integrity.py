@@ -116,6 +116,34 @@ def _summary_match_ids(
     return ids
 
 
+def _summary_entry_ids(
+    report: IntegrityReport, uid: str, items: Any, field_name: str, cap: int
+) -> list[str]:
+    if items is None:
+        return []
+    if not isinstance(items, list):
+        report.fail(uid, f"{field_name} must be a list")
+        return []
+    if len(items) > cap:
+        report.fail(uid, f"{field_name} exceeds cap {cap} (actual={len(items)})")
+
+    entry_ids: list[str] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            report.fail(uid, f"{field_name}[{index}] must be an object")
+            continue
+        entry_id = item.get("entryId")
+        if not isinstance(entry_id, str) or not entry_id:
+            report.fail(uid, f"{field_name}[{index}] missing valid entryId")
+            continue
+        entry_ids.append(entry_id)
+
+    duplicates = _find_duplicates(entry_ids)
+    if duplicates:
+        report.fail(uid, f"{field_name} has duplicate entryId values: {duplicates}")
+    return entry_ids
+
+
 def _fetch_match(client: firestore.Client, cache: dict[str, dict[str, Any] | None], match_id: str):
     if match_id not in cache:
         snap = client.collection("matches").document(match_id).get(timeout=15)
@@ -174,6 +202,29 @@ def _validate_completed(
         finished_at = match.get("finishedAt")
         if not isinstance(finished_at, datetime):
             report.fail(uid, f"completed match {match_id} missing finishedAt")
+
+
+def _validate_journal_recent(
+    client: firestore.Client,
+    report: IntegrityReport,
+    uid: str,
+    user_doc: dict[str, Any],
+) -> None:
+    entry_ids = _summary_entry_ids(report, uid, user_doc.get("journalRecent"), "journalRecent", 10)
+    for entry_id in entry_ids:
+        snap = (
+            client.collection("users")
+            .document(uid)
+            .collection("journalEntries")
+            .document(entry_id)
+            .get(timeout=15)
+        )
+        if not snap.exists:
+            report.fail(uid, f"journalRecent reference missing canonical journal entry: {entry_id}")
+            continue
+        data = snap.to_dict() or {}
+        if bool(data.get("isDeleted", False)):
+            report.fail(uid, f"journalRecent references soft-deleted journal entry: {entry_id}")
 
 
 def _league_summary_list(user_doc: dict[str, Any]) -> tuple[str, list[Any]]:
@@ -254,6 +305,7 @@ def run_check(client: firestore.Client, args: argparse.Namespace) -> IntegrityRe
 
         _validate_upcoming(client, report, uid, user_doc, now, match_cache)
         _validate_completed(client, report, uid, user_doc, match_cache)
+        _validate_journal_recent(client, report, uid, user_doc)
         _validate_league_summaries(client, report, uid, user_doc, league_cache)
 
     return report

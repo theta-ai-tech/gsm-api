@@ -4,6 +4,12 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.constants import (
+    JOURNAL_BODY_MAX,
+    JOURNAL_CLIENT_REQUEST_ID_MAX,
+    JOURNAL_TAGS_MAX,
+    JOURNAL_TITLE_MAX,
+)
 from app.models.enums import (
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
@@ -56,6 +62,9 @@ class TestJournalEntryModel:
         assert entry.reflection is not None
         assert entry.reflection.went_well == ["first_serve"]
         assert entry.reflection.went_wrong == ["double_faults"]
+        assert entry.client_request_id is None
+        assert entry.is_deleted is False
+        assert entry.deleted_at is None
 
     def test_backward_compat_defaults(self):
         """JournalEntry without new fields still deserialises with correct defaults."""
@@ -75,6 +84,9 @@ class TestJournalEntryModel:
         assert entry.score_text is None
         assert entry.result is None
         assert entry.tags == []
+        assert entry.client_request_id is None
+        assert entry.is_deleted is False
+        assert entry.deleted_at is None
 
 
 # ── MatchReflection ───────────────────────────────────────────────────────────
@@ -95,6 +107,7 @@ class TestMatchReflection:
         assert r.opponent_weak == ["backhand"]
         assert r.opponent_strong == ["serve", "footwork"]
         assert r.ai_summary is None
+        assert r.reflection_version is None
 
     def test_all_fields_default_to_empty(self):
         r = MatchReflection()
@@ -164,26 +177,33 @@ class TestCreateJournalEntryRequest:
         with pytest.raises(Exception):
             CreateJournalEntryRequest(
                 entry_type=JournalEntryTypeEnum.MATCH,
-                title="x" * 201,
+                title="x" * (JOURNAL_TITLE_MAX + 1),
             )
 
     def test_body_max_length_enforced(self):
         with pytest.raises(Exception):
             CreateJournalEntryRequest(
                 entry_type=JournalEntryTypeEnum.MATCH,
-                body="y" * 5001,
+                body="y" * (JOURNAL_BODY_MAX + 1),
             )
 
     def test_tags_max_items_enforced(self):
         with pytest.raises(Exception):
             CreateJournalEntryRequest(
                 entry_type=JournalEntryTypeEnum.MATCH,
-                tags=[f"tag{i}" for i in range(21)],
+                tags=[f"tag{i}" for i in range(JOURNAL_TAGS_MAX + 1)],
             )
 
     def test_default_visibility_is_private(self):
         req = CreateJournalEntryRequest(entry_type=JournalEntryTypeEnum.MATCH)
         assert req.visibility == JournalVisibilityEnum.PRIVATE
+
+    def test_client_request_id_max_length_enforced(self):
+        with pytest.raises(Exception):
+            CreateJournalEntryRequest(
+                entry_type=JournalEntryTypeEnum.MATCH,
+                client_request_id="x" * (JOURNAL_CLIENT_REQUEST_ID_MAX + 1),
+            )
 
 
 # ── UpdateJournalEntryRequest ─────────────────────────────────────────────────
