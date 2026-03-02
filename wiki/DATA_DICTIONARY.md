@@ -648,3 +648,40 @@ Purpose: match proposals (challenges) sent between users. An offer may target an
   "toRanking": {"sport": "tennis", "pts": 1200},
   "matchId": "match_789"
 }
+```
+
+## Document: config/tiers
+Path: `config/tiers`
+
+Purpose: tier threshold configuration. Defines point boundaries for player tiers, allowing rebalancing without code changes.
+
+### Enums: tier
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `amateur`, `intermediate`, `advanced`, `competitive`
+
+### Fields: config/tiers
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| thresholds | array<map> | required | — | canonical | — | Ordered list of tier definitions. |
+| thresholds[].tier | string | required | tier | canonical | — | Tier enum key. |
+| thresholds[].minPts | number | required | — | canonical | — | Inclusive lower bound. |
+| thresholds[].maxPts | number | optional | — | canonical | — | Inclusive upper bound; `null` for open-ended top tier. |
+| thresholds[].label | string | required | — | canonical | — | Display label for UI. |
+| thresholds[].color | string | required | — | canonical | — | Hex color for UI. |
+| version | number | required | — | canonical | — | Schema version for forward compatibility. |
+| updatedAt | timestamp | required | — | canonical | — | Last update timestamp. |
+
+### config/tiers
+```json
+{
+  "thresholds": [
+    {"tier": "amateur",      "minPts": 1000, "maxPts": 1999, "label": "Amateur",      "color": "#8B8B8B"},
+    {"tier": "intermediate", "minPts": 2000, "maxPts": 2999, "label": "Intermediate", "color": "#00A3CC"},
+    {"tier": "advanced",     "minPts": 3000, "maxPts": 3999, "label": "Advanced",     "color": "#BFFF00"},
+    {"tier": "competitive",  "minPts": 4000, "maxPts": null, "label": "Competitive",  "color": "#FF6B35"}
+  ],
+  "version": 1,
+  "updatedAt": "2026-01-01T00:00:00Z"
+}
+```

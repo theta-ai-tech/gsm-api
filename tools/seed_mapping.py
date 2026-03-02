@@ -16,6 +16,8 @@ from app.models import (
     PrivateUserProfile,
     SetScore,
     SportRanking,
+    TierConfig,
+    TierThreshold,
     UserCompletedMatchSummary,
     UserMatchSummary,
 )
@@ -197,6 +199,24 @@ def _match_reflection_to_dict(reflection: MatchReflection | None) -> Dict[str, A
         "opponentStrong": reflection.opponent_strong,
         "aiSummary": reflection.ai_summary,
         "reflectionVersion": reflection.reflection_version,
+    }
+
+
+def _tier_threshold_to_dict(t: TierThreshold) -> Dict[str, Any]:
+    return {
+        "tier": t.tier.value,
+        "minPts": t.min_pts,
+        "maxPts": t.max_pts,
+        "label": t.label,
+        "color": t.color,
+    }
+
+
+def tier_config_to_firestore_doc(config: TierConfig) -> Dict[str, Any]:
+    return {
+        "thresholds": [_tier_threshold_to_dict(t) for t in config.thresholds],
+        "version": config.version,
+        "updatedAt": config.updated_at,
     }
 
 

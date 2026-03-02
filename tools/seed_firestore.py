@@ -12,12 +12,19 @@ import sys
 
 from google.cloud import firestore
 
-from tools.seed_data import SAMPLE_JOURNAL_ENTRIES, SAMPLE_LEAGUES, SAMPLE_MATCHES, SAMPLE_USERS
+from tools.seed_data import (
+    SAMPLE_JOURNAL_ENTRIES,
+    SAMPLE_LEAGUES,
+    SAMPLE_MATCHES,
+    SAMPLE_USERS,
+    TIER_CONFIG,
+)
 from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
     league_member_to_firestore_doc,
     league_to_firestore_doc,
     match_to_firestore_doc,
+    tier_config_to_firestore_doc,
     user_to_firestore_doc,
 )
 
@@ -56,6 +63,11 @@ def seed_all(client: firestore.Client) -> None:
         )
         doc_ref.set(journal_entry_to_firestore_doc(entry))
 
+    # Config documents
+    client.collection("config").document("tiers").set(
+        tier_config_to_firestore_doc(TIER_CONFIG)
+    )
+
 
 def main() -> None:
     args = _parse_args()
@@ -89,7 +101,8 @@ def main() -> None:
         f"{len(SAMPLE_USERS)} users, "
         f"{len(SAMPLE_LEAGUES)} leagues, "
         f"{len(SAMPLE_MATCHES)} matches, "
-        f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries "
+        f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
+        f"1 tier config "
         f"into Firestore emulator project {project_id}."
     )
 

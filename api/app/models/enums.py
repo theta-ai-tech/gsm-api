@@ -106,3 +106,10 @@ class TrainingFocusEnum(StrEnum):
     BACKHAND = "backhand"
     CARDIO = "cardio"
     STRATEGY = "strategy"
+
+
+class TierEnum(StrEnum):
+    AMATEUR = "amateur"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    COMPETITIVE = "competitive"

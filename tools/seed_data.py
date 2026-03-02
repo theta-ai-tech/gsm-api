@@ -23,6 +23,9 @@ from app.models import (
     SetScore,
     SportEnum,
     SportRanking,
+    TierConfig,
+    TierEnum,
+    TierThreshold,
     JournalVisibilityEnum,
     UserCompletedMatchSummary,
     UserMatchSummary,
@@ -306,3 +309,39 @@ JOURNAL_2 = JournalEntry(
 )
 
 SAMPLE_JOURNAL_ENTRIES = [JOURNAL_1, JOURNAL_2]
+
+# --- Tier config ---
+TIER_CONFIG = TierConfig(
+    thresholds=[
+        TierThreshold(
+            tier=TierEnum.AMATEUR,
+            min_pts=1000,
+            max_pts=1999,
+            label="Amateur",
+            color="#8B8B8B",
+        ),
+        TierThreshold(
+            tier=TierEnum.INTERMEDIATE,
+            min_pts=2000,
+            max_pts=2999,
+            label="Intermediate",
+            color="#00A3CC",
+        ),
+        TierThreshold(
+            tier=TierEnum.ADVANCED,
+            min_pts=3000,
+            max_pts=3999,
+            label="Advanced",
+            color="#BFFF00",
+        ),
+        TierThreshold(
+            tier=TierEnum.COMPETITIVE,
+            min_pts=4000,
+            max_pts=None,
+            label="Competitive",
+            color="#FF6B35",
+        ),
+    ],
+    version=1,
+    updated_at=utc(2026, 1, 1),
+)
