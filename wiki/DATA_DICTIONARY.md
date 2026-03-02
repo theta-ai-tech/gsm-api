@@ -658,6 +658,55 @@ Purpose: match proposals (challenges) sent between users. An offer may target an
 }
 ```
 
+## Subcollection: users/{uid}/pointHistory
+Path: `users/{uid}/pointHistory/{entryId}`
+
+Ownership: owner-only (self); written by scoring engine / admin functions.
+
+Purpose: time-series audit log of every point change for a user. Powers the Progression Graph in Tab 3.
+
+Ordering: `sport` filter + `createdAt` DESC with cursor-based pagination.
+
+### pointHistoryReason
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `match_win`, `match_loss`, `admin_adjustment`, `tier_rebalance`
+
+### Fields: users/{uid}/pointHistory/{entryId}
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| sport | string | required | sport | canonical | index=filter | Sport for this event. |
+| pts | number | required | — | canonical | — | Point total AFTER this event. |
+| delta | number | required | — | canonical | — | Points gained (positive) or lost (negative). |
+| reason | string | required | pointHistoryReason | canonical | — | Cause of the point change. |
+| matchId | string | conditional | — | canonical | — | Match reference; null for non-match events. |
+| opponentUid | string | conditional | — | canonical | — | Opponent UID; null for non-match events. |
+| opponentPtsBefore | number | conditional | — | canonical | — | Opponent pts before the match. |
+| leagueId | string | optional | — | canonical | — | League reference if league match. |
+| createdAt | timestamp | required | — | canonical | index=order-by | When the event occurred (UTC). |
+| tierBefore | string | optional | tier | canonical | — | Tier before this event. |
+| tierAfter | string | optional | tier | canonical | — | Tier after this event. |
+
+### Required composite indexes
+- Point history by user/sport: `sport` (ASC), `createdAt` (DESC)
+
+### users/{uid}/pointHistory/{entryId}
+```json
+{
+  "sport": "tennis",
+  "pts": 2250,
+  "delta": 150,
+  "reason": "match_win",
+  "matchId": "match_789",
+  "opponentUid": "user_456",
+  "opponentPtsBefore": 3100,
+  "leagueId": null,
+  "createdAt": "2026-03-01T14:30:00Z",
+  "tierBefore": "intermediate",
+  "tierAfter": "intermediate"
+}
+```
+
 ## Document: config/tiers
 Path: `config/tiers`
 

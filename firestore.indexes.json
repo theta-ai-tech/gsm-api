@@ -82,6 +82,14 @@
         { "fieldPath": "status", "mode": "ASCENDING" },
         { "fieldPath": "finishedAt", "mode": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pointHistory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sport", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

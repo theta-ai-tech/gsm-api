@@ -28,6 +28,7 @@ from app.models.enums import (
     OfferStatusEnum,
     ParticipantRoleEnum,
     PlayTabStateEnum,
+    PointHistoryReasonEnum,
     SportEnum,
     TierEnum,
     TrainingFocusEnum,
@@ -44,6 +45,7 @@ from app.models.match import Match, MatchParticipant
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
 from app.models.share import ShareCardData
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
+from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
 from app.models.user import PrivateUserProfile, PublicUserProfile
 
@@ -70,6 +72,7 @@ __all__ = [
     "CourtStatusEnum",
     "OfferStatusEnum",
     "TierEnum",
+    "PointHistoryReasonEnum",
     # common value objects
     "SportRanking",
     "PerSportRankings",
@@ -106,6 +109,8 @@ __all__ = [
     "WeeklyActivity",
     "NorthStarGoal",
     "UserStats",
+    # point history
+    "PointHistoryEntry",
     # tier
     "TierThreshold",
     "TierConfig",
