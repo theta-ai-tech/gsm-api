@@ -8,6 +8,7 @@ from app.models.enums import (
     LevelEnum,
     MatchResultEnum,
     SportEnum,
+    TierEnum,
 )
 
 
@@ -15,6 +16,9 @@ class SportRanking(GsmBaseModel):
     sport: SportEnum
     pts: int
     global_ranking: int | None = None
+    tier: TierEnum | None = None
+    registration_tier: TierEnum | None = None
+    last_updated: datetime | None = None
 
 
 class PerSportRankings(GsmBaseModel):

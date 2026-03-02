@@ -74,6 +74,11 @@ Values below match the C1 enums in code.
 - API/Pydantic representation: string enum
 - Allowed values: `pending`, `accepted`, `declined`, `expired`, `cancelled`
 
+### tier
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `amateur`, `intermediate`, `advanced`, `competitive`
+
 ## Collection: users
 Path: `users/{uid}`
 
@@ -103,12 +108,15 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | email | string | optional | — | canonical | — | Private. |
 | phone | string | optional | — | canonical | — | Private. |
 | rankings | map | optional | — | canonical | — | Public; per-sport rankings. |
-| rankings.tennis | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
-| rankings.padel | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
-| rankings.pickleball | map | optional | sport | canonical | — | `{sport, pts, globalRanking}`. |
+| rankings.tennis | map | optional | sport | canonical | — | `{sport, pts, globalRanking, tier?, registrationTier?, lastUpdated?}`. |
+| rankings.padel | map | optional | sport | canonical | — | `{sport, pts, globalRanking, tier?, registrationTier?, lastUpdated?}`. |
+| rankings.pickleball | map | optional | sport | canonical | — | `{sport, pts, globalRanking, tier?, registrationTier?, lastUpdated?}`. |
 | rankings.*.sport | string | required | sport | canonical | — | Enum value. |
 | rankings.*.pts | number | optional | — | canonical | — | Ranking points. |
 | rankings.*.globalRanking | number | optional | — | canonical | — | Optional global rank. |
+| rankings.*.tier | string | optional | tier | canonical | — | Current tier derived from pts + config/tiers. Cached. |
+| rankings.*.registrationTier | string | optional | tier | canonical | — | Tier at signup. Determines point floor. Immutable. |
+| rankings.*.lastUpdated | timestamp | optional | — | canonical | — | When this ranking was last modified. |
 | preferences | map | optional | — | canonical | — | Private. |
 | preferences.area | number | optional | — | canonical | — | Private; area code. |
 | preferences.levels | map | optional | level | canonical | — | Per-sport level preferences. |
