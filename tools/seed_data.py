@@ -47,8 +47,22 @@ USER_IGNATIOS = PrivateUserProfile(
     phone="+301111111111",
     profile_url="http://example.com/ignatios.png",
     rankings=PerSportRankings(
-        padel=SportRanking(sport=SportEnum.PADEL, pts=980, global_ranking=120),
-        tennis=SportRanking(sport=SportEnum.TENNIS, pts=620, global_ranking=None),
+        padel=SportRanking(
+            sport=SportEnum.PADEL,
+            pts=980,
+            global_ranking=120,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2026, 2, 20, 14, 0),
+        ),
+        tennis=SportRanking(
+            sport=SportEnum.TENNIS,
+            pts=620,
+            global_ranking=None,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2026, 2, 15, 10, 0),
+        ),
     ),
     preferences=UserPreferences(
         area=101,
@@ -73,7 +87,14 @@ USER_ALICE = PrivateUserProfile(
     phone="+301122334455",
     profile_url=None,
     rankings=PerSportRankings(
-        tennis=SportRanking(sport=SportEnum.TENNIS, pts=820, global_ranking=340),
+        tennis=SportRanking(
+            sport=SportEnum.TENNIS,
+            pts=820,
+            global_ranking=340,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2026, 2, 18, 9, 30),
+        ),
     ),
     preferences=UserPreferences(
         area=202,
@@ -97,8 +118,22 @@ USER_BOB = PrivateUserProfile(
     phone=None,
     profile_url="http://example.com/bob.png",
     rankings=PerSportRankings(
-        padel=SportRanking(sport=SportEnum.PADEL, pts=540, global_ranking=None),
-        pickleball=SportRanking(sport=SportEnum.PICKLEBALL, pts=300, global_ranking=None),
+        padel=SportRanking(
+            sport=SportEnum.PADEL,
+            pts=540,
+            global_ranking=None,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2026, 2, 10, 16, 0),
+        ),
+        pickleball=SportRanking(
+            sport=SportEnum.PICKLEBALL,
+            pts=300,
+            global_ranking=None,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2026, 1, 25, 11, 0),
+        ),
     ),
     preferences=UserPreferences(
         area=303,

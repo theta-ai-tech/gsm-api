@@ -28,6 +28,11 @@ def _sport_ranking_to_dict(ranking: SportRanking) -> Dict[str, Any]:
         "sport": ranking.sport.value,
         "pts": ranking.pts,
         "globalRanking": ranking.global_ranking,
+        "tier": ranking.tier.value if ranking.tier else None,
+        "registrationTier": (
+            ranking.registration_tier.value if ranking.registration_tier else None
+        ),
+        "lastUpdated": ranking.last_updated,
     }
 
 

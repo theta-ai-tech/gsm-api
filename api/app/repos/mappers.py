@@ -39,6 +39,7 @@ from app.models import (
     SetScore,
     SportEnum,
     SportRanking,
+    TierEnum,
     TrainingFocusEnum,
     UserCompletedMatchSummary,
     UserMatchSummary,
@@ -56,8 +57,15 @@ def _parse_sport_ranking(data: Optional[dict[str, Any]]) -> Optional[SportRankin
     if not data:
         return None
     sport_val = _require(data, "sport")
+    tier = data.get("tier")
+    reg_tier = data.get("registrationTier")
     return SportRanking(
-        sport=SportEnum(sport_val), pts=data.get("pts", 0), global_ranking=data.get("globalRanking")
+        sport=SportEnum(sport_val),
+        pts=data.get("pts", 0),
+        global_ranking=data.get("globalRanking"),
+        tier=TierEnum(tier) if tier else None,
+        registration_tier=TierEnum(reg_tier) if reg_tier else None,
+        last_updated=data.get("lastUpdated"),
     )
 
 
