@@ -128,3 +128,12 @@ class TestTierConfig:
         )
         assert config.thresholds[0].min_pts == 1000
         assert config.updated_at.tzinfo is not None
+
+    def test_get_floor_returns_threshold_min_points(self) -> None:
+        config = TierConfig(
+            thresholds=_sample_thresholds(),
+            version=1,
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+
+        assert config.get_floor(TierEnum.INTERMEDIATE) == 2000

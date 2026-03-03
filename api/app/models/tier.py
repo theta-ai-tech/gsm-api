@@ -18,3 +18,15 @@ class TierConfig(GsmBaseModel):
     thresholds: list[TierThreshold]
     version: int
     updated_at: datetime = Field(alias="updatedAt")
+
+    def get_threshold(self, tier: TierEnum | str) -> TierThreshold:
+        normalized_tier = TierEnum(tier)
+        for threshold in self.thresholds:
+            if threshold.tier == normalized_tier:
+                return threshold
+
+        msg = f"tier {normalized_tier!s} is not configured"
+        raise ValueError(msg)
+
+    def get_floor(self, tier: TierEnum | str) -> int:
+        return self.get_threshold(tier).min_pts
