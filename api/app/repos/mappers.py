@@ -34,6 +34,8 @@ from app.models import (
     ParticipantRoleEnum,
     PerSportLevels,
     PerSportRankings,
+    PointHistoryEntry,
+    PointHistoryReasonEnum,
     PrivateUserProfile,
     PublicUserProfile,
     SetScore,
@@ -361,6 +363,25 @@ def to_broadcast(doc: dict[str, Any], broadcast_id: str | None = None) -> Broadc
         expires_at=_require(doc, "expiresAt"),
         created_at=_require(doc, "createdAt"),
         location=_parse_broadcast_location(doc.get("location", {}) or {}),
+    )
+
+
+def to_point_history_entry(doc: dict[str, Any], entry_id: str) -> PointHistoryEntry:
+    tier_before = doc.get("tierBefore")
+    tier_after = doc.get("tierAfter")
+    return PointHistoryEntry(
+        entry_id=entry_id,
+        sport=SportEnum(_require(doc, "sport")),
+        pts=_require(doc, "pts"),
+        delta=_require(doc, "delta"),
+        reason=PointHistoryReasonEnum(_require(doc, "reason")),
+        match_id=doc.get("matchId"),
+        opponent_uid=doc.get("opponentUid"),
+        opponent_pts_before=doc.get("opponentPtsBefore"),
+        league_id=doc.get("leagueId"),
+        created_at=_require(doc, "createdAt"),
+        tier_before=TierEnum(tier_before) if tier_before else None,
+        tier_after=TierEnum(tier_after) if tier_after else None,
     )
 
 

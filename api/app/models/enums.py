@@ -113,3 +113,10 @@ class TierEnum(StrEnum):
     INTERMEDIATE = "intermediate"
     ADVANCED = "advanced"
     COMPETITIVE = "competitive"
+
+
+class PointHistoryReasonEnum(StrEnum):
+    MATCH_WIN = "match_win"
+    MATCH_LOSS = "match_loss"
+    ADMIN_ADJUSTMENT = "admin_adjustment"
+    TIER_REBALANCE = "tier_rebalance"
