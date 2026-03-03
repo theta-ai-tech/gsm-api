@@ -271,11 +271,23 @@ class TestConfirmationWithScoring:
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
 
-            # Simulate transactional reads: winner_ref.get(transaction=txn) returns snap
-            winner_ref = mock_client.collection("users").document(WINNER_UID)
-            loser_ref = mock_client.collection("users").document(LOSER_UID)
-            winner_ref.get.return_value = winner_snap
-            loser_ref.get.return_value = loser_snap
+            # MagicMock returns the same object regardless of arguments, so we use
+            # side_effect to return distinct doc mocks per UID.
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
 
             response = service.verify_score(
                 LOSER_UID,
@@ -381,10 +393,21 @@ class TestWalkover:
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
 
-            winner_ref = mock_client.collection("users").document(WINNER_UID)
-            loser_ref = mock_client.collection("users").document(LOSER_UID)
-            winner_ref.get.return_value = winner_snap
-            loser_ref.get.return_value = loser_snap
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
 
             response = service.verify_score(
                 LOSER_UID,
