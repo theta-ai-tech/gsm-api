@@ -1,7 +1,8 @@
+from app.models.enums import TierEnum
 from app.models.tier import TierThreshold
 
 
-def get_tier(pts: int, thresholds: list[TierThreshold]) -> str:
+def get_tier(pts: int, thresholds: list[TierThreshold]) -> TierEnum:
     """Derive the tier name for a given point total.
 
     Returns the ``tier`` value of the first threshold whose range contains *pts*.
