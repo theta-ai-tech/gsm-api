@@ -5,6 +5,23 @@ from app.models.common import MatchScore
 from app.models.enums import MatchResultEnum, MatchStatusEnum, ParticipantRoleEnum, SportEnum
 
 
+class VerifyScoreRequest(GsmBaseModel):
+    winner_uid: str
+    score: MatchScore | None = None
+    walkover: bool = False
+
+
+class VerifyScoreResponse(GsmBaseModel):
+    match_id: str
+    status: MatchStatusEnum
+    winner_uid: str
+    loser_uid: str
+    winner_delta: int
+    loser_delta: int
+    winner_new_pts: int
+    loser_new_pts: int
+
+
 class MatchParticipant(GsmBaseModel):
     uid: str
     team: int | None = None  # team number for doubles; None for singles
