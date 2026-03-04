@@ -2,13 +2,37 @@ from datetime import datetime
 
 from app.models.base import GsmBaseModel
 from app.models.common import MatchScore
-from app.models.enums import MatchResultEnum, MatchStatusEnum, ParticipantRoleEnum, SportEnum
+from app.models.enums import (
+    MatchResultEnum,
+    MatchStatusEnum,
+    ParticipantRoleEnum,
+    SportEnum,
+    TierEnum,
+)
 
 
 class VerifyScoreRequest(GsmBaseModel):
     winner_uid: str
     score: MatchScore | None = None
     walkover: bool = False
+
+
+class ScoringBreakdown(GsmBaseModel):
+    base_win: int
+    upset_bonus: int
+    elo_bonus: int
+    penalty: int
+
+
+class ScoringPayload(GsmBaseModel):
+    sport: SportEnum
+    your_pts_before: int
+    your_pts_after: int
+    delta: int
+    breakdown: ScoringBreakdown
+    tier_before: TierEnum
+    tier_after: TierEnum
+    tier_crossed: bool
 
 
 class VerifyScoreResponse(GsmBaseModel):
@@ -20,6 +44,7 @@ class VerifyScoreResponse(GsmBaseModel):
     loser_delta: int
     winner_new_pts: int
     loser_new_pts: int
+    scoring: ScoringPayload | None = None
 
 
 class MatchParticipant(GsmBaseModel):
