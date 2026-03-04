@@ -22,7 +22,7 @@ from app.models.enums import (
     SportEnum,
     TierEnum,
 )
-from app.models.match import Match, MatchParticipant, VerifyScoreRequest
+from app.models.match import Match, MatchParticipant, VerifyScoreRequest, ScoringPayload
 from app.models.tier import TierConfig, TierThreshold
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
@@ -241,6 +241,10 @@ class TestFirstSubmission:
         assert response.winner_new_pts == 0
         assert response.loser_new_pts == 0
 
+    def test_scoring_is_none(self):
+        response, _ = self._run()
+        assert response.scoring is None
+
     def test_writes_status_and_result_to_match(self):
         score = _make_score()
         response, mock_client = self._run(score=score)
@@ -344,6 +348,73 @@ class TestConfirmationWithScoring:
         assert update_data["resultByUser"][WINNER_UID] == MatchResultEnum.WIN
         assert update_data["resultByUser"][LOSER_UID] == MatchResultEnum.LOSS
 
+    def test_scoring_payload_present_on_completion(self):
+        response, _, _ = self._run_confirmation()
+        assert response.scoring is not None
+        assert isinstance(response.scoring, ScoringPayload)
+
+    def test_scoring_payload_loser_perspective_same_tier(self):
+        # Caller is LOSER_UID (same tier as winner) — no penalty, delta 0
+        response, _, _ = self._run_confirmation(winner_pts=2100, loser_pts=2050)
+        s = response.scoring
+        assert s is not None
+        assert s.sport == SPORT
+        assert s.your_pts_before == 2050
+        assert s.your_pts_after == 2050  # no penalty for same tier
+        assert s.delta == 0
+        assert s.breakdown.base_win == 0
+        assert s.breakdown.upset_bonus == 0
+        assert s.breakdown.elo_bonus == 0
+        assert s.breakdown.penalty == 0
+        assert s.tier_before == TierEnum.INTERMEDIATE
+        assert s.tier_after == TierEnum.INTERMEDIATE
+        assert s.tier_crossed is False
+
+    def test_scoring_payload_winner_perspective(self):
+        # Re-run with WINNER_UID as caller (same tier match)
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _ = _make_service(match=match)
+
+        winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE)
+
+        winner_doc = MagicMock()
+        loser_doc = MagicMock()
+        winner_doc.get.return_value = winner_snap
+        loser_doc.get.return_value = loser_snap
+        _extra: dict[str, MagicMock] = {}
+
+        def _get_doc(uid: str) -> MagicMock:
+            if uid == WINNER_UID:
+                return winner_doc
+            if uid == LOSER_UID:
+                return loser_doc
+            return _extra.setdefault(uid, MagicMock())
+
+        mock_client.collection.return_value.document.side_effect = _get_doc
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            response = service.verify_score(
+                WINNER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+        s = response.scoring
+        assert s is not None
+        assert s.your_pts_before == 2100
+        assert s.your_pts_after == 2200  # base +100
+        assert s.delta == 100
+        assert s.breakdown.base_win == 100
+        assert s.breakdown.upset_bonus == 0
+        assert s.breakdown.elo_bonus == 0
+        assert s.breakdown.penalty == 0
+        assert s.tier_crossed is False
+
 
 # ---------------------------------------------------------------------------
 # Tests: dispute
@@ -370,6 +441,7 @@ class TestDispute:
 
         assert response.status == MatchStatusEnum.DISPUTED
         assert response.winner_delta == 0
+        assert response.scoring is None
         # No pointHistory written
         mock_ph_repo.add_entry_in_transaction.assert_not_called()
 

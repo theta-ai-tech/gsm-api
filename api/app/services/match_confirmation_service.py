@@ -29,13 +29,19 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.models.common import MatchScore
 from app.models.enums import MatchResultEnum, MatchStatusEnum, PointHistoryReasonEnum, TierEnum
-from app.models.match import Match, VerifyScoreRequest, VerifyScoreResponse
+from app.models.match import (
+    Match,
+    ScoringBreakdown,
+    ScoringPayload,
+    VerifyScoreRequest,
+    VerifyScoreResponse,
+)
 from app.models.point_history import PointHistoryEntry
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
-from app.services.scoring_service import ScoringResult, compute_match_scoring
+from app.services.scoring_service import compute_match_scoring
 
 _DEFAULT_PTS = 1000
 _DEFAULT_TIER = TierEnum.AMATEUR
@@ -236,7 +242,7 @@ class MatchConfirmationService:
         # Effective score: prefer request.score, fall back to stored score
         effective_score = request.score or match.score
 
-        result_holder: dict[str, ScoringResult] = {}
+        result_holder: dict[str, Any] = {}
 
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
@@ -256,6 +262,11 @@ class MatchConfirmationService:
             loser_tier = TierEnum(loser_ranking.get("tier", _DEFAULT_TIER))
             winner_reg_tier = TierEnum(winner_ranking.get("registrationTier", winner_tier))
             loser_reg_tier = TierEnum(loser_ranking.get("registrationTier", loser_tier))
+
+            result_holder["winner_pts_before"] = winner_pts
+            result_holder["loser_pts_before"] = loser_pts
+            result_holder["winner_tier_before"] = winner_tier
+            result_holder["loser_tier_before"] = loser_tier
 
             # --- COMPUTE (pure, no IO) ---
             scoring = compute_match_scoring(
@@ -350,6 +361,27 @@ class MatchConfirmationService:
         _scoring_txn(self.client.transaction())
 
         scoring = result_holder["scoring"]
+        is_winner = uid == winner_uid
+        your_delta = scoring.winner_delta if is_winner else scoring.loser_delta
+        scoring_payload = ScoringPayload(
+            sport=sport,
+            your_pts_before=result_holder["winner_pts_before"]
+            if is_winner
+            else result_holder["loser_pts_before"],
+            your_pts_after=scoring.winner_new_pts if is_winner else scoring.loser_new_pts,
+            delta=your_delta.total,
+            breakdown=ScoringBreakdown(
+                base_win=your_delta.base,
+                upset_bonus=your_delta.upset_bonus,
+                elo_bonus=your_delta.elo_bonus,
+                penalty=your_delta.penalty,
+            ),
+            tier_before=result_holder["winner_tier_before"]
+            if is_winner
+            else result_holder["loser_tier_before"],
+            tier_after=scoring.winner_new_tier if is_winner else scoring.loser_new_tier,
+            tier_crossed=scoring.winner_tier_crossed if is_winner else scoring.loser_tier_crossed,
+        )
         return VerifyScoreResponse(
             match_id=match_id,
             status=MatchStatusEnum.COMPLETED,
@@ -359,4 +391,5 @@ class MatchConfirmationService:
             loser_delta=scoring.loser_delta.total,
             winner_new_pts=scoring.winner_new_pts,
             loser_new_pts=scoring.loser_new_pts,
+            scoring=scoring_payload,
         )
