@@ -4,11 +4,13 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.deps import get_settings
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.journal_repo import JournalRepo
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
+from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
-from app.repos.journal_repo import JournalRepo
 
 
 @lru_cache
@@ -39,3 +41,11 @@ def get_broadcasts_repo() -> BroadcastsRepo:
 
 def get_offers_repo() -> OffersRepo:
     return OffersRepo(get_firestore_client())
+
+
+def get_point_history_repo() -> PointHistoryRepo:
+    return PointHistoryRepo(get_firestore_client())
+
+
+def get_tier_config_repo() -> TierConfigRepo:
+    return TierConfigRepo(get_firestore_client())
