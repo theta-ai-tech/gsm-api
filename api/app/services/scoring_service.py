@@ -105,10 +105,11 @@ def compute_match_scoring(
 
     winner_delta = calculate_score_delta(winner_pts, loser_pts, winner_tier, loser_tier)
     loser_penalty = calculate_penalty(loser_pts, winner_pts, loser_tier, winner_tier)
-    loser_delta = ScoreDelta(total=loser_penalty, penalty=loser_penalty)
 
     winner_new_pts = winner_pts + winner_delta.total
     loser_new_pts = apply_floor(loser_pts + loser_penalty, loser_reg_tier, tier_config)
+    # Effective delta is the actual pts change after floor clamping (may differ from raw penalty)
+    loser_delta = ScoreDelta(total=loser_new_pts - loser_pts, penalty=loser_penalty)
 
     winner_new_tier = _normalize_tier(get_tier(winner_new_pts, tier_config.thresholds))
     loser_new_tier = _normalize_tier(get_tier(loser_new_pts, tier_config.thresholds))

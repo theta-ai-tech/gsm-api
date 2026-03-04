@@ -122,7 +122,9 @@ class TestComputeMatchScoring:
         assert result.winner_tier_crossed is True
         assert result.loser_tier_crossed is False
 
-    def test_loser_floor_prevents_drop_below_registration_tier(self) -> None:
+    def test_loser_floor_clamps_pts_and_effective_delta_is_actual_change(self) -> None:
+        # loser_pts=2010, penalty=-50 → raw=1960 < floor(2000) → clamped to 2000
+        # effective delta = 2000 - 2010 = -10 (not the raw -50)
         result = compute_match_scoring(
             winner_pts=1900,
             loser_pts=2010,
@@ -133,10 +135,42 @@ class TestComputeMatchScoring:
             tier_config=_tier_config(),
         )
 
-        assert result.loser_delta == ScoreDelta(total=-50, penalty=-50)
+        assert result.loser_delta == ScoreDelta(total=-10, penalty=-50)
         assert result.loser_new_pts == 2000
         assert result.loser_new_tier == TierEnum.INTERMEDIATE
         assert result.loser_tier_crossed is False
+
+    def test_loser_exactly_at_floor_delta_is_zero(self) -> None:
+        # loser_pts=2000, penalty=-50 → raw=1950 < floor(2000) → clamped to 2000
+        # effective delta = 2000 - 2000 = 0
+        result = compute_match_scoring(
+            winner_pts=1900,
+            loser_pts=2000,
+            winner_tier=TierEnum.AMATEUR,
+            loser_tier=TierEnum.INTERMEDIATE,
+            winner_reg_tier=TierEnum.AMATEUR,
+            loser_reg_tier=TierEnum.INTERMEDIATE,
+            tier_config=_tier_config(),
+        )
+
+        assert result.loser_delta == ScoreDelta(total=0, penalty=-50)
+        assert result.loser_new_pts == 2000
+
+    def test_loser_above_floor_full_penalty_applied(self) -> None:
+        # loser_pts=2050, penalty=-50 → raw=2000 = floor → no clamping needed
+        # effective delta = 2000 - 2050 = -50
+        result = compute_match_scoring(
+            winner_pts=1900,
+            loser_pts=2050,
+            winner_tier=TierEnum.AMATEUR,
+            loser_tier=TierEnum.INTERMEDIATE,
+            winner_reg_tier=TierEnum.AMATEUR,
+            loser_reg_tier=TierEnum.INTERMEDIATE,
+            tier_config=_tier_config(),
+        )
+
+        assert result.loser_delta == ScoreDelta(total=-50, penalty=-50)
+        assert result.loser_new_pts == 2000
 
     def test_retired_match_returns_zero_deltas(self) -> None:
         result = compute_match_scoring(
