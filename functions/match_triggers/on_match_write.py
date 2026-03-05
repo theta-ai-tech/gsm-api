@@ -188,3 +188,78 @@ def qualify_completion_match_write(
         participant_uids=participant_uids,
         finished_at=finished_at,
     )
+
+
+def qualify_ranking_recomputation(
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+    now: datetime,
+) -> CompletionQualificationResult:
+    """
+    Qualification check for D5.1 global-ranking recomputation.
+
+    Qualifies on any transition where after.status == 'completed' and
+    before.status != 'completed'. This is more permissive than
+    qualify_completion_match_write (D2), which only fires on
+    'scheduled' → 'completed'. D5.1 must also catch
+    'pending_confirmation' → 'completed' produced by SE-5.
+    """
+    match_id = _get_match_id(before, after)
+    participant_uids = _list_from((after or {}).get("participantUids"))
+    finished_at = (after or {}).get("finishedAt")
+
+    if after is None:
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="deleted",
+            match_id=match_id,
+            participant_uids=_list_from((before or {}).get("participantUids")),
+            finished_at=(before or {}).get("finishedAt"),
+        )
+
+    before_status = (before or {}).get("status")
+    after_status = after.get("status")
+
+    if before_status == "completed" and after_status == "completed":
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="already_completed",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at if isinstance(finished_at, datetime) else None,
+        )
+
+    if after_status != "completed":
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="status_not_completed",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at if isinstance(finished_at, datetime) else None,
+        )
+
+    if finished_at is None or not isinstance(finished_at, datetime):
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="finished_at_missing",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=None,
+        )
+
+    if not _is_aware(finished_at):
+        return CompletionQualificationResult(
+            qualifies=False,
+            reason="finished_at_naive",
+            match_id=match_id,
+            participant_uids=participant_uids,
+            finished_at=finished_at,
+        )
+
+    return CompletionQualificationResult(
+        qualifies=True,
+        reason="qualifies",
+        match_id=match_id,
+        participant_uids=participant_uids,
+        finished_at=finished_at,
+    )
