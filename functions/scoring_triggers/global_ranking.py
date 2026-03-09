@@ -7,7 +7,6 @@ recompute_global_ranking() performs the Firestore read-sort-write cycle.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from google.cloud import firestore  # type: ignore[import-untyped]
@@ -26,10 +25,13 @@ def assign_global_rankings(user_pts: list[tuple[str, int]]) -> list[tuple[str, i
     return [(uid, rank + 1) for rank, (uid, _) in enumerate(sorted_pairs)]
 
 
-def recompute_global_ranking(client: firestore.Client, sport: str, now: datetime) -> int:
+def recompute_global_ranking(client: firestore.Client, sport: str) -> int:
     """
     Query all users ranked in sport, assign 1-indexed globalRanking by pts DESC,
     and batch-write updated globalRanking + lastUpdated back to user docs.
+
+    lastUpdated is set to firestore.SERVER_TIMESTAMP so it reflects the actual
+    Firestore write time, even when the globalRanking ordinal did not change.
 
     Returns the number of user docs updated.
 
@@ -66,7 +68,7 @@ def recompute_global_ranking(client: firestore.Client, sport: str, now: datetime
             user_ref,
             {
                 f"rankings.{sport}.globalRanking": rank,
-                f"rankings.{sport}.lastUpdated": now,
+                f"rankings.{sport}.lastUpdated": firestore.SERVER_TIMESTAMP,
             },
         )
         batch_count += 1
