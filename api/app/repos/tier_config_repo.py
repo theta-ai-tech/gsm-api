@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Optional, cast
+
+from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.models.tier import TierConfig
 from app.repos.base import RepoBase
@@ -20,7 +22,9 @@ class TierConfigRepo(RepoBase):
         now = time.monotonic()
         if _cache is not None and (now - _cache_ts) < _TIER_CONFIG_TTL:
             return _cache
-        doc = self.client.collection("config").document("tiers").get()
+        doc = cast(
+            firestore.DocumentSnapshot, self.client.collection("config").document("tiers").get()
+        )
         if not doc.exists:
             raise ValueError("Tier config not found in Firestore (config/tiers)")
         data = doc.to_dict() or {}

@@ -94,7 +94,7 @@ def handle_match_write_recompute_global_ranking(
         )
         return
 
-    users_updated = recompute_global_ranking(client, str(sport), now)
+    users_updated = recompute_global_ranking(client, str(sport))
 
     log_event(
         trigger=_TRIGGER,

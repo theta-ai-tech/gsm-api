@@ -23,7 +23,7 @@ Transaction flow for POST /matches/{matchId}/verify-score:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
@@ -247,8 +247,8 @@ class MatchConfirmationService:
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
             # --- READS (must precede all writes) ---
-            winner_snap = winner_ref.get(transaction=txn)
-            loser_snap = loser_ref.get(transaction=txn)
+            winner_snap = cast(firestore.DocumentSnapshot, winner_ref.get(transaction=txn))
+            loser_snap = cast(firestore.DocumentSnapshot, loser_ref.get(transaction=txn))
 
             winner_data = winner_snap.to_dict() or {}
             loser_data = loser_snap.to_dict() or {}
