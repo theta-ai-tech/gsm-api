@@ -1,4 +1,8 @@
-# /next-issue
+---
+name: next-issue
+description: Transition from a completed branch to a fresh branch for the next GitHub issue. Verifies the current branch is merged, deletes it, pulls main, and creates a new branch named after the chosen issue.
+disable-model-invocation: true
+---
 
 You are helping the user transition from a completed branch to a fresh branch for the next GitHub issue.
 
