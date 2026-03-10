@@ -1,10 +1,10 @@
 ---
 name: next-issue
-description: Transition from a completed branch to a fresh branch for the next GitHub issue. Verifies the current branch is merged, deletes it, pulls main, and creates a new branch named after the chosen issue.
+description: Transition from a completed branch to a fresh branch for the next GitHub issue. Verifies the current branch is merged, deletes it, pulls main, creates a new branch, implements the issue, commits, and raises a PR.
 disable-model-invocation: true
 ---
 
-You are helping the user transition from a completed branch to a fresh branch for the next GitHub issue.
+You are helping the user pick up, implement, and ship the next GitHub issue end-to-end.
 
 Follow these steps **in order**, stopping and informing the user if any step fails or requires a decision.
 
@@ -42,16 +42,17 @@ If `git branch -d` fails because the branch is not fully merged locally (can hap
 
 ---
 
-## Step 4 — Fetch the next issue
+## Step 4 — Determine the target issue
 
-Run `gh issue list --state open --limit 20 --json number,title,labels,assignees` to get open issues.
+**If the user called `/next-issue <issue-number>`:** use that number directly — skip the lookup below.
 
-Apply this priority order to pick the **next** issue:
-1. Issues assigned to the current user (check via `gh api user --jq .login` first)
-2. Issues with labels that match the project's current milestone or focus (e.g. `phase-1-scoring`, `tab3-lab`)
-3. Lowest issue number among remaining candidates
+**Otherwise:** find the issue number automatically:
+1. Get the most recently merged PR: `gh pr list --state merged --limit 1 --json number,title,body`.
+2. Extract the issue number it closes (look for `Closes #N`, `Fixes #N`, or `Resolves #N` in the PR body; also check the PR title for `(#N)` patterns).
+3. The target issue is `N + 1`.
+4. Fetch that issue: `gh issue view <N+1> --json number,title,labels`.
 
-Show the user the chosen issue (number + title + labels) and ask for confirmation before proceeding, unless there is only one obvious candidate.
+Show the user the chosen issue (number + title + labels) and ask for confirmation before proceeding.
 
 ---
 
@@ -63,18 +64,54 @@ Derive a branch name from the issue:
 - Slugify the title: lowercase, replace spaces/special chars with `-`, trim to ~40 chars, drop common filler words (the, a, an, for, with, on, to, in, of).
 - Example: issue #91 "Add match history pagination" with label `api` → `api-add-match-history-pagination-91`
 
+Use `gh issue develop` to create the branch and formally link it to the issue in one step:
+
 ```bash
-git checkout -b <new-branch>
+gh issue develop <number> --name <new-branch> --checkout
 ```
 
 ---
 
-## Step 6 — Report
+## Step 6 — Implement the issue
+
+1. Fetch the full issue body: `gh issue view <number> --json body,title,labels,comments`.
+2. Read any relevant existing code before making changes.
+3. Implement the required changes following the project's coding conventions (see CLAUDE.md).
+4. Run `make fmt format type` and fix any errors before proceeding.
+
+---
+
+## Step 7 — Commit
+
+Stage and commit all changes:
+
+```bash
+git add <relevant files>
+git commit -m "<type>: <short imperative description> (#<issue-number>)"
+```
+
+Follow the commit style in CLAUDE.md: short imperative title with scope, e.g. `feat: SE-12 GET /me/lab/dashboard endpoint (#89)`.
+
+---
+
+## Step 8 — Raise a PR
+
+Push the branch and open a pull request:
+
+```bash
+git push -u origin <new-branch>
+gh pr create --title "<type>: <description> (#<issue-number>)" --body "..."
+```
+
+PR body should include:
+- A short summary of what was implemented
+- `Closes #<issue-number>`
+
+---
+
+## Step 9 — Report
 
 Summarise what was done:
 - Old branch deleted (local + remote)
-- Now on `main` at commit (short SHA)
-- New branch created: `<new-branch>`
-- Linked issue: #number — title
-
-Remind the user to run `gh issue develop <number> --checkout` if they want GitHub to formally link the branch to the issue, or confirm it's already linked.
+- Issue implemented and committed
+- PR raised: link to the new PR
