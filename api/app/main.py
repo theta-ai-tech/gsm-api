@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from app.deps import get_current_user, get_role_service
 from app.deps import get_firestore_client
 from app.routers.improve import router as improve_router
+from app.routers.lab import router as lab_router
 from app.routers.matches import router as matches_router
 from app.routers.play import router as play_router
 from app.security import CurrentUser, require_league_member, require_self
@@ -21,6 +22,7 @@ app = FastAPI(title="GSM API", version="0.1.0")
 # Include routers
 app.include_router(play_router)
 app.include_router(improve_router)
+app.include_router(lab_router)
 app.include_router(matches_router)
 
 settings = get_settings()
