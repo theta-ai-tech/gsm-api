@@ -56,10 +56,11 @@ def mock_user():
 
 @pytest.fixture
 def client(mock_repo, mock_user):
+    previous_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_point_history_repo] = lambda: mock_repo
     yield TestClient(app)
-    app.dependency_overrides.clear()
+    app.dependency_overrides = previous_overrides
 
 
 # ---------------------------------------------------------------------------
