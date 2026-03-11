@@ -1,7 +1,7 @@
 """
-Unit tests for GET /me/lab/progression.
+Unit tests for GET /me/lab/progression and GET /me/lab/dashboard.
 
-PointHistoryRepo is mocked — no emulator needed.
+Repos are mocked — no emulator needed.
 """
 
 from __future__ import annotations
@@ -14,12 +14,23 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
+from app.dependencies.repos import (
+    get_point_history_repo,
+    get_tier_config_repo,
+    get_users_repo,
+)
 from app.deps import get_current_user
 from app.main import app
-from app.models.enums import PointHistoryReasonEnum, SportEnum, TierEnum
+from app.models.common import PerSportRankings, SportRanking, UserCompletedMatchSummary
+from app.models.enums import (
+    MatchResultEnum,
+    PointHistoryReasonEnum,
+    SportEnum,
+    TierEnum,
+)
 from app.models.point_history import PointHistoryEntry
-from app.dependencies.repos import get_point_history_repo
-from app.routers.lab import _encode_cursor
+from app.models.tier import TierConfig, TierThreshold
+from app.routers.lab import _compute_quick_stats, _encode_cursor, _rankings_to_dict
 from app.security import CurrentUser
 
 _NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
@@ -176,3 +187,229 @@ class TestValidation:
     def test_invalid_cursor_returns_400(self, client, mock_repo):
         resp = client.get("/me/lab/progression?sport=tennis&cursor=notvalidbase64!!!")
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Dashboard helpers (pure unit tests — no HTTP)
+# ---------------------------------------------------------------------------
+
+_T1 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+_T2 = datetime(2026, 1, 2, 10, 0, tzinfo=timezone.utc)
+_T3 = datetime(2026, 1, 3, 10, 0, tzinfo=timezone.utc)
+
+
+def _make_match(
+    sport: SportEnum,
+    result: MatchResultEnum,
+    finished_at: datetime = _T1,
+) -> UserCompletedMatchSummary:
+    return UserCompletedMatchSummary(
+        match_id="m1",
+        sport=sport,
+        finished_at=finished_at,
+        result=result,
+    )
+
+
+def _make_tier_config() -> TierConfig:
+    return TierConfig(
+        thresholds=[
+            TierThreshold(
+                tier=TierEnum.AMATEUR,
+                minPts=0,
+                maxPts=999,
+                label="Amateur",
+                color="#aaa",
+            ),
+            TierThreshold(
+                tier=TierEnum.INTERMEDIATE,
+                minPts=1000,
+                maxPts=1999,
+                label="Intermediate",
+                color="#bbb",
+            ),
+        ],
+        version=1,
+        updatedAt=_T1,
+    )
+
+
+class TestRankingsToDict:
+    def test_returns_only_non_none_sports(self):
+        rankings = PerSportRankings(
+            tennis=SportRanking(
+                sport=SportEnum.TENNIS, pts=2000, tier=TierEnum.INTERMEDIATE
+            ),
+            padel=None,
+        )
+        result = _rankings_to_dict(rankings)
+        assert set(result.keys()) == {"tennis"}
+        assert result["tennis"].pts == 2000
+
+    def test_empty_rankings_returns_empty_dict(self):
+        assert _rankings_to_dict(PerSportRankings()) == {}
+
+    def test_all_sports_present(self):
+        rankings = PerSportRankings(
+            tennis=SportRanking(sport=SportEnum.TENNIS, pts=1000),
+            padel=SportRanking(sport=SportEnum.PADEL, pts=500),
+            pickleball=SportRanking(sport=SportEnum.PICKLEBALL, pts=200),
+        )
+        result = _rankings_to_dict(rankings)
+        assert set(result.keys()) == {"tennis", "padel", "pickleball"}
+
+
+class TestComputeQuickStats:
+    def test_basic_win_loss_counts(self):
+        matches = [
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T1),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T2),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.LOSS, _T3),
+        ]
+        result = _compute_quick_stats(matches)
+        assert result["tennis"].total_matches == 3
+        assert result["tennis"].wins == 2
+        assert result["tennis"].losses == 1
+
+    def test_win_rate_calculation(self):
+        matches = [
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T1),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.LOSS, _T2),
+        ]
+        result = _compute_quick_stats(matches)
+        assert result["tennis"].win_rate == 0.5
+
+    def test_win_streak(self):
+        matches = [
+            _make_match(SportEnum.TENNIS, MatchResultEnum.LOSS, _T1),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T2),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T3),
+        ]
+        result = _compute_quick_stats(matches)
+        assert result["tennis"].current_streak == 2
+        assert result["tennis"].streak_type == "win"
+
+    def test_loss_streak(self):
+        matches = [
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T1),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.LOSS, _T2),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.LOSS, _T3),
+        ]
+        result = _compute_quick_stats(matches)
+        assert result["tennis"].current_streak == 2
+        assert result["tennis"].streak_type == "loss"
+
+    def test_per_sport_isolation(self):
+        matches = [
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T1),
+            _make_match(SportEnum.PADEL, MatchResultEnum.LOSS, _T1),
+        ]
+        result = _compute_quick_stats(matches)
+        assert "tennis" in result
+        assert "padel" in result
+        assert result["tennis"].wins == 1
+        assert result["padel"].losses == 1
+
+    def test_empty_matches_returns_empty_dict(self):
+        assert _compute_quick_stats([]) == {}
+
+
+# ---------------------------------------------------------------------------
+# Dashboard endpoint (HTTP)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_users_repo():
+    return Mock(spec=["get_private_profile"])
+
+
+@pytest.fixture
+def mock_tier_config_repo():
+    repo = Mock(spec=["get"])
+    repo.get.return_value = _make_tier_config()
+    return repo
+
+
+@pytest.fixture
+def dashboard_client(mock_users_repo, mock_tier_config_repo):
+    from app.models.common import PerSportLevels, UserPreferences
+    from app.models.user import PrivateUserProfile
+
+    mock_users_repo.get_private_profile.return_value = PrivateUserProfile(
+        uid=_UID,
+        name="Test User",
+        email="test@example.com",
+        rankings=PerSportRankings(
+            tennis=SportRanking(
+                sport=SportEnum.TENNIS, pts=2300, tier=TierEnum.INTERMEDIATE
+            ),
+        ),
+        preferences=UserPreferences(
+            area=1, levels=PerSportLevels(), sports=[SportEnum.TENNIS]
+        ),
+        completed_matches=[
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T2),
+            _make_match(SportEnum.TENNIS, MatchResultEnum.WIN, _T3),
+        ],
+        leagues_active=[],
+        leagues_completed=[],
+        upcoming_matches=[],
+        journal_recent=[],
+        cursors=None,
+    )
+    previous_overrides = dict(app.dependency_overrides)
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_users_repo] = lambda: mock_users_repo
+    app.dependency_overrides[get_tier_config_repo] = lambda: mock_tier_config_repo
+    yield TestClient(app)
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetDashboard:
+    def test_returns_200(self, dashboard_client):
+        resp = dashboard_client.get("/me/lab/dashboard")
+        assert resp.status_code == 200
+
+    def test_rankings_contains_sports_with_data(self, dashboard_client):
+        body = dashboard_client.get("/me/lab/dashboard").json()
+        assert "tennis" in body["rankings"]
+        assert "padel" not in body["rankings"]
+
+    def test_ranking_fields(self, dashboard_client):
+        body = dashboard_client.get("/me/lab/dashboard").json()
+        tennis = body["rankings"]["tennis"]
+        assert tennis["pts"] == 2300
+        assert tennis["tier"] == "intermediate"
+
+    def test_quick_stats_present(self, dashboard_client):
+        body = dashboard_client.get("/me/lab/dashboard").json()
+        qs = body["quick_stats"]["tennis"]
+        assert qs["total_matches"] == 2
+        assert qs["wins"] == 2
+        assert qs["streak_type"] == "win"
+        assert qs["current_streak"] == 2
+
+    def test_tier_thresholds_present(self, dashboard_client):
+        body = dashboard_client.get("/me/lab/dashboard").json()
+        assert len(body["tier_thresholds"]) == 2
+        tiers = {t["tier"] for t in body["tier_thresholds"]}
+        assert tiers == {"amateur", "intermediate"}
+
+    def test_missing_token_returns_401(self):
+        c = TestClient(app)
+        resp = c.get("/me/lab/dashboard")
+        assert resp.status_code == 401
+
+    def test_user_not_found_returns_404(self, mock_users_repo, mock_tier_config_repo):
+        mock_users_repo.get_private_profile.return_value = None
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        previous_overrides = dict(app.dependency_overrides)
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_users_repo] = lambda: mock_users_repo
+        app.dependency_overrides[get_tier_config_repo] = lambda: mock_tier_config_repo
+        c = TestClient(app)
+        resp = c.get("/me/lab/dashboard")
+        app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
