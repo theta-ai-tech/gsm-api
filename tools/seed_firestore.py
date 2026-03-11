@@ -16,6 +16,7 @@ from tools.seed_data import (
     SAMPLE_JOURNAL_ENTRIES,
     SAMPLE_LEAGUES,
     SAMPLE_MATCHES,
+    SAMPLE_POINT_HISTORY,
     SAMPLE_USERS,
     TIER_CONFIG,
 )
@@ -24,6 +25,7 @@ from tools.seed_mapping import (
     league_member_to_firestore_doc,
     league_to_firestore_doc,
     match_to_firestore_doc,
+    point_history_entry_to_firestore_doc,
     tier_config_to_firestore_doc,
     user_to_firestore_doc,
 )
@@ -63,6 +65,16 @@ def seed_all(client: firestore.Client) -> None:
         )
         doc_ref.set(journal_entry_to_firestore_doc(entry))
 
+    for uid, entries in SAMPLE_POINT_HISTORY:
+        for entry in entries:
+            doc_ref = (
+                client.collection("users")
+                .document(uid)
+                .collection("pointHistory")
+                .document(entry.entry_id)
+            )
+            doc_ref.set(point_history_entry_to_firestore_doc(entry))
+
     # Config documents
     client.collection("config").document("tiers").set(
         tier_config_to_firestore_doc(TIER_CONFIG)
@@ -96,12 +108,14 @@ def main() -> None:
 
     client = firestore.Client(project=project_id)
     seed_all(client)
+    total_ph = sum(len(entries) for _, entries in SAMPLE_POINT_HISTORY)
     print(
         "Seeded "
         f"{len(SAMPLE_USERS)} users, "
         f"{len(SAMPLE_LEAGUES)} leagues, "
         f"{len(SAMPLE_MATCHES)} matches, "
         f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
+        f"{total_ph} point history entries, "
         f"1 tier config "
         f"into Firestore emulator project {project_id}."
     )

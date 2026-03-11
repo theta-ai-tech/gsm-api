@@ -13,6 +13,7 @@ from app.models import (
     MatchScore,
     PerSportLevels,
     PerSportRankings,
+    PointHistoryEntry,
     PrivateUserProfile,
     SetScore,
     SportRanking,
@@ -222,6 +223,22 @@ def tier_config_to_firestore_doc(config: TierConfig) -> Dict[str, Any]:
         "thresholds": [_tier_threshold_to_dict(t) for t in config.thresholds],
         "version": config.version,
         "updatedAt": config.updated_at,
+    }
+
+
+def point_history_entry_to_firestore_doc(entry: PointHistoryEntry) -> Dict[str, Any]:
+    return {
+        "sport": entry.sport.value,
+        "pts": entry.pts,
+        "delta": entry.delta,
+        "reason": entry.reason.value,
+        "matchId": entry.match_id,
+        "opponentUid": entry.opponent_uid,
+        "opponentPtsBefore": entry.opponent_pts_before,
+        "leagueId": entry.league_id,
+        "createdAt": entry.created_at,
+        "tierBefore": entry.tier_before.value if entry.tier_before else None,
+        "tierAfter": entry.tier_after.value if entry.tier_after else None,
     }
 
 
