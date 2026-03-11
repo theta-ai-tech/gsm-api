@@ -54,10 +54,28 @@ class TestCalculateScoreDelta:
             2100, 2050, TierEnum.INTERMEDIATE, TierEnum.INTERMEDIATE
         ) == (ScoreDelta(total=100, base=100))
 
+    def test_same_tier_winner_has_more_pts_awards_base_only(self) -> None:
+        # Winner already has more pts — still just base, no upset bonus
+        assert calculate_score_delta(
+            2500, 2100, TierEnum.INTERMEDIATE, TierEnum.INTERMEDIATE
+        ) == ScoreDelta(total=100, base=100)
+
     def test_upset_adds_bonus_and_elo_component(self) -> None:
         assert calculate_score_delta(
             2400, 3000, TierEnum.INTERMEDIATE, TierEnum.ADVANCED
         ) == (ScoreDelta(total=180, base=100, upset_bonus=50, elo_bonus=30))
+
+    def test_upset_large_gap_caps_elo_at_fifty(self) -> None:
+        # pts_diff = 3000 - 2000 = 1000 → elo_bonus = floor(1000 * 0.05) = 50
+        assert calculate_score_delta(
+            2000, 3000, TierEnum.INTERMEDIATE, TierEnum.ADVANCED
+        ) == ScoreDelta(total=200, base=100, upset_bonus=50, elo_bonus=50)
+
+    def test_upset_small_gap_gives_small_elo_bonus(self) -> None:
+        # pts_diff = 3000 - 2900 = 100 → elo_bonus = floor(100 * 0.05) = 5
+        assert calculate_score_delta(
+            2900, 3000, TierEnum.INTERMEDIATE, TierEnum.ADVANCED
+        ) == ScoreDelta(total=155, base=100, upset_bonus=50, elo_bonus=5)
 
 
 class TestCalculatePenalty:
@@ -67,16 +85,27 @@ class TestCalculatePenalty:
             == -50
         )
 
-    def test_no_penalty_when_losing_to_same_or_higher_tier(self) -> None:
+    def test_no_penalty_when_losing_to_same_tier(self) -> None:
         assert (
             calculate_penalty(2200, 2400, TierEnum.INTERMEDIATE, TierEnum.INTERMEDIATE)
             == 0
         )
 
+    def test_no_penalty_when_losing_to_higher_tier(self) -> None:
+        assert (
+            calculate_penalty(2200, 3100, TierEnum.INTERMEDIATE, TierEnum.ADVANCED) == 0
+        )
+
 
 class TestApplyFloor:
-    def test_floor_uses_registration_tier_threshold(self) -> None:
+    def test_points_below_floor_clamped_to_floor(self) -> None:
         assert apply_floor(1950, TierEnum.INTERMEDIATE, _tier_config()) == 2000
+
+    def test_points_at_floor_unchanged(self) -> None:
+        assert apply_floor(2000, TierEnum.INTERMEDIATE, _tier_config()) == 2000
+
+    def test_points_above_floor_unchanged(self) -> None:
+        assert apply_floor(2500, TierEnum.INTERMEDIATE, _tier_config()) == 2500
 
 
 class TestComputeMatchScoring:
@@ -190,5 +219,61 @@ class TestComputeMatchScoring:
         assert result.loser_new_pts == 2050
         assert result.winner_new_tier == TierEnum.INTERMEDIATE
         assert result.loser_new_tier == TierEnum.INTERMEDIATE
+        assert result.winner_tier_crossed is False
+        assert result.loser_tier_crossed is False
+
+    def test_walkover_returns_zero_deltas(self) -> None:
+        result = compute_match_scoring(
+            winner_pts=2100,
+            loser_pts=2050,
+            winner_tier=TierEnum.INTERMEDIATE,
+            loser_tier=TierEnum.INTERMEDIATE,
+            winner_reg_tier=TierEnum.INTERMEDIATE,
+            loser_reg_tier=TierEnum.INTERMEDIATE,
+            tier_config=_tier_config(),
+            walkover=True,
+        )
+
+        assert result.winner_delta == ScoreDelta(total=0)
+        assert result.loser_delta == ScoreDelta(total=0)
+        assert result.winner_new_pts == 2100
+        assert result.loser_new_pts == 2050
+        assert result.winner_tier_crossed is False
+        assert result.loser_tier_crossed is False
+
+    def test_winner_crosses_tier_intermediate_to_advanced(self) -> None:
+        # winner at 2900 + 100 base = 3000 → crosses into ADVANCED
+        result = compute_match_scoring(
+            winner_pts=2900,
+            loser_pts=2800,
+            winner_tier=TierEnum.INTERMEDIATE,
+            loser_tier=TierEnum.INTERMEDIATE,
+            winner_reg_tier=TierEnum.INTERMEDIATE,
+            loser_reg_tier=TierEnum.INTERMEDIATE,
+            tier_config=_tier_config(),
+        )
+
+        assert result.winner_new_pts == 3000
+        assert result.winner_new_tier == TierEnum.ADVANCED
+        assert result.winner_tier_crossed is True
+        assert result.loser_tier_crossed is False
+
+    def test_both_competitive_same_tier_no_tier_change(self) -> None:
+        result = compute_match_scoring(
+            winner_pts=4200,
+            loser_pts=4100,
+            winner_tier=TierEnum.COMPETITIVE,
+            loser_tier=TierEnum.COMPETITIVE,
+            winner_reg_tier=TierEnum.COMPETITIVE,
+            loser_reg_tier=TierEnum.COMPETITIVE,
+            tier_config=_tier_config(),
+        )
+
+        assert result.winner_delta == ScoreDelta(total=100, base=100)
+        assert result.loser_delta == ScoreDelta(total=0)
+        assert result.winner_new_pts == 4300
+        assert result.loser_new_pts == 4100
+        assert result.winner_new_tier == TierEnum.COMPETITIVE
+        assert result.loser_new_tier == TierEnum.COMPETITIVE
         assert result.winner_tier_crossed is False
         assert result.loser_tier_crossed is False
