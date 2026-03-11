@@ -46,6 +46,7 @@ from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
 from app.models.share import ShareCardData
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.models.point_history import PointHistoryEntry
+from app.models.skill_taxonomy import SkillTaxonomy
 from app.models.tier import TierConfig, TierThreshold
 from app.models.user import PrivateUserProfile, PublicUserProfile
 
@@ -111,6 +112,8 @@ __all__ = [
     "UserStats",
     # point history
     "PointHistoryEntry",
+    # skill taxonomy
+    "SkillTaxonomy",
     # tier
     "TierThreshold",
     "TierConfig",

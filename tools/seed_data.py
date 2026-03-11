@@ -23,6 +23,7 @@ from app.models import (
     PrivateUserProfile,
     PublicUserProfile,
     SetScore,
+    SkillTaxonomy,
     SportEnum,
     SportRanking,
     TierConfig,
@@ -533,6 +534,26 @@ SAMPLE_POINT_HISTORY: list[tuple[str, list[PointHistoryEntry]]] = [
     (USER_ALICE.uid, POINT_HISTORY_ALICE),
     (USER_BOB.uid, POINT_HISTORY_BOB),
 ]
+
+# --- Skill taxonomy ---
+SKILL_TAXONOMY = SkillTaxonomy(
+    axes=["serve", "power", "net_play", "stamina", "mental"],
+    tag_map={
+        "first_serve": "serve",
+        "double_faults": "serve",
+        "ace": "serve",
+        "forehand_winner": "power",
+        "backhand_winner": "power",
+        "net_approach": "net_play",
+        "volley": "net_play",
+        "endurance": "stamina",
+        "fitness": "stamina",
+        "concentration": "mental",
+        "composure": "mental",
+        "tiebreak": "mental",
+    },
+    version=1,
+)
 
 # --- Tier config ---
 TIER_CONFIG = TierConfig(

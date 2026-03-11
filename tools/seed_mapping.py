@@ -16,6 +16,7 @@ from app.models import (
     PointHistoryEntry,
     PrivateUserProfile,
     SetScore,
+    SkillTaxonomy,
     SportRanking,
     TierConfig,
     TierThreshold,
@@ -239,6 +240,14 @@ def point_history_entry_to_firestore_doc(entry: PointHistoryEntry) -> Dict[str, 
         "createdAt": entry.created_at,
         "tierBefore": entry.tier_before.value if entry.tier_before else None,
         "tierAfter": entry.tier_after.value if entry.tier_after else None,
+    }
+
+
+def skill_taxonomy_to_firestore_doc(taxonomy: SkillTaxonomy) -> Dict[str, Any]:
+    return {
+        "axes": taxonomy.axes,
+        "tagMap": taxonomy.tag_map,
+        "version": taxonomy.version,
     }
 
 
