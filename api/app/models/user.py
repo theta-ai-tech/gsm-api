@@ -10,6 +10,7 @@ from app.models.common import (
     UserMatchSummary,
     UserPreferences,
 )
+from app.models.skill_dna import SportSkillDna
 from app.models.stats import NorthStarGoal
 
 
@@ -22,6 +23,7 @@ class PublicUserProfile(GsmBaseModel):
     rankings: PerSportRankings
     leagues_active: list[LeagueSummary] = []
     leagues_completed: list[LeagueSummary] = []
+    skill_dna: dict[str, SportSkillDna] | None = None
 
 
 class PrivateUserProfile(PublicUserProfile):
