@@ -16,8 +16,10 @@ from app.models import (
     PointHistoryEntry,
     PrivateUserProfile,
     SetScore,
+    SkillAxisData,
     SkillTaxonomy,
     SportRanking,
+    SportSkillDna,
     TierConfig,
     TierThreshold,
     UserCompletedMatchSummary,
@@ -97,6 +99,32 @@ def _journal_entry_summary_to_dict(summary: JournalEntrySummary) -> Dict[str, An
     }
 
 
+def _skill_axis_data_to_dict(axis: SkillAxisData) -> Dict[str, Any]:
+    return {
+        "positive": axis.positive,
+        "negative": axis.negative,
+        "score": axis.score,
+    }
+
+
+def _sport_skill_dna_to_dict(dna: SportSkillDna) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "totalReflections": dna.total_reflections,
+        "lastUpdated": dna.last_updated,
+    }
+    for axis in ("serve", "power", "net_play", "stamina", "mental"):
+        value = getattr(dna, axis)
+        if value is not None:
+            result[axis] = _skill_axis_data_to_dict(value)
+    return result
+
+
+def _skill_dna_to_dict(skill_dna: dict[str, SportSkillDna] | None) -> Dict[str, Any] | None:
+    if skill_dna is None:
+        return None
+    return {sport: _sport_skill_dna_to_dict(dna) for sport, dna in skill_dna.items()}
+
+
 def _cursors_to_dict(cursors: CursorBundle | None) -> Dict[str, Any] | None:
     if cursors is None:
         return None
@@ -126,6 +154,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
         "completedMatches": [_user_completed_match_summary_to_dict(m) for m in user.completed_matches],
         "journalRecent": [_journal_entry_summary_to_dict(j) for j in user.journal_recent],
         "cursors": _cursors_to_dict(user.cursors),
+        "skillDna": _skill_dna_to_dict(user.skill_dna),
     }
 
 

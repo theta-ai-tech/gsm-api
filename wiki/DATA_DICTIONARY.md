@@ -141,6 +141,18 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | playTab.activeOutgoingOfferId | string | optional | — | cache | — | Doc ID of the user's pending outgoing offer (null when none). |
 | playTab.pendingIncomingOfferIds | array&lt;string&gt; | optional | — | cache | — | Doc IDs of pending incoming offers (empty when none). |
 | playTab.updatedAt | timestamp | optional | — | cache | — | Last state transition timestamp. |
+| skillDna | map | optional | — | cache | — | Per-sport radar chart cache. Keys are sport strings (e.g. `tennis`). |
+| skillDna.{sport} | map | optional | — | cache | — | Axis data for one sport. |
+| skillDna.{sport}.serve | map | optional | — | cache | — | `{positive, negative, score}` for the Serve axis. |
+| skillDna.{sport}.power | map | optional | — | cache | — | `{positive, negative, score}` for the Power axis. |
+| skillDna.{sport}.net_play | map | optional | — | cache | — | `{positive, negative, score}` for the Net Play axis. |
+| skillDna.{sport}.stamina | map | optional | — | cache | — | `{positive, negative, score}` for the Stamina axis. |
+| skillDna.{sport}.mental | map | optional | — | cache | — | `{positive, negative, score}` for the Mental axis. |
+| skillDna.{sport}.*.positive | number | required | — | cache | — | Count of positive reflections for this axis. |
+| skillDna.{sport}.*.negative | number | required | — | cache | — | Count of negative reflections for this axis. |
+| skillDna.{sport}.*.score | number | required | — | cache | — | `round(positive / (positive + negative) * 100)`; shown only when positive + negative >= 3. |
+| skillDna.{sport}.totalReflections | number | required | — | cache | — | Total reflection count for this sport. |
+| skillDna.{sport}.lastUpdated | timestamp | optional | — | cache | — | When this sport's DNA was last recalculated. |
 
 ## Subcollection: users/{uid}/journalEntries
 Path: `users/{uid}/journalEntries/{entryId}`
