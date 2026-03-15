@@ -18,6 +18,7 @@ from tools.seed_data import (
     SAMPLE_MATCHES,
     SAMPLE_POINT_HISTORY,
     SAMPLE_USERS,
+    SKILL_TAXONOMY,
     TIER_CONFIG,
 )
 from tools.seed_mapping import (
@@ -26,6 +27,7 @@ from tools.seed_mapping import (
     league_to_firestore_doc,
     match_to_firestore_doc,
     point_history_entry_to_firestore_doc,
+    skill_taxonomy_to_firestore_doc,
     tier_config_to_firestore_doc,
     user_to_firestore_doc,
 )
@@ -79,6 +81,9 @@ def seed_all(client: firestore.Client) -> None:
     client.collection("config").document("tiers").set(
         tier_config_to_firestore_doc(TIER_CONFIG)
     )
+    client.collection("config").document("skillTaxonomy").set(
+        skill_taxonomy_to_firestore_doc(SKILL_TAXONOMY)
+    )
 
 
 def main() -> None:
@@ -116,7 +121,8 @@ def main() -> None:
         f"{len(SAMPLE_MATCHES)} matches, "
         f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
         f"{total_ph} point history entries, "
-        f"1 tier config "
+        f"1 tier config, "
+        f"1 skill taxonomy "
         f"into Firestore emulator project {project_id}."
     )
 

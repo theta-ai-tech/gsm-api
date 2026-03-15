@@ -742,3 +742,39 @@ Purpose: tier threshold configuration. Defines point boundaries for player tiers
   "updatedAt": "2026-01-01T00:00:00Z"
 }
 ```
+
+## Document: config/skillTaxonomy
+Path: `config/skillTaxonomy`
+
+Purpose: maps journal reflection tags to the 5 radar axes (Serve, Power, Net Play, Stamina, Mental).
+Used by the Skill DNA aggregation to score each axis from `went_well` / `went_wrong` reflection tags.
+Unknown tags (not in `tagMap`) are silently ignored during aggregation.
+
+### Fields: config/skillTaxonomy
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| axes | array<string> | required | — | canonical | — | Ordered list of radar axis keys. |
+| tagMap | map<string,string> | required | — | canonical | — | Maps tag string → axis string. |
+| version | number | required | — | canonical | — | Schema version for forward compatibility. |
+
+### config/skillTaxonomy
+```json
+{
+  "axes": ["serve", "power", "net_play", "stamina", "mental"],
+  "tagMap": {
+    "first_serve": "serve",
+    "double_faults": "serve",
+    "ace": "serve",
+    "forehand_winner": "power",
+    "backhand_winner": "power",
+    "net_approach": "net_play",
+    "volley": "net_play",
+    "endurance": "stamina",
+    "fitness": "stamina",
+    "concentration": "mental",
+    "composure": "mental",
+    "tiebreak": "mental"
+  },
+  "version": 1
+}
+```
