@@ -552,21 +552,14 @@ class TestGetSkillDna:
         assert body["comparison"] is None
 
     def test_comparison_with_tier_averages(
-        self, skill_dna_mock_users_repo, skill_dna_mock_tier_config_repo
+        self, skill_dna_client, skill_dna_mock_tier_config_repo
     ) -> None:
         skill_dna_mock_tier_config_repo.get_tier_averages.return_value = {
             "intermediate": {"tennis": {"serve": 75, "power": 70}}
         }
-        mock_user = CurrentUser(uid=_UID, email="test@example.com")
-        previous_overrides = dict(app.dependency_overrides)
-        app.dependency_overrides[get_current_user] = lambda: mock_user
-        app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
-        app.dependency_overrides[get_tier_config_repo] = (
-            lambda: skill_dna_mock_tier_config_repo
-        )
-        c = TestClient(app)
-        body = c.get("/me/lab/skill-dna?sport=tennis&compare=next_tier").json()
-        app.dependency_overrides = previous_overrides
+        body = skill_dna_client.get(
+            "/me/lab/skill-dna?sport=tennis&compare=next_tier"
+        ).json()
         assert body["comparison"]["label"] == "Intermediate Average"
         assert body["comparison"]["axes"]["serve"] == 75
 
@@ -578,14 +571,15 @@ class TestGetSkillDna:
         )
         mock_user = CurrentUser(uid=_UID, email="test@example.com")
         previous_overrides = dict(app.dependency_overrides)
-        app.dependency_overrides[get_current_user] = lambda: mock_user
-        app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
-        app.dependency_overrides[get_tier_config_repo] = (
-            lambda: skill_dna_mock_tier_config_repo
-        )
-        c = TestClient(app)
-        resp = c.get("/me/lab/skill-dna?sport=padel")
-        app.dependency_overrides = previous_overrides
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
+            app.dependency_overrides[get_tier_config_repo] = (
+                lambda: skill_dna_mock_tier_config_repo
+            )
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=padel")
+        finally:
+            app.dependency_overrides = previous_overrides
         assert resp.status_code == 404
 
     def test_user_not_found_returns_404(
@@ -594,19 +588,24 @@ class TestGetSkillDna:
         skill_dna_mock_users_repo.get_public_profile.return_value = None
         mock_user = CurrentUser(uid=_UID, email="test@example.com")
         previous_overrides = dict(app.dependency_overrides)
-        app.dependency_overrides[get_current_user] = lambda: mock_user
-        app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
-        app.dependency_overrides[get_tier_config_repo] = (
-            lambda: skill_dna_mock_tier_config_repo
-        )
-        c = TestClient(app)
-        resp = c.get("/me/lab/skill-dna?sport=tennis")
-        app.dependency_overrides = previous_overrides
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
+            app.dependency_overrides[get_tier_config_repo] = (
+                lambda: skill_dna_mock_tier_config_repo
+            )
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
         assert resp.status_code == 404
 
     def test_missing_token_returns_401(self) -> None:
-        c = TestClient(app)
-        resp = c.get("/me/lab/skill-dna?sport=tennis")
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
         assert resp.status_code == 401
 
     def test_invalid_sport_returns_422(self, skill_dna_client) -> None:
