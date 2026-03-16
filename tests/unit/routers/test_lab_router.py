@@ -570,13 +570,12 @@ class TestGetSkillDna:
             _make_public_profile(skill_dna={})
         )
         mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        tier_repo = skill_dna_mock_tier_config_repo
         previous_overrides = dict(app.dependency_overrides)
         try:
             app.dependency_overrides[get_current_user] = lambda: mock_user
             app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
-            app.dependency_overrides[get_tier_config_repo] = (
-                lambda: skill_dna_mock_tier_config_repo
-            )
+            app.dependency_overrides[get_tier_config_repo] = lambda: tier_repo
             resp = TestClient(app).get("/me/lab/skill-dna?sport=padel")
         finally:
             app.dependency_overrides = previous_overrides
@@ -587,13 +586,12 @@ class TestGetSkillDna:
     ) -> None:
         skill_dna_mock_users_repo.get_public_profile.return_value = None
         mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        tier_repo = skill_dna_mock_tier_config_repo
         previous_overrides = dict(app.dependency_overrides)
         try:
             app.dependency_overrides[get_current_user] = lambda: mock_user
             app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
-            app.dependency_overrides[get_tier_config_repo] = (
-                lambda: skill_dna_mock_tier_config_repo
-            )
+            app.dependency_overrides[get_tier_config_repo] = lambda: tier_repo
             resp = TestClient(app).get("/me/lab/skill-dna?sport=tennis")
         finally:
             app.dependency_overrides = previous_overrides
