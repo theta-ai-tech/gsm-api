@@ -34,6 +34,7 @@ from app.models import (
     UserMatchSummary,
     UserPreferences,
 )
+from app.models.match import compute_participant_pair
 
 
 def utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
@@ -228,6 +229,7 @@ MATCH_UPCOMING_1 = Match(
         MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team=2),
     ],
     participant_uids=[USER_IGNATIOS.uid, USER_BOB.uid],
+    participant_pair=compute_participant_pair([USER_IGNATIOS.uid, USER_BOB.uid]),
 )
 
 MATCH_UPCOMING_2 = Match(
@@ -244,6 +246,7 @@ MATCH_UPCOMING_2 = Match(
         MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team=2),
     ],
     participant_uids=[USER_IGNATIOS.uid, USER_ALICE.uid],
+    participant_pair=compute_participant_pair([USER_IGNATIOS.uid, USER_ALICE.uid]),
 )
 
 MATCH_PENDING = Match(
@@ -261,6 +264,7 @@ MATCH_PENDING = Match(
         MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=None),
     ],
     participant_uids=[USER_ALICE.uid, USER_IGNATIOS.uid],
+    participant_pair=compute_participant_pair([USER_ALICE.uid, USER_IGNATIOS.uid]),
 )
 
 MATCH_COMPLETED_1 = Match(
@@ -285,6 +289,7 @@ MATCH_COMPLETED_1 = Match(
         MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team=None),
     ],
     participant_uids=[USER_IGNATIOS.uid, USER_BOB.uid],
+    participant_pair=compute_participant_pair([USER_IGNATIOS.uid, USER_BOB.uid]),
 )
 
 MATCH_COMPLETED_2 = Match(
@@ -310,6 +315,7 @@ MATCH_COMPLETED_2 = Match(
         MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=None),
     ],
     participant_uids=[USER_ALICE.uid, USER_IGNATIOS.uid],
+    participant_pair=compute_participant_pair([USER_ALICE.uid, USER_IGNATIOS.uid]),
 )
 
 SAMPLE_MATCHES = [

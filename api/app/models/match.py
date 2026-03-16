@@ -54,9 +54,17 @@ class MatchParticipant(GsmBaseModel):
     result: MatchResultEnum | None = None
 
 
+def compute_participant_pair(uids: list[str]) -> str | None:
+    """Return a deterministic pair key from two UIDs, sorted lexicographically."""
+    if len(uids) != 2:
+        return None
+    return "_".join(sorted(uids))
+
+
 class Match(GsmBaseModel):
     """
     participant_uids is a flattened list for fast Firestore-style queries (array-contains).
+    participant_pair is a deterministic "uid_a_uid_b" string (sorted) for head-to-head queries.
     score holds canonical structured scoring data.
     """
 
@@ -71,3 +79,4 @@ class Match(GsmBaseModel):
     result_by_user: dict[str, MatchResultEnum] | None = None
     participants: list[MatchParticipant] = []
     participant_uids: list[str] = []
+    participant_pair: str | None = None

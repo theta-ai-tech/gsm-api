@@ -216,6 +216,7 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
         "courtId": match.court_id,
         "participants": [_participant_to_dict(p) for p in match.participants],
         "participantUids": match.participant_uids,
+        "participantPair": match.participant_pair,
         "resultByUser": (
             {uid: result.value for uid, result in match.result_by_user.items()}
             if match.result_by_user
