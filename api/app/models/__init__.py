@@ -41,7 +41,7 @@ from app.models.journal import (
     UpdateJournalEntryRequest,
 )
 from app.models.league import League, LeagueMember
-from app.models.match import Match, MatchParticipant
+from app.models.match import Match, MatchParticipant, compute_participant_pair
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
 from app.models.share import ShareCardData
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
@@ -100,6 +100,7 @@ __all__ = [
     # match
     "Match",
     "MatchParticipant",
+    "compute_participant_pair",
     # play
     "Broadcast",
     "Offer",

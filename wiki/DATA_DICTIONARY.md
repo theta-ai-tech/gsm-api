@@ -316,6 +316,7 @@ Purpose: scheduled and completed match records; supports user and league match q
 | sport | string | required | sport | canonical | — | Sport for the match. |
 | status | string | required | matchStatus | canonical | index=filter | Match lifecycle state. |
 | participantUids | array<string> | required | — | canonical | index=array-contains | Query driver for user-scoped match lists. |
+| participantPair | string | optional | — | canonical | index=equality | Sorted pair key "uid_a_uid_b" for head-to-head queries. Null for matches with ≠ 2 participants. |
 | participants | array<map> | required | — | canonical | — | Structured participant data. |
 | participants[].uid | string | required | — | canonical | — | Participant UID. |
 | participants[].team | number | optional | — | canonical | — | Team number for doubles, null for singles. |
@@ -349,6 +350,7 @@ Purpose: scheduled and completed match records; supports user and league match q
   "scheduledAt": "2030-03-01T19:00:00Z",
   "leagueId": "league_abc",
   "participantUids": ["user_1", "user_2"],
+  "participantPair": "user_1_user_2",
   "participants": [
     {"uid": "user_1", "team": 1, "role": "player"},
     {"uid": "user_2", "team": 2, "role": "player"}
@@ -365,6 +367,7 @@ Purpose: scheduled and completed match records; supports user and league match q
   "finishedAt": "2030-02-25T20:05:00Z",
   "leagueId": "league_abc",
   "participantUids": ["user_1", "user_2"],
+  "participantPair": "user_1_user_2",
   "participants": [
     {"uid": "user_1", "team": 1, "role": "player", "result": "W"},
     {"uid": "user_2", "team": 2, "role": "player", "result": "L"}
@@ -423,6 +426,7 @@ Indexes are defined in `firestore.indexes.json` and required for C3 queries:
 - Completed matches by user: `participantUids` (array-contains), `status` (ASC), `finishedAt` (DESC)
 - Upcoming matches by league: `leagueId` (ASC), `status` (ASC), `scheduledAt` (ASC)
 - Completed matches by league: `leagueId` (ASC), `status` (ASC), `finishedAt` (DESC)
+- Head-to-head history: `participantPair` (ASC), `finishedAt` (DESC)
 
 ### matches/{matchId}
 ```json

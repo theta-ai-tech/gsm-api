@@ -90,6 +90,14 @@
         { "fieldPath": "sport", "mode": "ASCENDING" },
         { "fieldPath": "createdAt", "mode": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participantPair", "mode": "ASCENDING" },
+        { "fieldPath": "finishedAt", "mode": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

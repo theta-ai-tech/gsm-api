@@ -307,6 +307,7 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         result_by_user=result_by_user,
         participants=participants,
         participant_uids=doc.get("participantUids", []),
+        participant_pair=doc.get("participantPair"),
     )
 
 
