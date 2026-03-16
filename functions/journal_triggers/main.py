@@ -8,6 +8,7 @@ from functions.journal_triggers.on_journal_entry_write import (
     handle_journal_entry_create,
     handle_journal_entry_delete,
 )
+from functions.journal_triggers.skill_dna import handle_skill_dna_delete, handle_skill_dna_upsert
 from functions.logging_utils import log_event
 from functions.runtime_flags import triggers_enabled
 
@@ -23,8 +24,7 @@ def handle_journal_entry_write_upsert(
     Entry point for the onWrite trigger — create / update path.
 
     Fires when a journal entry is created (before=None) or updated.
-    Updates are not currently enriched in the cache but the handler is
-    idempotent so it is safe to call on any write event.
+    Handles: journalRecent cache (TR01.1) + Skill DNA aggregation (D4.1).
     """
     if not triggers_enabled():
         log_event(
@@ -44,9 +44,8 @@ def handle_journal_entry_write_upsert(
         # Deletion — handled by the remove path.
         return
 
-    handle_journal_entry_create(
-        client=client, uid=uid, entry_id=entry_id, after=after
-    )
+    handle_journal_entry_create(client=client, uid=uid, entry_id=entry_id, after=after)
+    handle_skill_dna_upsert(client=client, uid=uid, entry_id=entry_id, after=after)
 
 
 def handle_journal_entry_write_remove(
@@ -60,6 +59,7 @@ def handle_journal_entry_write_remove(
     Entry point for the onWrite trigger — delete path.
 
     Fires when `after` is None (document deleted).
+    Handles: journalRecent cache (TR01.2) + Skill DNA aggregation (D4.2).
     """
     if not triggers_enabled():
         log_event(
@@ -80,3 +80,5 @@ def handle_journal_entry_write_remove(
         return
 
     handle_journal_entry_delete(client=client, uid=uid, entry_id=entry_id)
+    if before is not None:
+        handle_skill_dna_delete(client=client, uid=uid, entry_id=entry_id, before=before)
