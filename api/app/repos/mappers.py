@@ -39,8 +39,10 @@ from app.models import (
     PrivateUserProfile,
     PublicUserProfile,
     SetScore,
+    SkillAxisData,
     SportEnum,
     SportRanking,
+    SportSkillDna,
     TierEnum,
     TrainingFocusEnum,
     UserCompletedMatchSummary,
@@ -171,6 +173,39 @@ def _parse_north_star_goal(data: dict[str, Any] | None) -> Optional[NorthStarGoa
     )
 
 
+def _parse_skill_axis(data: dict[str, Any]) -> SkillAxisData:
+    return SkillAxisData(
+        positive=int(data.get("positive", 0)),
+        negative=int(data.get("negative", 0)),
+        score=int(data.get("score", 0)),
+    )
+
+
+def _parse_sport_skill_dna(data: dict[str, Any]) -> SportSkillDna:
+    axes = ("serve", "power", "net_play", "stamina", "mental")
+    kwargs: dict[str, Any] = {}
+    for axis in axes:
+        axis_data = data.get(axis)
+        if isinstance(axis_data, dict):
+            kwargs[axis] = _parse_skill_axis(axis_data)
+    return SportSkillDna(
+        totalReflections=int(data.get("totalReflections", 0)),
+        lastUpdated=data.get("lastUpdated"),
+        **kwargs,
+    )
+
+
+def _parse_skill_dna(data: dict[str, Any] | None) -> Optional[dict[str, SportSkillDna]]:
+    if not data:
+        return None
+    result = {
+        sport: _parse_sport_skill_dna(sport_data)
+        for sport, sport_data in data.items()
+        if isinstance(sport_data, dict)
+    }
+    return result or None
+
+
 def _parse_cursors(data: dict[str, Any] | None) -> Optional[CursorBundle]:
     if not data:
         return None
@@ -194,6 +229,7 @@ def to_public_user_profile(doc: dict[str, Any]) -> PublicUserProfile:
         rankings=rankings,
         leagues_active=_league_summary_list("leaguesActive"),
         leagues_completed=_league_summary_list("leaguesCompleted"),
+        skill_dna=_parse_skill_dna(doc.get("skillDna")),
     )
 
 

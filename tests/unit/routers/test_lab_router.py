@@ -30,7 +30,13 @@ from app.models.enums import (
 )
 from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
-from app.routers.lab import _compute_quick_stats, _encode_cursor, _rankings_to_dict
+from app.models.skill_dna import SkillAxisData, SportSkillDna
+from app.routers.lab import (
+    _build_axes,
+    _compute_quick_stats,
+    _encode_cursor,
+    _rankings_to_dict,
+)
 from app.security import CurrentUser
 
 _NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
@@ -413,3 +419,197 @@ class TestGetDashboard:
         resp = c.get("/me/lab/dashboard")
         app.dependency_overrides = previous_overrides
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Skill DNA helpers (pure unit tests)
+# ---------------------------------------------------------------------------
+
+
+def _make_sport_skill_dna(
+    serve_pos: int = 0,
+    serve_neg: int = 0,
+    power_pos: int = 0,
+    power_neg: int = 0,
+    total: int = 0,
+) -> SportSkillDna:
+    def _axis(p: int, n: int) -> SkillAxisData | None:
+        if p == 0 and n == 0:
+            return None
+        total_pts = p + n
+        score = round(p / total_pts * 100) if total_pts >= 3 else 0
+        return SkillAxisData(positive=p, negative=n, score=score)
+
+    return SportSkillDna(
+        serve=_axis(serve_pos, serve_neg),
+        power=_axis(power_pos, power_neg),
+        totalReflections=total,
+    )
+
+
+class TestBuildAxes:
+    def test_returns_only_axes_with_data(self) -> None:
+        dna = _make_sport_skill_dna(serve_pos=5, serve_neg=2, total=1)
+        axes, _ = _build_axes(dna)
+        assert "serve" in axes
+        assert "power" not in axes
+
+    def test_insufficient_axis_flagged(self) -> None:
+        dna = _make_sport_skill_dna(serve_pos=1, serve_neg=1, total=1)
+        _, insufficient = _build_axes(dna)
+        assert "serve" in insufficient
+
+    def test_sufficient_axis_not_flagged(self) -> None:
+        dna = _make_sport_skill_dna(serve_pos=2, serve_neg=1, total=1)
+        _, insufficient = _build_axes(dna)
+        assert "serve" not in insufficient
+
+    def test_axis_fields_present(self) -> None:
+        dna = _make_sport_skill_dna(serve_pos=5, serve_neg=2, total=1)
+        axes, _ = _build_axes(dna)
+        assert axes["serve"].positive == 5
+        assert axes["serve"].negative == 2
+
+
+# ---------------------------------------------------------------------------
+# GET /me/lab/skill-dna (HTTP)
+# ---------------------------------------------------------------------------
+
+
+def _make_public_profile(
+    skill_dna: dict | None = None,
+    tier: TierEnum | None = TierEnum.AMATEUR,
+):
+    from app.models.user import PublicUserProfile
+
+    return PublicUserProfile(
+        uid=_UID,
+        name="Test User",
+        rankings=PerSportRankings(
+            tennis=SportRanking(sport=SportEnum.TENNIS, pts=2300, tier=tier),
+        ),
+        skill_dna=skill_dna,
+    )
+
+
+@pytest.fixture
+def skill_dna_mock_users_repo():
+    return Mock(spec=["get_public_profile"])
+
+
+@pytest.fixture
+def skill_dna_mock_tier_config_repo():
+    repo = Mock(spec=["get", "get_tier_averages"])
+    repo.get.return_value = _make_tier_config()
+    repo.get_tier_averages.return_value = None
+    return repo
+
+
+@pytest.fixture
+def skill_dna_client(skill_dna_mock_users_repo, skill_dna_mock_tier_config_repo):
+    dna = SportSkillDna(
+        serve=SkillAxisData(positive=12, negative=3, score=80),
+        power=SkillAxisData(positive=8, negative=5, score=62),
+        net_play=SkillAxisData(positive=1, negative=1, score=0),
+        totalReflections=23,
+    )
+    skill_dna_mock_users_repo.get_public_profile.return_value = _make_public_profile(
+        skill_dna={"tennis": dna}
+    )
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
+    app.dependency_overrides[get_tier_config_repo] = (
+        lambda: skill_dna_mock_tier_config_repo
+    )
+    yield TestClient(app)
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetSkillDna:
+    def test_returns_200(self, skill_dna_client) -> None:
+        resp = skill_dna_client.get("/me/lab/skill-dna?sport=tennis")
+        assert resp.status_code == 200
+
+    def test_axes_and_total_reflections(self, skill_dna_client) -> None:
+        body = skill_dna_client.get("/me/lab/skill-dna?sport=tennis").json()
+        assert body["sport"] == "tennis"
+        assert body["total_reflections"] == 23
+        assert body["axes"]["serve"]["positive"] == 12
+        assert body["axes"]["serve"]["score"] == 80
+        assert "power" in body["axes"]
+
+    def test_insufficient_axes_flagged(self, skill_dna_client) -> None:
+        body = skill_dna_client.get("/me/lab/skill-dna?sport=tennis").json()
+        assert "net_play" in body["insufficient_axes"]
+        assert "serve" not in body["insufficient_axes"]
+
+    def test_comparison_null_when_tier_averages_missing(self, skill_dna_client) -> None:
+        body = skill_dna_client.get(
+            "/me/lab/skill-dna?sport=tennis&compare=next_tier"
+        ).json()
+        assert body["comparison"] is None
+
+    def test_comparison_with_tier_averages(
+        self, skill_dna_client, skill_dna_mock_tier_config_repo
+    ) -> None:
+        skill_dna_mock_tier_config_repo.get_tier_averages.return_value = {
+            "intermediate": {"tennis": {"serve": 75, "power": 70}}
+        }
+        body = skill_dna_client.get(
+            "/me/lab/skill-dna?sport=tennis&compare=next_tier"
+        ).json()
+        assert body["comparison"]["label"] == "Intermediate Average"
+        assert body["comparison"]["axes"]["serve"] == 75
+
+    def test_sport_not_found_returns_404(
+        self, skill_dna_mock_users_repo, skill_dna_mock_tier_config_repo
+    ) -> None:
+        skill_dna_mock_users_repo.get_public_profile.return_value = (
+            _make_public_profile(skill_dna={})
+        )
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        tier_repo = skill_dna_mock_tier_config_repo
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
+            app.dependency_overrides[get_tier_config_repo] = lambda: tier_repo
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=padel")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
+    def test_user_not_found_returns_404(
+        self, skill_dna_mock_users_repo, skill_dna_mock_tier_config_repo
+    ) -> None:
+        skill_dna_mock_users_repo.get_public_profile.return_value = None
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        tier_repo = skill_dna_mock_tier_config_repo
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_users_repo] = lambda: skill_dna_mock_users_repo
+            app.dependency_overrides[get_tier_config_repo] = lambda: tier_repo
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
+    def test_missing_token_returns_401(self) -> None:
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get("/me/lab/skill-dna?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
+
+    def test_invalid_sport_returns_422(self, skill_dna_client) -> None:
+        resp = skill_dna_client.get("/me/lab/skill-dna?sport=badminton")
+        assert resp.status_code == 422
+
+    def test_sport_required(self, skill_dna_client) -> None:
+        resp = skill_dna_client.get("/me/lab/skill-dna")
+        assert resp.status_code == 422

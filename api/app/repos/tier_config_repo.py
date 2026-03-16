@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
@@ -37,3 +37,17 @@ class TierConfigRepo(RepoBase):
         )
         _cache_ts = now
         return _cache
+
+    def get_tier_averages(self) -> Optional[dict[str, Any]]:
+        """
+        Read config/tierAverages. Returns None if the document does not exist yet.
+        Expected shape: {tier_name: {sport: {axis: score, ...}, ...}, ...}
+        Populated by LAB-8.
+        """
+        doc = cast(
+            firestore.DocumentSnapshot,
+            self.client.collection("config").document("tierAverages").get(),
+        )
+        if not doc.exists:
+            return None
+        return doc.to_dict()
