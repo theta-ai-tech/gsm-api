@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.repos import (
+    get_matches_repo,
     get_point_history_repo,
     get_tier_config_repo,
     get_users_repo,
@@ -31,12 +32,17 @@ from app.models.enums import (
 from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
 from app.models.skill_dna import SkillAxisData, SportSkillDna
+from app.models.match import Match
+from app.models.common import MatchScore, SetScore
+from app.models.enums import MatchStatusEnum
 from app.routers.lab import (
     _build_axes,
     _compute_quick_stats,
     _encode_cursor,
     _rankings_to_dict,
+    _score_text,
 )
+from app.services.scoring_service import win_probability
 from app.security import CurrentUser
 
 _NOW = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
@@ -612,4 +618,253 @@ class TestGetSkillDna:
 
     def test_sport_required(self, skill_dna_client) -> None:
         resp = skill_dna_client.get("/me/lab/skill-dna")
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# win_probability (pure unit tests)
+# ---------------------------------------------------------------------------
+
+
+class TestWinProbability:
+    def test_equal_pts_returns_half(self) -> None:
+        assert win_probability(2000, 2000) == 0.5
+
+    def test_higher_pts_returns_above_half(self) -> None:
+        assert win_probability(2500, 2000) > 0.5
+
+    def test_lower_pts_returns_below_half(self) -> None:
+        assert win_probability(2000, 2500) < 0.5
+
+    def test_500_advantage_approx_75_pct(self) -> None:
+        result = win_probability(2500, 2000)
+        assert 0.74 <= result <= 0.76
+
+    def test_symmetry(self) -> None:
+        assert win_probability(3000, 2000) + win_probability(
+            2000, 3000
+        ) == pytest.approx(1.0)
+
+    def test_never_returns_zero(self) -> None:
+        assert win_probability(0, 100_000) >= 0.01
+
+    def test_never_returns_one(self) -> None:
+        assert win_probability(100_000, 0) <= 0.99
+
+    def test_rounded_to_two_decimals(self) -> None:
+        result = win_probability(2100, 2000)
+        assert result == round(result, 2)
+
+
+# ---------------------------------------------------------------------------
+# _score_text helper (pure unit tests)
+# ---------------------------------------------------------------------------
+
+
+def _make_match_with_score(sets: list[tuple[int, int]]) -> Match:
+    score = MatchScore(
+        sets=[SetScore(p1_games=p1, p2_games=p2) for p1, p2 in sets],
+        winner_uid="u1",
+    )
+    return Match(
+        match_id="m1",
+        sport=SportEnum.TENNIS,
+        status=MatchStatusEnum.COMPLETED,
+        participant_uids=["u1", "u2"],
+        score=score,
+    )
+
+
+class TestScoreText:
+    def test_renders_sets(self) -> None:
+        m = _make_match_with_score([(6, 4), (3, 6), (7, 5)])
+        assert _score_text(m) == "6-4, 3-6, 7-5"
+
+    def test_none_when_no_score(self) -> None:
+        m = Match(
+            match_id="m1",
+            sport=SportEnum.TENNIS,
+            status=MatchStatusEnum.COMPLETED,
+            participant_uids=["u1", "u2"],
+        )
+        assert _score_text(m) is None
+
+
+# ---------------------------------------------------------------------------
+# GET /me/lab/rivalry/{opponent_uid} (HTTP)
+# ---------------------------------------------------------------------------
+
+_OPP_UID = "user_opponent"
+
+
+def _make_rivalry_public_profile(
+    uid: str, name: str, pts: int, tier: TierEnum
+) -> "PublicUserProfile":  # noqa: F821
+    from app.models.user import PublicUserProfile
+
+    return PublicUserProfile(
+        uid=uid,
+        name=name,
+        rankings=PerSportRankings(
+            tennis=SportRanking(sport=SportEnum.TENNIS, pts=pts, tier=tier),
+        ),
+    )
+
+
+@pytest.fixture
+def rivalry_users_repo():
+    repo = Mock(spec=["get_public_profile"])
+    repo.get_public_profile.side_effect = lambda uid: (
+        _make_rivalry_public_profile(_UID, "Me", 2000, TierEnum.INTERMEDIATE)
+        if uid == _UID
+        else _make_rivalry_public_profile(_OPP_UID, "Opponent", 2500, TierEnum.ADVANCED)
+    )
+    return repo
+
+
+@pytest.fixture
+def rivalry_matches_repo():
+    repo = Mock(spec=["list_head_to_head"])
+    repo.list_head_to_head.return_value = []
+    return repo
+
+
+@pytest.fixture
+def rivalry_client(rivalry_users_repo, rivalry_matches_repo):
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_users_repo] = lambda: rivalry_users_repo
+    app.dependency_overrides[get_matches_repo] = lambda: rivalry_matches_repo
+    yield TestClient(app)
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetRivalry:
+    def test_returns_200(self, rivalry_client) -> None:
+        resp = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis")
+        assert resp.status_code == 200
+
+    def test_response_shape(self, rivalry_client) -> None:
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        assert body["sport"] == "tennis"
+        assert body["me"]["uid"] == _UID
+        assert body["opponent"]["uid"] == _OPP_UID
+        assert "win_probability" in body
+        assert "head_to_head" in body
+        assert "recent_matches" in body
+
+    def test_player_pts_and_tier(self, rivalry_client) -> None:
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        assert body["me"]["pts"] == 2000
+        assert body["me"]["tier"] == "intermediate"
+        assert body["opponent"]["pts"] == 2500
+        assert body["opponent"]["tier"] == "advanced"
+
+    def test_win_probability_lower_when_behind(self, rivalry_client) -> None:
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        assert body["win_probability"] < 0.5  # me=2000, opp=2500
+
+    def test_empty_h2h_when_no_matches(self, rivalry_client) -> None:
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        h2h = body["head_to_head"]
+        assert h2h["my_wins"] == 0
+        assert h2h["opponent_wins"] == 0
+        assert h2h["total_matches"] == 0
+        assert body["recent_matches"] == []
+
+    def test_h2h_counts_wins_correctly(
+        self, rivalry_client, rivalry_matches_repo
+    ) -> None:
+        def _h2h_match(match_id: str, winner: str) -> Match:
+            return Match(
+                match_id=match_id,
+                sport=SportEnum.TENNIS,
+                status=MatchStatusEnum.COMPLETED,
+                finished_at=_NOW,
+                participant_uids=[_UID, _OPP_UID],
+                result_by_user={
+                    winner: MatchResultEnum.WIN,
+                    (_OPP_UID if winner == _UID else _UID): MatchResultEnum.LOSS,
+                },
+            )
+
+        rivalry_matches_repo.list_head_to_head.return_value = [
+            _h2h_match("m1", _UID),
+            _h2h_match("m2", _OPP_UID),
+            _h2h_match("m3", _UID),
+        ]
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        assert body["head_to_head"]["my_wins"] == 2
+        assert body["head_to_head"]["opponent_wins"] == 1
+        assert body["head_to_head"]["total_matches"] == 3
+
+    def test_recent_matches_include_score_text_and_result(
+        self, rivalry_client, rivalry_matches_repo
+    ) -> None:
+        rivalry_matches_repo.list_head_to_head.return_value = [
+            Match(
+                match_id="m1",
+                sport=SportEnum.TENNIS,
+                status=MatchStatusEnum.COMPLETED,
+                finished_at=_NOW,
+                participant_uids=[_UID, _OPP_UID],
+                result_by_user={
+                    _UID: MatchResultEnum.WIN,
+                    _OPP_UID: MatchResultEnum.LOSS,
+                },
+                score=MatchScore(
+                    sets=[
+                        SetScore(p1_games=6, p2_games=4),
+                        SetScore(p1_games=7, p2_games=5),
+                    ],
+                    winner_uid=_UID,
+                ),
+            )
+        ]
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        rm = body["recent_matches"][0]
+        assert rm["match_id"] == "m1"
+        assert rm["score_text"] == "6-4, 7-5"
+        assert rm["result"] == "W"
+
+    def test_skill_dna_comparison_null_when_no_dna(self, rivalry_client) -> None:
+        body = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis").json()
+        assert body["skill_dna_comparison"] is None
+
+    def test_opponent_not_found_returns_404(
+        self, rivalry_users_repo, rivalry_matches_repo
+    ) -> None:
+        rivalry_users_repo.get_public_profile.side_effect = lambda uid: (
+            _make_rivalry_public_profile(_UID, "Me", 2000, TierEnum.INTERMEDIATE)
+            if uid == _UID
+            else None
+        )
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        matches_repo = rivalry_matches_repo
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_users_repo] = lambda: rivalry_users_repo
+            app.dependency_overrides[get_matches_repo] = lambda: matches_repo
+            resp = TestClient(app).get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
+    def test_missing_token_returns_401(self) -> None:
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get(f"/me/lab/rivalry/{_OPP_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
+
+    def test_invalid_sport_returns_422(self, rivalry_client) -> None:
+        resp = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}?sport=badminton")
+        assert resp.status_code == 422
+
+    def test_sport_required(self, rivalry_client) -> None:
+        resp = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}")
         assert resp.status_code == 422

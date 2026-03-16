@@ -7,6 +7,7 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from google.cloud.firestore_v1.field_path import FieldPath  # type: ignore[attr-defined, import-untyped]
 
 from app.models import Match
+from app.models.enums import SportEnum
 from app.repos.base import RepoBase
 from app.repos.mappers import to_match
 
@@ -93,3 +94,27 @@ class MatchesRepo(RepoBase):
         query = _apply_cursor(query, cursor, "finishedAt", self.client)
         docs = query.stream()
         return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in docs]
+
+    def list_head_to_head(self, pair: str, sport: SportEnum, limit: int = 10) -> List[Match]:
+        """Return completed H2H matches for a pair ordered by finishedAt DESC.
+
+        Queries by participantPair then filters sport/status in Python to avoid
+        needing a third composite index field.
+        """
+        _FETCH_CAP = 100
+        query = (
+            self.client.collection("matches")
+            .where("participantPair", "==", pair)
+            .order_by("finishedAt", direction=firestore.Query.DESCENDING)
+            .order_by(FieldPath.document_id(), direction=firestore.Query.DESCENDING)
+            .limit(_FETCH_CAP)
+        )
+        results: List[Match] = []
+        for doc in query.stream():
+            data = doc.to_dict() or {}
+            if data.get("sport") != sport.value or data.get("status") != "completed":
+                continue
+            results.append(to_match(data, match_id=doc.id))
+            if len(results) >= limit:
+                break
+        return results
