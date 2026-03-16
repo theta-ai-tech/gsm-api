@@ -478,7 +478,7 @@ class TestBuildAxes:
 
 def _make_public_profile(
     skill_dna: dict | None = None,
-    tier: TierEnum | None = TierEnum.INTERMEDIATE,
+    tier: TierEnum | None = TierEnum.AMATEUR,
 ):
     from app.models.user import PublicUserProfile
 
