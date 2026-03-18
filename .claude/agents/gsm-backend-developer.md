@@ -93,18 +93,9 @@ Followed by one `curl` command per acceptance criterion, using `snake_case` fiel
 ### 3. Acceptance Criteria
 Derived from the issue. Each item is a concrete, manually testable assertion formatted as `- [ ] ...`. Cover: happy path shape, field values, edge cases (401, 404, 422), boundary conditions.
 
-## Seeded test users (from tools/seed_data.py)
+## Seeded test users
 
-| UID | Name | Tennis pts | Padel pts |
-|---|---|---|---|
-| `user_ignatios` | Ignatios | 820 | 980 |
-| `user_alice` | Alice | 820 | 620 |
-| `user_bob` | Bob | 540 | 300 |
-
-To sign in as any of these against the Auth emulator:
-```bash
-./scripts/get_emu_token.sh user_ignatios   # or user_alice, user_bob
-```
+Read `tools/seed_data.py` to find the current seeded UIDs and their data before writing manual testing instructions or integration tests. Use `./scripts/get_emu_token.sh <uid>` to sign in as any seeded user against the Auth emulator.
 
 ## Commit style
 
