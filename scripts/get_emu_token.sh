@@ -2,16 +2,22 @@
 # =============================================================================
 # get_emu_token.sh — Obtain a Firebase Auth emulator ID token for manual testing
 #
-# Signs up (or re-uses) a test user in the Auth emulator and prints:
-#   - The user's UID
-#   - A ready-to-use  Authorization: Bearer <token>  header value
+# Creates (or re-uses) a user in the Auth emulator with a SPECIFIC UID that
+# matches the seeded Firestore data, then prints a ready-to-use Bearer token.
 #
 # Prerequisites:
 #   make emu-all            — Firestore + Auth emulators must be running
+#   make seed-emu           — seed sample Firestore data (user_1, user_2, ...)
 #
 # Usage:
-#   ./scripts/get_emu_token.sh
-#   ./scripts/get_emu_token.sh test.user@gsm.local my_password
+#   ./scripts/get_emu_token.sh                         # defaults: uid=user_1
+#   ./scripts/get_emu_token.sh user_2                  # sign in as user_2
+#   ./scripts/get_emu_token.sh user_1 my@email.com     # custom email
+#
+# Positional args:
+#   $1  TARGET_UID  — the Firestore doc ID to authenticate as (default: user_1)
+#   $2  EMAIL       — email to register (default: <uid>@gsm.local)
+#   $3  PASSWORD    — password (default: test_pass_123)
 #
 # Optional env overrides:
 #   FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
@@ -20,11 +26,14 @@
 set -euo pipefail
 
 AUTH_EMU="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}"
+PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-gsm-dev-f70d0}"
 AUTH_BASE="http://${AUTH_EMU}/identitytoolkit.googleapis.com/v1"
+ADMIN_BASE="http://${AUTH_EMU}/emulator/v1/projects/${PROJECT_ID}"
 FAKE_API_KEY="fake-api-key"
 
-EMAIL="${1:-test.lab@gsm.local}"
-PASSWORD="${2:-test_pass_123}"
+TARGET_UID="${1:-user_1}"
+EMAIL="${2:-${TARGET_UID}@gsm.local}"
+PASSWORD="${3:-test_pass_123}"
 
 # Check jq is available
 if ! command -v jq &> /dev/null; then
@@ -32,7 +41,17 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# Try to sign in first (user may already exist from a previous run)
+# --- Step 1: ensure Auth emulator user exists with the correct UID -----------
+# Use the emulator admin endpoint to create the user with the specific localId.
+# This is idempotent — if the user already exists the endpoint returns an error
+# which we silently ignore before attempting sign-in.
+curl -s --max-time 10 -X POST \
+  "${ADMIN_BASE}/accounts" \
+  -H "Content-Type: application/json" \
+  -d "{\"localId\":\"${TARGET_UID}\",\"email\":\"${EMAIL}\",\"rawPassword\":\"${PASSWORD}\"}" \
+  > /dev/null || true
+
+# --- Step 2: sign in to obtain the ID token ----------------------------------
 RESP=$(curl -s --max-time 10 -X POST \
   "${AUTH_BASE}/accounts:signInWithPassword?key=${FAKE_API_KEY}" \
   -H "Content-Type: application/json" \
@@ -41,17 +60,6 @@ RESP=$(curl -s --max-time 10 -X POST \
 
 TOKEN=$(echo "$RESP" | jq -r '.idToken // empty' 2>/dev/null || true)
 
-# If sign-in failed (user doesn't exist yet), sign up instead
-if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
-  RESP=$(curl -s --max-time 10 -X POST \
-    "${AUTH_BASE}/accounts:signUp?key=${FAKE_API_KEY}" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\",\"returnSecureToken\":true}" \
-    || echo "{}")
-
-  TOKEN=$(echo "$RESP" | jq -r '.idToken // empty' 2>/dev/null || true)
-fi
-
 if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
   echo "Error: failed to obtain a token from the Auth emulator at ${AUTH_EMU}" >&2
   echo "Make sure 'make emu-all' is running first." >&2
@@ -59,12 +67,12 @@ if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
   exit 1
 fi
 
-UID=$(echo "$RESP" | jq -r '.localId // empty')
+RETURNED_UID=$(echo "$RESP" | jq -r '.localId // empty')
 
 echo ""
 echo "Auth emulator : ${AUTH_EMU}"
 echo "Email         : ${EMAIL}"
-echo "UID           : ${UID}"
+echo "UID           : ${RETURNED_UID}"
 echo ""
 echo "Authorization header (copy-paste into curl -H):"
 echo ""
