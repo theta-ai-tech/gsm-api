@@ -126,6 +126,18 @@ def compute_match_scoring(
     )
 
 
+def win_probability(my_pts: int, opponent_pts: int) -> float:
+    """Sigmoid win probability based on point difference.
+
+    500 pt advantage ≈ 75% win probability.
+    Clamped to [0.01, 0.99] — never shows 0% or 100%.
+    Rounded to 2 decimal places.
+    """
+    diff = my_pts - opponent_pts
+    prob = 1.0 / (1.0 + 10 ** (-diff / 1000))
+    return round(max(0.01, min(0.99, prob)), 2)
+
+
 def _is_higher_tier(candidate: TierEnum | str, reference: TierEnum | str) -> bool:
     return TIER_ORDER[_normalize_tier(candidate)] > TIER_ORDER[_normalize_tier(reference)]
 

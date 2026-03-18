@@ -11,19 +11,32 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.constants import LAB_PROGRESSION_DEFAULT_LIMIT, LAB_PROGRESSION_MAX_LIMIT
-from app.dependencies.repos import get_point_history_repo, get_tier_config_repo, get_users_repo
+from app.constants import (
+    LAB_PROGRESSION_DEFAULT_LIMIT,
+    LAB_PROGRESSION_MAX_LIMIT,
+    LAB_RIVALRY_DEFAULT_LIMIT,
+    LAB_RIVALRY_MAX_LIMIT,
+)
+from app.dependencies.repos import (
+    get_matches_repo,
+    get_point_history_repo,
+    get_tier_config_repo,
+    get_users_repo,
+)
 from app.deps import get_current_user
 from app.models.base import GsmBaseModel
 from app.models.common import PerSportRankings, SportRanking, UserCompletedMatchSummary
 from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.match import Match, compute_participant_pair
 from app.models.skill_dna import SportSkillDna
 from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
+from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
+from app.services.scoring_service import win_probability
 
 router = APIRouter(prefix="/me/lab", tags=["lab"])
 
@@ -349,4 +362,167 @@ def get_skill_dna(
         total_reflections=sport_dna.total_reflections,
         comparison=comparison,
         insufficient_axes=insufficient,
+    )
+
+
+# ===== Rivalry helpers =====
+
+
+def _score_text(match: Match) -> str | None:
+    """Render a human-readable score string from a Match, e.g. '6-4, 3-6, 7-5'."""
+    if not match.score or not match.score.sets:
+        return None
+    return ", ".join(f"{s.p1_games}-{s.p2_games}" for s in match.score.sets)
+
+
+def _dna_axis_scores(sport_dna: SportSkillDna | None) -> dict[str, int]:
+    """Return {axis: score} for all axes that have data."""
+    if sport_dna is None:
+        return {}
+    result: dict[str, int] = {}
+    for axis in _AXES:
+        axis_data = getattr(sport_dna, axis, None)
+        if axis_data is not None:
+            result[axis] = axis_data.score
+    return result
+
+
+# ===== Rivalry response models =====
+
+
+class RivalryPlayerInfo(GsmBaseModel):
+    uid: str
+    name: str
+    pts: int
+    tier: TierEnum | None = None
+
+
+class HeadToHead(GsmBaseModel):
+    my_wins: int
+    opponent_wins: int
+    total_matches: int
+
+
+class RivalryMatch(GsmBaseModel):
+    match_id: str
+    finished_at: datetime
+    score_text: str | None = None
+    result: MatchResultEnum | None = None
+
+
+class SkillDnaOverlay(GsmBaseModel):
+    me: dict[str, int]
+    opponent: dict[str, int]
+
+
+class RivalryResponse(GsmBaseModel):
+    sport: SportEnum
+    me: RivalryPlayerInfo
+    opponent: RivalryPlayerInfo
+    win_probability: float
+    head_to_head: HeadToHead
+    recent_matches: list[RivalryMatch]
+    skill_dna_comparison: SkillDnaOverlay | None = None
+
+
+# ===== GET /me/lab/rivalry/{opponent_uid} =====
+
+
+@router.get(
+    "/rivalry/{opponent_uid}",
+    response_model=RivalryResponse,
+    summary="Get head-to-head rivalry breakdown against an opponent",
+    responses={
+        400: {"description": "Invalid sport"},
+        401: _401,
+        404: {"description": "Opponent profile not found"},
+    },
+)
+def get_rivalry(
+    opponent_uid: str,
+    sport: SportEnum = Query(..., description="Sport to analyse"),
+    limit: int = Query(
+        default=LAB_RIVALRY_DEFAULT_LIMIT,
+        ge=1,
+        le=LAB_RIVALRY_MAX_LIMIT,
+        description="Max recent matches to return",
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    users_repo: UsersRepo = Depends(get_users_repo),
+    matches_repo: MatchesRepo = Depends(get_matches_repo),
+) -> RivalryResponse:
+    """
+    Return a head-to-head breakdown between the authenticated user and an opponent.
+
+    Includes win probability, H2H record, recent match results, and Skill DNA overlay
+    for both players (when available).
+    """
+    my_uid = current_user.uid
+
+    my_profile = users_repo.get_public_profile(my_uid)
+    if my_profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
+
+    opp_profile = users_repo.get_public_profile(opponent_uid)
+    if opp_profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Opponent profile not found"
+        )
+
+    my_ranking = getattr(my_profile.rankings, sport.value, None)
+    opp_ranking = getattr(opp_profile.rankings, sport.value, None)
+
+    my_pts = my_ranking.pts if my_ranking else 1000
+    opp_pts = opp_ranking.pts if opp_ranking else 1000
+
+    pair = compute_participant_pair([my_uid, opponent_uid])
+    h2h_matches = matches_repo.list_head_to_head(pair or "", sport, limit=limit) if pair else []
+
+    my_wins = sum(
+        1 for m in h2h_matches if (m.result_by_user or {}).get(my_uid) == MatchResultEnum.WIN
+    )
+    opp_wins = sum(
+        1 for m in h2h_matches if (m.result_by_user or {}).get(opponent_uid) == MatchResultEnum.WIN
+    )
+
+    recent_matches = [
+        RivalryMatch(
+            match_id=m.match_id,
+            finished_at=m.finished_at,  # type: ignore[arg-type]
+            score_text=_score_text(m),
+            result=(m.result_by_user or {}).get(my_uid),
+        )
+        for m in h2h_matches
+    ]
+
+    my_dna = (my_profile.skill_dna or {}).get(sport.value)
+    opp_dna = (opp_profile.skill_dna or {}).get(sport.value)
+    my_scores = _dna_axis_scores(my_dna)
+    opp_scores = _dna_axis_scores(opp_dna)
+    skill_dna_comparison = (
+        SkillDnaOverlay(me=my_scores, opponent=opp_scores) if my_scores or opp_scores else None
+    )
+
+    return RivalryResponse(
+        sport=sport,
+        me=RivalryPlayerInfo(
+            uid=my_uid,
+            name=my_profile.name,
+            pts=my_pts,
+            tier=my_ranking.tier if my_ranking else None,
+        ),
+        opponent=RivalryPlayerInfo(
+            uid=opponent_uid,
+            name=opp_profile.name,
+            pts=opp_pts,
+            tier=opp_ranking.tier if opp_ranking else None,
+        ),
+        win_probability=win_probability(my_pts, opp_pts),
+        head_to_head=HeadToHead(
+            my_wins=my_wins,
+            opponent_wins=opp_wins,
+            total_matches=len(h2h_matches),
+        ),
+        recent_matches=recent_matches,
+        skill_dna_comparison=skill_dna_comparison,
     )
