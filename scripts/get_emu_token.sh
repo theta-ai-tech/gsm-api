@@ -26,9 +26,7 @@
 set -euo pipefail
 
 AUTH_EMU="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}"
-PROJECT_ID="${GOOGLE_CLOUD_PROJECT:-gsm-dev-f70d0}"
 AUTH_BASE="http://${AUTH_EMU}/identitytoolkit.googleapis.com/v1"
-ADMIN_BASE="http://${AUTH_EMU}/emulator/v1/projects/${PROJECT_ID}"
 FAKE_API_KEY="fake-api-key"
 
 TARGET_UID="${1:-user_1}"
@@ -42,13 +40,14 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # --- Step 1: ensure Auth emulator user exists with the correct UID -----------
-# Use the emulator admin endpoint to create the user with the specific localId.
-# This is idempotent — if the user already exists the endpoint returns an error
-# which we silently ignore before attempting sign-in.
+# The emulator accepts signUp with a specific localId when the request carries
+# "Authorization: Bearer owner" (admin bypass). Idempotent — silently ignore
+# the error if the user already exists.
 curl -s --max-time 10 -X POST \
-  "${ADMIN_BASE}/accounts" \
+  "${AUTH_BASE}/accounts:signUp?key=${FAKE_API_KEY}" \
   -H "Content-Type: application/json" \
-  -d "{\"localId\":\"${TARGET_UID}\",\"email\":\"${EMAIL}\",\"rawPassword\":\"${PASSWORD}\"}" \
+  -H "Authorization: Bearer owner" \
+  -d "{\"localId\":\"${TARGET_UID}\",\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}" \
   > /dev/null || true
 
 # --- Step 2: sign in to obtain the ID token ----------------------------------
