@@ -440,6 +440,4 @@ See `wiki/functions.md` for:
 
 ---
 
-**Document Maintenance**: This TECH_SPEC.md is the master reference. When updating detailed docs (wiki/\*, arch/\*, spec/\*), ensure this document stays in sync with high-level changes.
-
-**Questions?** Refer to the linked detailed docs or reach out to the engineering team.
+**Document Maintenance**: This overview.md is the master reference. When updating detailed docs (wiki/\*, arch/\*, spec/\*), ensure this document stays in sync with high-level changes.

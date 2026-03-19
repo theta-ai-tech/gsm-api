@@ -111,6 +111,9 @@ htmlcov/
 # Python build metadata
 *.egg-info/
 
+# Agent working notes / planning artifacts
+plans/
+
 
 
 
