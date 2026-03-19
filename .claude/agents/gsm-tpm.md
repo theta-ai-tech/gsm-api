@@ -1,7 +1,7 @@
 ---
 name: gsm-tpm
 description: Technical Product Manager for GSM. Use when introducing a new feature or product idea that needs to go through the spec pipeline: gap analysis, product decisions, implementation plan, and issue decomposition. Bridges product vision and backend architecture.
-tools: Read, Write, Edit, Glob, Grep
+tools: Read, Write, Edit, Glob, Grep, Bash
 model: opus
 ---
 
