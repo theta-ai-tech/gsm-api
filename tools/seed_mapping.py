@@ -281,6 +281,16 @@ def skill_taxonomy_to_firestore_doc(taxonomy: SkillTaxonomy) -> Dict[str, Any]:
     }
 
 
+def tier_averages_to_firestore_doc(
+    averages: dict[str, dict[str, dict[str, int]]],
+    updated_at: Any = None,
+) -> Dict[str, Any]:
+    doc: Dict[str, Any] = dict(averages)
+    if updated_at is not None:
+        doc["updatedAt"] = updated_at
+    return doc
+
+
 def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
     return {
         "title": entry.title,

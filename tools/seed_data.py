@@ -596,3 +596,29 @@ TIER_CONFIG = TierConfig(
     version=1,
     updated_at=utc(2026, 1, 1),
 )
+
+# --- Tier averages (config/tierAverages) ---
+# Pre-computed average Skill DNA per tier, powers the "Show Next Level" radar comparison.
+# Shape: {tier: {sport: {axis: score, ...}, ...}, ...}
+TIER_AVERAGES: dict[str, dict[str, dict[str, int]]] = {
+    "amateur": {
+        "tennis": {"serve": 40, "power": 35, "net_play": 30, "stamina": 45, "mental": 38},
+        "padel": {"serve": 38, "power": 32, "net_play": 42, "stamina": 40, "mental": 35},
+        "pickleball": {"serve": 42, "power": 30, "net_play": 45, "stamina": 38, "mental": 40},
+    },
+    "intermediate": {
+        "tennis": {"serve": 58, "power": 52, "net_play": 48, "stamina": 60, "mental": 55},
+        "padel": {"serve": 55, "power": 50, "net_play": 58, "stamina": 56, "mental": 52},
+        "pickleball": {"serve": 56, "power": 48, "net_play": 60, "stamina": 55, "mental": 54},
+    },
+    "advanced": {
+        "tennis": {"serve": 72, "power": 68, "net_play": 65, "stamina": 75, "mental": 70},
+        "padel": {"serve": 70, "power": 65, "net_play": 73, "stamina": 72, "mental": 68},
+        "pickleball": {"serve": 71, "power": 64, "net_play": 74, "stamina": 70, "mental": 69},
+    },
+    "competitive": {
+        "tennis": {"serve": 88, "power": 85, "net_play": 82, "stamina": 90, "mental": 87},
+        "padel": {"serve": 86, "power": 83, "net_play": 88, "stamina": 87, "mental": 84},
+        "pickleball": {"serve": 87, "power": 82, "net_play": 89, "stamina": 86, "mental": 85},
+    },
+}

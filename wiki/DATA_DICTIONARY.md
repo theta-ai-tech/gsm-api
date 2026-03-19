@@ -794,3 +794,31 @@ Unknown tags (not in `tagMap`) are silently ignored during aggregation.
   "version": 1
 }
 ```
+
+## Document: config/tierAverages
+Path: `config/tierAverages`
+
+Purpose: pre-computed average Skill DNA scores per tier and sport. Powers the "Show Next Level"
+comparison mode on the radar chart. Recomputed by the D7 scheduled function.
+
+### Fields: config/tierAverages
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| {tier} | map | optional | tier | canonical | — | One key per tier that has users with Skill DNA. |
+| {tier}.{sport} | map | optional | sport | canonical | — | One key per sport with data in that tier. |
+| {tier}.{sport}.{axis} | number | optional | — | canonical | — | Average score (0-100) for the axis. |
+| updatedAt | timestamp | required | — | canonical | — | Last recomputation timestamp (UTC). |
+
+### config/tierAverages
+```json
+{
+  "amateur": {
+    "tennis": {"serve": 40, "power": 35, "net_play": 30, "stamina": 45, "mental": 38},
+    "padel": {"serve": 38, "power": 32, "net_play": 42, "stamina": 40, "mental": 35}
+  },
+  "intermediate": {
+    "tennis": {"serve": 58, "power": 52, "net_play": 48, "stamina": 60, "mental": 55}
+  },
+  "updatedAt": "2026-03-01T00:00:00Z"
+}
+```
