@@ -1,50 +1,80 @@
-**GSM PRD Mobile**
+# GSM — Grand Slam Matchmaking
 
-**GSM PRD**
+## Product Vision v2
 
-I want to build the next generation social tennis app. The main problem in congested cities is that clubs have long queues and if you don't already have a circle of people playing at your level, you struggle to get better. I want to build a match making app for all tennis like sports (tennis/padel/pickleball). The app will feature a scoring system and will prompt people to organise matches and log their results. It will also host some leagues where players can play a round Robin and self organise the matches. The app will include a journal where players can use it to track progress and will feature statistics about their opponents. There will be social footprint and AI features. Please see below for a more detailed usage. The long term goal is to become the ATP for amateurs, e.g. those self organised or app organised leagues they will have prize money for the winners and the scoring system will expand so much that it will act as a standard like the WTN scoring system. Would like to add some charity face as well, eg gift your spare old balls etc.
+*The scoring standard for amateur padel — with tennis and pickleball built in.*
 
------
+## The Problem
 
-### **Business details/product definition/basic features and distinctive features**
+Millions of tennis, padel, and pickleball players share the same frustration: finding someone to play with at your level, at a time that works, is unreasonably difficult. Club waiting lists are long. WhatsApp groups are chaotic. And when you do play, the match disappears into memory with no record, no progression, and no reason to come back tomorrow.
 
-#### **Self-organised matches :**
+The amateur game has nothing. Your skill level lives in your head. Your match history lives nowhere. There is no system that recognises your improvement or connects you with the right opponent. This is especially true in padel, where the sport is new enough that there are no established structures for competitive amateur play. Clubs are opening weekly across Europe and beyond, but there is no connective tissue between them.
 
-The idea here is that users can find other players to play, based on the region they are, the level they are and the level they are looking to play with. They can either mark themselves as ready to play - eg “I have a court at location X, and I am looking for a player” or “I am available to play at date/time - I don’t have a court yet”. As a user, if you want to play you just have to see who around you wants to play and where/when and ask them to join them - they can then accept the invitation or not. The app can also feature a “match me” feature where via using AI it will find the best opponent based on a number of parameters. Those games are self organised, the app doesn’t have any responsibility. Users can track this match via the app though and register the score as this will help them in their scoring system. More on that later in the section about scoring below.
+## What GSM Is
 
-#### **Formal organised leagues :**
+| One-Line Pitch |
+| :---- |
+| GSM is the first rating system for amateur padel. Find opponents at your level, play matches, log scores, and build a competitive identity that follows you across courts and cities. Tennis and pickleball are built in from day one. |
 
-We also want to organise leagues ourselves. Primarily, the leagues will be round robin leagues. The app will open a league for registration based on an area. Players will register and after registration closes, it will create the groups based on the ranking. The players will have a predefined period (e.g. 2 months) to play as many matches as they can. An incentive will be given to complete those matches (e.g. if you complete more than half of the matches by the mid of the league you get a gift/bonus point etc). The winner of the league will win a prize as well (e.g. free participation in the next league and a trophy). Each match counts against the user's scoring system - which is explained below as well. There will be a fee to join the league, but the matches are still self organised, there is no participation between the app and any local clubs.
+GSM is a social sports platform launching with padel and expanding into tennis and pickleball. It turns every casual match into a data point in a unified scoring system, creating a competitive layer that does not exist today for amateur racket sports. Padel is the entry point because it is the fastest-growing racket sport in the world and the only major one with no amateur scoring standard at all.
 
-At a later stage, the vision is to have the app organise knock-out tournaments in association with local clubs.
+The app is built around four interconnected experiences:
 
-#### **Scoring system :**
+**PLAY** — Find nearby players, broadcast your availability, challenge opponents, and confirm matches in under 60 seconds. The entire interface adapts to where you are in the match lifecycle, from discovery to score verification.
 
-We should come with a scoring system. The main idea is taken from WTN scoring system and Local Tennis Leagues in UK. You self register, and mark yourself as one of the 4 levels. Amateur/Intermediate/Advanced/Competitive (names to be refined). Each level has a starting score. Every win gives you points. If you win someone that belongs to the next grade you get some bonus. If you win many people higher than you, then you also get a bonus (eg 5% of the points difference). Knock out tournaments give points per stage. Or alternatively, when we start the knock out tournaments we keep a separate list. That I haven't thought about it yet. An example is :
+**IMPROVE** — A personal performance journal. Log match reflections and training sessions. Track what went well, what went wrong, and what your opponents struggle with. This data compounds over time into actionable intelligence.
 
-  * Amateur - 1000 pts
-  * Intermediate - 2000 pts
-  * Advanced - 3000 pts
-  * Competitive - 4000 pts
+**THE LAB** — The analytics engine. A proprietary scoring system (1000–4000+ point scale across four tiers), a Skill DNA radar chart built from your journal data, head-to-head rivalry stats, community scouting profiles, and local leaderboards.
 
-Each win give 100 pts. If you win someone from the level above, you get 50 pts extra. Every win for someone higher than you gets you an extra 5% of the points difference. If you lose to someone lower than you, you lose 50 pts. Any other loss, doesn't give you any penalty.
+**THE CLUBHOUSE** — The social layer. Your digital Athlete Card, a local activity feed of milestones and upsets, win streaks, personal bests, and shareable victory cards for social media.
 
-How do you find that?
+These four layers are not independent features. They form a single compounding loop: every match you play feeds your journal, which feeds your Skill DNA, which feeds your scouting profile, which feeds the community feed, which attracts more players to challenge you. The more you use GSM, the more valuable it becomes.
 
-#### **Journal :**
+## The Scoring Standard
 
-The journal is a core feature of the app. The user can see his personal history. That includes :
+At the heart of GSM is a unified point-based scoring system inspired by the WTN and Elo models, designed specifically for self-organised amateur play.
 
-  * Matches. On each of the match, they can :
-      * Add public comments
-      * Add private comments via a list of predefined questions
-          * What went well
-          * What went wrong
-          * Opponent's weak and strong points
-          * (later phase) smart integration with stats
-          * (later phase) AI analysis of what could have done better
-          * (later phase) AI suggestion on areas to work on, drills etc
-  * Training sessions
-      * They can add what they have worked upon, drills etc
-      * AI can suggest what to work on
-      * (premium) based on the next opponent they can suggest specific drills
+| Tier | Starting Points | Win Bonus | Beat Higher Tier |
+| :---- | :---- | :---- | :---- |
+| **Amateur** | 1,000 pts | +100 pts | +50 pts + 5% diff |
+| **Intermediate** | 2,000 pts | +100 pts | +50 pts + 5% diff |
+| **Advanced** | 3,000 pts | +100 pts | +50 pts + 5% diff |
+| **Competitive** | 4,000 pts | +100 pts | +50 pts + 5% diff |
+
+Players self-register at a tier and earn points through verified match results. Losing to a lower-ranked opponent costs 50 points; all other losses carry no penalty, keeping the system encouraging for newcomers. Every point change is auditable, per-sport, and feeds into regional leaderboards and head-to-head rivalry records.
+
+The scoring standard is the moat. The more players who adopt it, the harder it becomes for anyone else to replicate. It is the single asset that transforms GSM from a matchmaking utility into a platform.
+
+## Organised Leagues
+
+Beyond casual matchmaking, GSM hosts formal round-robin leagues. The app opens registration for a region, groups players by ranking, and gives them a defined window (typically two months) to self-organise and complete their matches. Entry fees fund small prizes for winners. Every league match counts towards the player's GSM score, creating a direct bridge between casual play and competitive structure.
+
+The long-term vision extends to knockout tournaments run in partnership with local clubs, and eventually prize-money leagues that mirror professional structures at the amateur level.
+
+## Why Now
+
+* **Racket sports are booming.** Padel alone is growing at 13%+ CAGR. Garmin reported a 67% increase in racket sports activity in 2025. The participant base is expanding faster than the infrastructure to serve it.
+
+* **The incumbents own courts, not players.** Playtomic (4.7M users, €273M valuation) built a court-booking marketplace. They solved 'where to play.' Nobody has solved 'who to play and why it matters.' GSM is complementary to Playtomic, not competitive.
+
+* **There is no scoring standard for amateurs.** The WTN exists but is institutionally gated. No app has built a grassroots-up scoring system that any player can join. This is a category-creation opportunity.
+
+## The Biggest Vision
+
+GSM becomes the global competitive infrastructure for amateur racket sports.
+
+In three years, a padel player in Athens, a tennis player in Madrid, and a pickleball player in Austin all carry a GSM score that is universally understood. Clubs use it for group placement. League organisers use it for seeding. Coaches reference it to track student progress. Brands sponsor GSM-rated tournaments the way they sponsor ITF events today. It starts with padel because that is where the need is sharpest and the competition is thinnest.
+
+The platform evolves along three horizons:
+
+**Year 1 — The padel matchmaking utility.** Launch in Athens as the first rated padel platform. Prove the core loop: find opponents, play matches, build your score. Expand to a second city once the model works.
+
+**Year 2 — The multi-sport competitive platform.** Activate tennis and pickleball communities. Leagues with prize money, AI-powered scouting reports, a premium subscription for advanced analytics, and club partnership tools across all three sports.
+
+**Year 3 — The standard.** The GSM score is the accepted rating for amateur racket sports. API integrations with court booking platforms, coaching apps, and sports retailers. A data moat that compounds with every match played.
+
+Every match logged, every score verified, and every rivalry tracked adds a brick to a data asset that becomes more defensible with scale. The scoring standard is not a feature; it is the foundation of a network effect. The first platform to own the amateur scoring standard will own the category.
+
+| In Summary |
+| :---- |
+| GSM exists because millions of padel, tennis, and pickleball players deserve what the professionals have: a score that means something, opponents worth playing, and a record of every match they have ever competed in. We start with padel. We start in Athens. We build the standard. |
