@@ -23,9 +23,11 @@ from app.models import (
     PrivateUserProfile,
     PublicUserProfile,
     SetScore,
+    SkillAxisData,
     SkillTaxonomy,
     SportEnum,
     SportRanking,
+    SportSkillDna,
     TierConfig,
     TierEnum,
     TierThreshold,
@@ -82,6 +84,26 @@ USER_IGNATIOS = PrivateUserProfile(
     completed_matches=[],
     journal_recent=[],
     cursors=None,
+    skill_dna={
+        "padel": SportSkillDna(
+            serve=SkillAxisData(positive=5, negative=2, score=71),
+            power=SkillAxisData(positive=4, negative=3, score=57),
+            net_play=SkillAxisData(positive=6, negative=1, score=86),
+            stamina=SkillAxisData(positive=3, negative=2, score=60),
+            mental=SkillAxisData(positive=4, negative=1, score=80),
+            total_reflections=8,
+            last_updated=utc(2026, 2, 20, 14, 0),
+        ),
+        "tennis": SportSkillDna(
+            serve=SkillAxisData(positive=3, negative=3, score=50),
+            power=SkillAxisData(positive=2, negative=1, score=67),
+            net_play=SkillAxisData(positive=1, negative=2, score=33),
+            stamina=SkillAxisData(positive=3, negative=1, score=75),
+            mental=SkillAxisData(positive=2, negative=2, score=50),
+            total_reflections=5,
+            last_updated=utc(2026, 2, 15, 10, 0),
+        ),
+    },
 )
 
 USER_ALICE = PrivateUserProfile(
@@ -113,6 +135,17 @@ USER_ALICE = PrivateUserProfile(
     completed_matches=[],
     journal_recent=[],
     cursors=None,
+    skill_dna={
+        "tennis": SportSkillDna(
+            serve=SkillAxisData(positive=6, negative=1, score=86),
+            power=SkillAxisData(positive=5, negative=2, score=71),
+            net_play=SkillAxisData(positive=4, negative=2, score=67),
+            stamina=SkillAxisData(positive=5, negative=1, score=83),
+            mental=SkillAxisData(positive=4, negative=3, score=57),
+            total_reflections=7,
+            last_updated=utc(2026, 2, 18, 9, 30),
+        ),
+    },
 )
 
 USER_BOB = PrivateUserProfile(
@@ -153,6 +186,26 @@ USER_BOB = PrivateUserProfile(
     completed_matches=[],
     journal_recent=[],
     cursors=None,
+    skill_dna={
+        "padel": SportSkillDna(
+            serve=SkillAxisData(positive=2, negative=3, score=40),
+            power=SkillAxisData(positive=3, negative=2, score=60),
+            net_play=SkillAxisData(positive=2, negative=2, score=50),
+            stamina=SkillAxisData(positive=1, negative=3, score=25),
+            mental=SkillAxisData(positive=2, negative=1, score=67),
+            total_reflections=6,
+            last_updated=utc(2026, 2, 10, 16, 0),
+        ),
+        "pickleball": SportSkillDna(
+            serve=SkillAxisData(positive=1, negative=1, score=50),
+            power=SkillAxisData(positive=1, negative=0, score=100),
+            net_play=SkillAxisData(positive=2, negative=1, score=67),
+            stamina=SkillAxisData(positive=1, negative=1, score=50),
+            mental=SkillAxisData(positive=0, negative=1, score=0),
+            total_reflections=3,
+            last_updated=utc(2026, 1, 25, 11, 0),
+        ),
+    },
 )
 
 SAMPLE_USERS = [USER_IGNATIOS, USER_ALICE, USER_BOB]
