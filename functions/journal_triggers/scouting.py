@@ -163,12 +163,13 @@ def _apply_scouting_delta(
         sport_data["strong"] = strong_map
         sport_data["lastUpdated"] = now
 
-        write_data: dict[str, Any] = {
-            "uid": opponent_uid,
-            sport: sport_data,
-            "lastUpdated": now,
-        }
-        t.set(doc_ref, write_data, merge=True)
+        # Overwrite the full document (no merge) so that removed nested keys
+        # (e.g. a tag whose count dropped to 0) are actually deleted.
+        # Safe because we read the full doc inside this transaction.
+        data["uid"] = opponent_uid
+        data[sport] = sport_data
+        data["lastUpdated"] = now
+        t.set(doc_ref, data)
 
     _apply(txn)
 
