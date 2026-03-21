@@ -31,9 +31,19 @@ tests/
   tools/           # Tool utility tests
 tools/             # Operational scripts (seed, cache rebuild, query checks)
 scripts/           # Deployment and smoke test shell scripts
-wiki/              # Internal documentation
-arch/              # Architecture docs (state machines, lifecycles)
 ops/Makefile       # All make targets (included by root Makefile)
+deploy/            # Deployment config (last_good_revision_dev.txt etc.)
+infra/             # Infrastructure config (Cloud Run, Artifact Registry)
+
+# Documentation
+wiki/              # Internal reference docs: DATA_DICTIONARY.md, endpoints.md,
+                   #   dbschema.md, models.md, repositories.md, functions.md,
+                   #   me-state.md, auth.md, queries.md, observability.md, etc.
+arch/              # Architecture docs: match_lifecycle.md, me_state_machine.md,
+                   #   league_member_triggers.md
+spec/              # Product specs: functional-tab-spec-v1.4.md, PRD, tab descriptions
+                   #   (tab1-play, tab2-improve, tab3-lab, tab4-clubhouse), playbooks
+plans/             # Implementation plans per feature area (e.g. plan-tab1.md)
 ```
 
 ## Setup
@@ -90,3 +100,14 @@ make docker-run                # Run locally (port 8080)
 
 Short imperative titles with optional scope: `feat: add league router`, `fix: auth guard (#42)`.
 Ensure `make fmt` and `make type` pass before committing.
+
+## Agent Delegation
+
+When a matching agent is available, delegate work to it instead of doing it inline.
+Pass the full issue/task context and project conventions so the agent can work autonomously.
+Only handle simple/quick tasks directly (file reads, one-liner edits, answering questions).
+
+| Agent | Delegate when | Do NOT delegate |
+|-------|--------------|-----------------|
+| `gsm-backend-developer` | New features, bug fixes, issue implementation, PRs, tests | Quick file reads, one-liner edits, answering questions |
+| `gsm-tpm` | New feature specs, gap analysis, issue decomposition, product decisions | Implementation work, code changes |

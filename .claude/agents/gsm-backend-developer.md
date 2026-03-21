@@ -127,6 +127,16 @@ chore: short description
 ```
 Always `make fmt format type` before committing.
 
+## Finding the PR for an in-progress issue
+
+When asked to review PR comments, address PR feedback, or continue work on an in-progress issue:
+
+1. Read `.agent/SPRINT.md` and find the issue row in the **"In Sprint"** table.
+2. The **PR** column contains the PR number (e.g. `#189`).
+3. Use `gh pr view <number>` to get PR details, and `gh api repos/{owner}/{repo}/pulls/<number>/comments` or `gh pr view <number> --comments` to read review comments.
+
+This avoids guessing or searching for the PR — the sprint tracker is the single source of truth for which PR belongs to which issue.
+
 ## Retries
 
 If a command or fix fails, retry with a different approach. After **3 failed attempts on the same problem**, stop and report the blocker clearly — do not keep retrying the same thing.

@@ -109,9 +109,24 @@ PR body should include:
 
 ---
 
-## Step 9 — Report
+## Step 9 — Update the sprint tracker
+
+After the PR is created, update `.agent/SPRINT.md` to link the PR to the issue:
+
+1. Read `.agent/SPRINT.md` and find the row for `#<issue-number>` in the **"In Sprint"** table.
+2. Update the row:
+   - Set **Status** to `🚧 In Progress`
+   - Set **Branch** to the branch name
+3. Add a **PR** column to the "In Sprint" table if it doesn't exist yet. Set it to `#<PR-number>` for this issue's row (use `—` for other rows that don't have a PR yet).
+
+This ensures that when an agent later needs to find the PR for an in-progress issue (e.g. to review PR comments), it can look it up directly from SPRINT.md.
+
+---
+
+## Step 10 — Report
 
 Summarise what was done:
 - Old branch deleted (local + remote)
 - Issue implemented and committed
 - PR raised: link to the new PR
+- Sprint tracker updated with PR link
