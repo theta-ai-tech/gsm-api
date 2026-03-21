@@ -162,8 +162,16 @@ def test_upsert_ignores_when_no_match_id() -> None:
     assert result is False
 
 
-def test_upsert_ignores_when_no_opponent_tags() -> None:
+@patch("functions.journal_triggers.scouting._remove_scouting")
+def test_upsert_clears_when_no_opponent_tags(mock_remove: MagicMock) -> None:
+    mock_remove.return_value = False  # no previous report to remove
+
     client = MagicMock()
+    match_snap = MagicMock()
+    match_snap.exists = True
+    match_snap.to_dict.return_value = {"participantUids": ["u1", "u2"]}
+    client.collection.return_value.document.return_value.get.return_value = match_snap
+
     result = handle_scouting_upsert(
         client=client,
         uid="u1",
@@ -175,10 +183,19 @@ def test_upsert_ignores_when_no_opponent_tags() -> None:
         },
     )
     assert result is False
+    mock_remove.assert_called_once()
 
 
-def test_upsert_ignores_when_no_reflection() -> None:
+@patch("functions.journal_triggers.scouting._remove_scouting")
+def test_upsert_clears_when_no_reflection(mock_remove: MagicMock) -> None:
+    mock_remove.return_value = False
+
     client = MagicMock()
+    match_snap = MagicMock()
+    match_snap.exists = True
+    match_snap.to_dict.return_value = {"participantUids": ["u1", "u2"]}
+    client.collection.return_value.document.return_value.get.return_value = match_snap
+
     result = handle_scouting_upsert(
         client=client,
         uid="u1",
@@ -186,6 +203,7 @@ def test_upsert_ignores_when_no_reflection() -> None:
         after={"sport": "tennis", "matchId": "m1"},
     )
     assert result is False
+    mock_remove.assert_called_once()
 
 
 def test_upsert_ignores_when_match_not_found() -> None:
@@ -288,6 +306,44 @@ def test_upsert_dedup_returns_false(mock_upsert: MagicMock) -> None:
         },
     )
     assert result is False
+
+
+# ---------------------------------------------------------------------------
+# handle_scouting_upsert — tags cleared (regression: had tags -> now empty)
+# ---------------------------------------------------------------------------
+
+
+@patch("functions.journal_triggers.scouting._remove_scouting")
+def test_upsert_reverses_previous_report_when_tags_cleared(
+    mock_remove: MagicMock,
+) -> None:
+    """When a journal entry is edited to remove all opponent tags, the old
+    scouting contribution must be reversed via _remove_scouting."""
+    mock_remove.return_value = True
+
+    client = MagicMock()
+    match_snap = MagicMock()
+    match_snap.exists = True
+    match_snap.to_dict.return_value = {"participantUids": ["u1", "u2"]}
+    client.collection.return_value.document.return_value.get.return_value = match_snap
+
+    result = handle_scouting_upsert(
+        client=client,
+        uid="u1",
+        entry_id="e1",
+        after={
+            "sport": "tennis",
+            "matchId": "m1",
+            "reflection": {"opponentWeak": [], "opponentStrong": []},
+        },
+    )
+
+    assert result is True
+    mock_remove.assert_called_once()
+    call_kwargs = mock_remove.call_args[1]
+    assert call_kwargs["opponent_uid"] == "u2"
+    assert call_kwargs["sport"] == "tennis"
+    assert call_kwargs["dedup_hash"] == hash_dedup_key("m1", "u1")
 
 
 # ---------------------------------------------------------------------------

@@ -336,15 +336,7 @@ def handle_scouting_upsert(
     weak_tags: list[str] = reflection.get("opponentWeak") or []
     strong_tags: list[str] = reflection.get("opponentStrong") or []
 
-    if not weak_tags and not strong_tags:
-        log_event(
-            trigger=trigger,
-            action="ignore",
-            uid=uid,
-            entryId=entry_id,
-            reason="no_opponent_tags",
-        )
-        return False
+    tags_cleared = not weak_tags and not strong_tags
 
     # Look up match to find opponent
     match_snap = client.collection("matches").document(match_id).get()
@@ -376,8 +368,30 @@ def handle_scouting_upsert(
 
     now = datetime.now(tz=timezone.utc)
     dedup_h = hash_dedup_key(match_id, uid)
-    reporter_h = hash_reporter(uid)
 
+    if tags_cleared:
+        # Tags were removed entirely — reverse any previous scouting contribution.
+        changed = _remove_scouting(
+            client=client,
+            opponent_uid=opponent_uid,
+            sport=sport,
+            dedup_hash=dedup_h,
+            now=now,
+        )
+        log_event(
+            trigger=trigger,
+            action="clear",
+            uid=uid,
+            entryId=entry_id,
+            matchId=match_id,
+            opponentUid=opponent_uid,
+            sport=sport,
+            changed=changed,
+            writes_count=1 if changed else 0,
+        )
+        return changed
+
+    reporter_h = hash_reporter(uid)
     changed = _upsert_scouting(
         client=client,
         opponent_uid=opponent_uid,
