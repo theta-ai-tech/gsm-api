@@ -72,7 +72,27 @@ def _cleanup(db):
 
 ## PR requirements (non-negotiable)
 
-Every PR must include all three sections in the body:
+Every PR must include all four sections in the body, in this order:
+
+### 0. Context & Technical Overview
+
+This section comes **first** in the PR body, before testing instructions. It is written for a reviewer who has the same codebase knowledge but is starting with a fresh context — another agent or an engineer picking this up cold.
+
+It must include:
+- **What**: one paragraph describing what this PR creates or changes
+- **Why**: one sentence on the motivation (e.g. "Required by LAB-12 as the data layer before the scouting endpoint can be built")
+- **Tech dive**: one short paragraph covering the key design decisions — which collection/model pattern was used, why a particular approach was chosen, any non-obvious trade-offs (e.g. atomic increments via `firestore.Increment`, denormalized caches, mapper conventions)
+
+Example:
+```
+## Context & Technical Overview
+
+**What:** Introduces the `scouting/{uid}` Firestore collection with its Pydantic model (`ScoutingProfile`), repository (`ScoutingRepo`), and camelCase↔snake_case mappers.
+
+**Why:** This is the data layer required by LAB-12 before the scouting endpoint (LAB-14) can be built. The scouting profile aggregates opponent weakness/strength tags from journal reflections.
+
+**Tech dive:** Tags are stored as nested maps `{sport: {weak: {tag: count}, strong: {tag: count}}}`. Increments use `firestore.Increment(1)` (atomic server-side) rather than read-modify-write to avoid race conditions when multiple reflections are processed concurrently. The mapper follows the same `to_*` convention as existing repos. A `get_scouting_repo` FastAPI dependency was added to `dependencies/repos.py` following the established injection pattern.
+```
 
 ### 1. How to run integration tests
 ```bash
