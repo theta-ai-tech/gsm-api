@@ -9,6 +9,7 @@ from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.scouting_repo import ScoutingRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 
@@ -45,6 +46,10 @@ def get_offers_repo() -> OffersRepo:
 
 def get_point_history_repo() -> PointHistoryRepo:
     return PointHistoryRepo(get_firestore_client())
+
+
+def get_scouting_repo() -> ScoutingRepo:
+    return ScoutingRepo(get_firestore_client())
 
 
 def get_tier_config_repo() -> TierConfigRepo:
