@@ -8,6 +8,7 @@ from functions.journal_triggers.on_journal_entry_write import (
     handle_journal_entry_create,
     handle_journal_entry_delete,
 )
+from functions.journal_triggers.scouting import handle_scouting_delete, handle_scouting_upsert
 from functions.journal_triggers.skill_dna import handle_skill_dna_delete, handle_skill_dna_upsert
 from functions.logging_utils import log_event
 from functions.runtime_flags import triggers_enabled
@@ -46,6 +47,7 @@ def handle_journal_entry_write_upsert(
 
     handle_journal_entry_create(client=client, uid=uid, entry_id=entry_id, after=after)
     handle_skill_dna_upsert(client=client, uid=uid, entry_id=entry_id, after=after)
+    handle_scouting_upsert(client=client, uid=uid, entry_id=entry_id, after=after)
 
 
 def handle_journal_entry_write_remove(
@@ -82,3 +84,4 @@ def handle_journal_entry_write_remove(
     handle_journal_entry_delete(client=client, uid=uid, entry_id=entry_id)
     if before is not None:
         handle_skill_dna_delete(client=client, uid=uid, entry_id=entry_id, before=before)
+        handle_scouting_delete(client=client, uid=uid, entry_id=entry_id, before=before)
