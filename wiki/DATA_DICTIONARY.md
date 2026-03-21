@@ -822,3 +822,46 @@ comparison mode on the radar chart. Recomputed by the D7 scheduled function.
   "updatedAt": "2026-03-01T00:00:00Z"
 }
 ```
+
+## Collection: scouting
+Path: `scouting/{uid}`
+
+Purpose: aggregated community observations about each player. Crowd-sourced intelligence for scouting reports. Reports are fully anonymous — counts only, no reporter UIDs stored.
+
+### Privacy Model
+- Reports are fully anonymous: counts only, no reporter UIDs stored.
+- Users see "7 players noted weak backhand" — never who reported it.
+
+### Fields: scouting/{uid}
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| uid | string | required | — | canonical | — | Scouted player UID; matches document ID. |
+| {sport} | map | optional | sport | canonical | — | One key per sport with scouting data. |
+| {sport}.weak | map | optional | — | canonical | — | Map of tag string to `{count, lastReported}`. |
+| {sport}.strong | map | optional | — | canonical | — | Map of tag string to `{count, lastReported}`. |
+| {sport}.weak.{tag}.count | number | required | — | canonical | — | Number of reports for this weakness tag. |
+| {sport}.weak.{tag}.lastReported | timestamp | required | — | canonical | — | When this tag was last reported (UTC). |
+| {sport}.strong.{tag}.count | number | required | — | canonical | — | Number of reports for this strength tag. |
+| {sport}.strong.{tag}.lastReported | timestamp | required | — | canonical | — | When this tag was last reported (UTC). |
+| {sport}.totalReports | number | required | — | canonical | — | Total report count across all tags for this sport. |
+| {sport}.uniqueReporters | number | required | — | canonical | — | Distinct reporter count for this sport. |
+| {sport}.lastUpdated | timestamp | optional | — | canonical | — | When this sport's scouting data was last updated (UTC). |
+
+### scouting/{uid}
+```json
+{
+  "uid": "user_bob",
+  "tennis": {
+    "weak": {
+      "backhand": {"count": 7, "lastReported": "2026-03-01T10:00:00Z"},
+      "stamina_set3": {"count": 3, "lastReported": "2026-02-28T15:00:00Z"}
+    },
+    "strong": {
+      "first_serve": {"count": 5, "lastReported": "2026-03-01T09:00:00Z"}
+    },
+    "totalReports": 12,
+    "uniqueReporters": 8,
+    "lastUpdated": "2026-03-01T10:00:00Z"
+  }
+}
+```

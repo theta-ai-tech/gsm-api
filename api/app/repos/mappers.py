@@ -38,6 +38,9 @@ from app.models import (
     PointHistoryReasonEnum,
     PrivateUserProfile,
     PublicUserProfile,
+    ScoutingProfile,
+    ScoutingSportData,
+    ScoutingTagCount,
     SetScore,
     SkillAxisData,
     SportEnum,
@@ -444,4 +447,40 @@ def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
         expires_at=_require(doc, "expiresAt"),
         created_at=_require(doc, "createdAt"),
         match_id=doc.get("matchId"),
+    )
+
+
+def _parse_scouting_tag_counts(
+    data: dict[str, Any] | None,
+) -> dict[str, ScoutingTagCount]:
+    if not data:
+        return {}
+    result: dict[str, ScoutingTagCount] = {}
+    for tag, tag_data in data.items():
+        if isinstance(tag_data, dict):
+            result[tag] = ScoutingTagCount(
+                count=int(tag_data.get("count", 0)),
+                last_reported=tag_data.get("lastReported"),
+            )
+    return result
+
+
+def _parse_scouting_sport_data(data: dict[str, Any] | None) -> Optional[ScoutingSportData]:
+    if not data:
+        return None
+    return ScoutingSportData(
+        weak=_parse_scouting_tag_counts(data.get("weak")),
+        strong=_parse_scouting_tag_counts(data.get("strong")),
+        total_reports=int(data.get("totalReports", 0)),
+        unique_reporters=int(data.get("uniqueReporters", 0)),
+        last_updated=data.get("lastUpdated"),
+    )
+
+
+def to_scouting_profile(doc: dict[str, Any]) -> ScoutingProfile:
+    return ScoutingProfile(
+        uid=doc.get("uid") or doc.get("id") or "",
+        tennis=_parse_scouting_sport_data(doc.get("tennis")),
+        padel=_parse_scouting_sport_data(doc.get("padel")),
+        pickleball=_parse_scouting_sport_data(doc.get("pickleball")),
     )
