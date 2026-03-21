@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from functions.logging_utils import log_event
 _TRIGGER_UPSERT = "onJournalEntryWrite.D4.3"
 _TRIGGER_DELETE = "onJournalEntryWrite.D4.4"
 _SCOUTING_COLLECTION = "scouting"
+_PROCESSED_SUBCOLLECTION = "processedReports"
 
 
 # ---------------------------------------------------------------------------
@@ -28,72 +30,137 @@ def resolve_opponent_uid(
     return others[0] if others else None
 
 
-def make_dedup_key(match_id: str, reporter_uid: str) -> str:
-    """Deterministic dedup key for one reporter's contribution to one match."""
-    return f"{match_id}_{reporter_uid}"
+def hash_dedup_key(match_id: str, reporter_uid: str) -> str:
+    """One-way SHA-256 hash of the dedup key. No raw UIDs stored in Firestore."""
+    raw = f"{match_id}_{reporter_uid}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def hash_reporter(reporter_uid: str) -> str:
+    """One-way SHA-256 hash of a reporter UID for anonymous unique counting."""
+    return hashlib.sha256(reporter_uid.encode()).hexdigest()
+
+
+def make_tag_sig(weak_tags: list[str], strong_tags: list[str]) -> str:
+    """Deterministic signature for a set of scouting tags (used for idempotency)."""
+    return ",".join(sorted(weak_tags)) + "|" + ",".join(sorted(strong_tags))
+
+
+def parse_tag_sig(sig: str) -> tuple[list[str], list[str]]:
+    """Parse a stored signature back to (weak_tags, strong_tags) lists."""
+    parts = sig.split("|", 1)
+    weak = [t for t in parts[0].split(",") if t]
+    strong = [t for t in (parts[1] if len(parts) > 1 else "").split(",") if t]
+    return weak, strong
+
+
+def compute_tag_delta(
+    old_weak: list[str],
+    old_strong: list[str],
+    new_weak: list[str],
+    new_strong: list[str],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Compute per-tag increments/decrements between old and new tag sets.
+
+    Returns (weak_deltas, strong_deltas) where each is {tag: delta_int}.
+    Positive means increment, negative means decrement.
+    """
+    weak_deltas: dict[str, int] = {}
+    for tag in new_weak:
+        weak_deltas[tag] = weak_deltas.get(tag, 0) + 1
+    for tag in old_weak:
+        weak_deltas[tag] = weak_deltas.get(tag, 0) - 1
+    # Remove zero-deltas
+    weak_deltas = {k: v for k, v in weak_deltas.items() if v != 0}
+
+    strong_deltas: dict[str, int] = {}
+    for tag in new_strong:
+        strong_deltas[tag] = strong_deltas.get(tag, 0) + 1
+    for tag in old_strong:
+        strong_deltas[tag] = strong_deltas.get(tag, 0) - 1
+    strong_deltas = {k: v for k, v in strong_deltas.items() if v != 0}
+
+    return weak_deltas, strong_deltas
 
 
 # ---------------------------------------------------------------------------
-# Firestore writer — atomic merge with Increment
+# Firestore writers — subcollection for dedup, transaction for counters
 # ---------------------------------------------------------------------------
 
 
-def _write_scouting_tags(
+def _apply_scouting_delta(
     client: firestore.Client,
     opponent_uid: str,
     sport: str,
-    weak_tags: list[str],
-    strong_tags: list[str],
-    dedup_key: str,
+    weak_deltas: dict[str, int],
+    strong_deltas: dict[str, int],
+    reporter_hash: str,
+    is_new_reporter: bool,
+    reporter_removed: bool,
+    total_reports_delta: int,
     now: datetime,
-) -> bool:
-    """
-    Atomically increment scouting tag counters for an opponent.
-
-    Uses a dedup sub-map to ensure each (matchId, reporterUid) pair is only
-    counted once. Returns True if write occurred, False if already processed.
-    """
+) -> None:
+    """Transactionally apply tag count deltas to the main scouting document."""
     doc_ref = client.collection(_SCOUTING_COLLECTION).document(opponent_uid)
-
     txn = client.transaction()
 
     @firestore.transactional
-    def _apply(t: firestore.Transaction) -> bool:
+    def _apply(t: firestore.Transaction) -> None:
         snap = doc_ref.get(transaction=t)
         data: dict[str, Any] = snap.to_dict() or {} if snap.exists else {}
 
         sport_data: dict[str, Any] = dict(data.get(sport) or {})
-        processed: dict[str, bool] = dict(sport_data.get("processedReports") or {})
 
-        if dedup_key in processed:
-            return False
-
-        # Mark as processed
-        processed[dedup_key] = True
-
-        # Rebuild weak/strong maps with increments
+        # Apply weak tag deltas
         weak_map: dict[str, Any] = dict(sport_data.get("weak") or {})
-        for tag in weak_tags:
+        for tag, delta in weak_deltas.items():
             tag_entry = dict(weak_map.get(tag) or {})
-            tag_entry["count"] = int(tag_entry.get("count", 0)) + 1
-            tag_entry["lastReported"] = now
-            weak_map[tag] = tag_entry
+            new_count = max(0, int(tag_entry.get("count", 0)) + delta)
+            if new_count == 0:
+                weak_map.pop(tag, None)
+            else:
+                tag_entry["count"] = new_count
+                if delta > 0:
+                    tag_entry["lastReported"] = now
+                weak_map[tag] = tag_entry
 
+        # Apply strong tag deltas
         strong_map: dict[str, Any] = dict(sport_data.get("strong") or {})
-        for tag in strong_tags:
+        for tag, delta in strong_deltas.items():
             tag_entry = dict(strong_map.get(tag) or {})
-            tag_entry["count"] = int(tag_entry.get("count", 0)) + 1
-            tag_entry["lastReported"] = now
-            strong_map[tag] = tag_entry
+            new_count = max(0, int(tag_entry.get("count", 0)) + delta)
+            if new_count == 0:
+                strong_map.pop(tag, None)
+            else:
+                tag_entry["count"] = new_count
+                if delta > 0:
+                    tag_entry["lastReported"] = now
+                strong_map[tag] = tag_entry
 
-        total_reports = int(sport_data.get("totalReports", 0)) + 1
-        unique_reporters = int(sport_data.get("uniqueReporters", 0)) + 1
+        # Update totalReports
+        sport_data["totalReports"] = max(
+            0, int(sport_data.get("totalReports", 0)) + total_reports_delta
+        )
+
+        # Update uniqueReporters via anonymous reporter hash counts
+        reporter_counts: dict[str, int] = dict(
+            sport_data.get("_reporterCounts") or {}
+        )
+        if is_new_reporter:
+            reporter_counts[reporter_hash] = (
+                reporter_counts.get(reporter_hash, 0) + 1
+            )
+        if reporter_removed:
+            cur = reporter_counts.get(reporter_hash, 0) - 1
+            if cur <= 0:
+                reporter_counts.pop(reporter_hash, None)
+            else:
+                reporter_counts[reporter_hash] = cur
+        sport_data["_reporterCounts"] = reporter_counts
+        sport_data["uniqueReporters"] = len(reporter_counts)
 
         sport_data["weak"] = weak_map
         sport_data["strong"] = strong_map
-        sport_data["totalReports"] = total_reports
-        sport_data["uniqueReporters"] = unique_reporters
-        sport_data["processedReports"] = processed
         sport_data["lastUpdated"] = now
 
         write_data: dict[str, Any] = {
@@ -102,80 +169,136 @@ def _write_scouting_tags(
             "lastUpdated": now,
         }
         t.set(doc_ref, write_data, merge=True)
-        return True
 
-    return _apply(txn)
+    _apply(txn)
 
 
-def _remove_scouting_tags(
+def _upsert_scouting(
     client: firestore.Client,
     opponent_uid: str,
     sport: str,
     weak_tags: list[str],
     strong_tags: list[str],
-    dedup_key: str,
+    dedup_hash: str,
+    reporter_hash: str,
     now: datetime,
 ) -> bool:
+    """Create or update a scouting report using before/after diff.
+
+    Stores the report signature in a subcollection for dedup and privacy.
+    Computes a delta against any previous report with the same dedup key
+    and applies it to the main scouting document.
     """
-    Reverse a previously counted scouting report when a journal entry is deleted.
+    subcoll_ref = (
+        client.collection(_SCOUTING_COLLECTION)
+        .document(opponent_uid)
+        .collection(_PROCESSED_SUBCOLLECTION)
+    )
+    report_ref = subcoll_ref.document(dedup_hash)
 
-    Only removes if the dedup_key was previously recorded. Decrements counters
-    and removes tags that reach zero.
+    new_sig = make_tag_sig(weak_tags, strong_tags)
+
+    # Read existing report for this dedup key (if any)
+    existing_snap = report_ref.get()
+    if existing_snap.exists:
+        existing_data = existing_snap.to_dict() or {}
+        old_sig = existing_data.get("tagSig", "")
+        if old_sig == new_sig:
+            return False  # idempotent — same tags already stored
+        old_weak, old_strong = parse_tag_sig(old_sig)
+        is_new_reporter = False
+    else:
+        old_weak, old_strong = [], []
+        is_new_reporter = True
+
+    weak_deltas, strong_deltas = compute_tag_delta(
+        old_weak, old_strong, weak_tags, strong_tags
+    )
+
+    total_reports_delta = 1 if not existing_snap.exists else 0
+
+    # Write subcollection doc (outside the main-doc transaction)
+    report_ref.set({
+        "sport": sport,
+        "tagSig": new_sig,
+        "reporterHash": reporter_hash,
+        "updatedAt": now,
+    })
+
+    # Apply delta to main scouting doc
+    _apply_scouting_delta(
+        client=client,
+        opponent_uid=opponent_uid,
+        sport=sport,
+        weak_deltas=weak_deltas,
+        strong_deltas=strong_deltas,
+        reporter_hash=reporter_hash,
+        is_new_reporter=is_new_reporter,
+        reporter_removed=False,
+        total_reports_delta=total_reports_delta,
+        now=now,
+    )
+    return True
+
+
+def _remove_scouting(
+    client: firestore.Client,
+    opponent_uid: str,
+    sport: str,
+    dedup_hash: str,
+    now: datetime,
+) -> bool:
+    """Reverse a scouting report when a journal entry is deleted.
+
+    Reads the stored tags from the subcollection, decrements counters,
+    then deletes the subcollection doc.
     """
-    doc_ref = client.collection(_SCOUTING_COLLECTION).document(opponent_uid)
+    subcoll_ref = (
+        client.collection(_SCOUTING_COLLECTION)
+        .document(opponent_uid)
+        .collection(_PROCESSED_SUBCOLLECTION)
+    )
+    report_ref = subcoll_ref.document(dedup_hash)
 
-    txn = client.transaction()
+    existing_snap = report_ref.get()
+    if not existing_snap.exists:
+        return False
 
-    @firestore.transactional
-    def _apply(t: firestore.Transaction) -> bool:
-        snap = doc_ref.get(transaction=t)
-        if not snap.exists:
-            return False
-        data: dict[str, Any] = snap.to_dict() or {}
+    existing_data = existing_snap.to_dict() or {}
+    old_sig = existing_data.get("tagSig", "")
+    reporter_hash_val: str = existing_data.get("reporterHash", "")
+    old_weak, old_strong = parse_tag_sig(old_sig)
 
-        sport_data: dict[str, Any] = dict(data.get(sport) or {})
-        processed: dict[str, bool] = dict(sport_data.get("processedReports") or {})
+    # Compute delta: removing all old tags
+    weak_deltas = {tag: -1 for tag in old_weak}
+    strong_deltas = {tag: -1 for tag in old_strong}
 
-        if dedup_key not in processed:
-            return False
+    # Check if this reporter has other reports in the subcollection
+    reporter_removed = True
+    for doc in subcoll_ref.where(
+        "reporterHash", "==", reporter_hash_val
+    ).limit(2).stream():
+        if doc.id != dedup_hash:
+            reporter_removed = False
+            break
 
-        del processed[dedup_key]
+    # Delete subcollection doc first
+    report_ref.delete()
 
-        weak_map: dict[str, Any] = dict(sport_data.get("weak") or {})
-        for tag in weak_tags:
-            tag_entry = dict(weak_map.get(tag) or {})
-            new_count = max(0, int(tag_entry.get("count", 0)) - 1)
-            if new_count == 0:
-                weak_map.pop(tag, None)
-            else:
-                tag_entry["count"] = new_count
-                weak_map[tag] = tag_entry
-
-        strong_map: dict[str, Any] = dict(sport_data.get("strong") or {})
-        for tag in strong_tags:
-            tag_entry = dict(strong_map.get(tag) or {})
-            new_count = max(0, int(tag_entry.get("count", 0)) - 1)
-            if new_count == 0:
-                strong_map.pop(tag, None)
-            else:
-                tag_entry["count"] = new_count
-                strong_map[tag] = tag_entry
-
-        sport_data["weak"] = weak_map
-        sport_data["strong"] = strong_map
-        sport_data["totalReports"] = max(0, int(sport_data.get("totalReports", 0)) - 1)
-        sport_data["uniqueReporters"] = max(0, int(sport_data.get("uniqueReporters", 0)) - 1)
-        sport_data["processedReports"] = processed
-        sport_data["lastUpdated"] = now
-
-        write_data: dict[str, Any] = {
-            sport: sport_data,
-            "lastUpdated": now,
-        }
-        t.set(doc_ref, write_data, merge=True)
-        return True
-
-    return _apply(txn)
+    # Apply reverse delta to main scouting doc
+    _apply_scouting_delta(
+        client=client,
+        opponent_uid=opponent_uid,
+        sport=sport,
+        weak_deltas=weak_deltas,
+        strong_deltas=strong_deltas,
+        reporter_hash=reporter_hash_val,
+        is_new_reporter=False,
+        reporter_removed=reporter_removed,
+        total_reports_delta=-1,
+        now=now,
+    )
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -189,11 +312,10 @@ def handle_scouting_upsert(
     entry_id: str,
     after: dict[str, Any],
 ) -> bool:
-    """
-    Update scouting profile when a journal entry with opponent tags is created/updated.
+    """Update scouting profile when a journal entry with opponent tags is created/updated.
 
     Reads opponentWeak/opponentStrong from the reflection, looks up the match
-    to determine the opponent, then atomically increments scouting counters.
+    to determine the opponent, then applies a before/after diff to scouting counters.
     """
     trigger = _TRIGGER_UPSERT
 
@@ -252,15 +374,17 @@ def handle_scouting_upsert(
         return False
 
     now = datetime.now(tz=timezone.utc)
-    dedup_key = make_dedup_key(match_id, uid)
+    dedup_h = hash_dedup_key(match_id, uid)
+    reporter_h = hash_reporter(uid)
 
-    changed = _write_scouting_tags(
+    changed = _upsert_scouting(
         client=client,
         opponent_uid=opponent_uid,
         sport=sport,
         weak_tags=weak_tags,
         strong_tags=strong_tags,
-        dedup_key=dedup_key,
+        dedup_hash=dedup_h,
+        reporter_hash=reporter_h,
         now=now,
     )
 
@@ -286,10 +410,10 @@ def handle_scouting_delete(
     entry_id: str,
     before: dict[str, Any],
 ) -> bool:
-    """
-    Reverse scouting profile updates when a journal entry is deleted.
+    """Reverse scouting profile updates when a journal entry is deleted.
 
-    Reads the previous opponent tags from `before` and decrements counters.
+    Reads the stored tags from the processedReports subcollection and
+    decrements counters accordingly.
     """
     trigger = _TRIGGER_DELETE
 
@@ -302,20 +426,6 @@ def handle_scouting_delete(
     if not match_id:
         log_event(
             trigger=trigger, action="ignore", uid=uid, entryId=entry_id, reason="no_match_id"
-        )
-        return False
-
-    reflection: dict[str, Any] = before.get("reflection") or {}
-    weak_tags: list[str] = reflection.get("opponentWeak") or []
-    strong_tags: list[str] = reflection.get("opponentStrong") or []
-
-    if not weak_tags and not strong_tags:
-        log_event(
-            trigger=trigger,
-            action="ignore",
-            uid=uid,
-            entryId=entry_id,
-            reason="no_opponent_tags",
         )
         return False
 
@@ -348,15 +458,13 @@ def handle_scouting_delete(
         return False
 
     now = datetime.now(tz=timezone.utc)
-    dedup_key = make_dedup_key(match_id, uid)
+    dedup_h = hash_dedup_key(match_id, uid)
 
-    changed = _remove_scouting_tags(
+    changed = _remove_scouting(
         client=client,
         opponent_uid=opponent_uid,
         sport=sport,
-        weak_tags=weak_tags,
-        strong_tags=strong_tags,
-        dedup_key=dedup_key,
+        dedup_hash=dedup_h,
         now=now,
     )
 

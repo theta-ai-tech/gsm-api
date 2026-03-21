@@ -6,9 +6,13 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from functions.journal_triggers.scouting import (
+    compute_tag_delta,
     handle_scouting_delete,
     handle_scouting_upsert,
-    make_dedup_key,
+    hash_dedup_key,
+    hash_reporter,
+    make_tag_sig,
+    parse_tag_sig,
     resolve_opponent_uid,
 )
 
@@ -38,26 +42,96 @@ def test_resolve_opponent_uid_empty_returns_none() -> None:
 
 
 def test_resolve_opponent_uid_reporter_not_in_list() -> None:
-    # If reporter is not in the list, both are "others" but len != 2 check
-    # already filters. With exactly 2 participants where reporter is absent:
     result = resolve_opponent_uid("u3", ["u1", "u2"])
-    # Returns u1 (first non-reporter) since u3 != u1 and u3 != u2
     assert result == "u1"
 
 
 # ---------------------------------------------------------------------------
-# make_dedup_key
+# hash_dedup_key / hash_reporter
 # ---------------------------------------------------------------------------
 
 
-def test_make_dedup_key() -> None:
-    assert make_dedup_key("match1", "user1") == "match1_user1"
-
-
-def test_make_dedup_key_deterministic() -> None:
-    k1 = make_dedup_key("m1", "u1")
-    k2 = make_dedup_key("m1", "u1")
+def test_hash_dedup_key_deterministic() -> None:
+    k1 = hash_dedup_key("m1", "u1")
+    k2 = hash_dedup_key("m1", "u1")
     assert k1 == k2
+
+
+def test_hash_dedup_key_no_raw_uid() -> None:
+    h = hash_dedup_key("match1", "user1")
+    assert "user1" not in h
+    assert "match1" not in h
+    assert len(h) == 64  # SHA-256 hex
+
+
+def test_hash_reporter_deterministic() -> None:
+    assert hash_reporter("u1") == hash_reporter("u1")
+
+
+def test_hash_reporter_no_raw_uid() -> None:
+    h = hash_reporter("user_alice")
+    assert "user_alice" not in h
+    assert len(h) == 64
+
+
+# ---------------------------------------------------------------------------
+# make_tag_sig / parse_tag_sig
+# ---------------------------------------------------------------------------
+
+
+def test_make_tag_sig_sorted() -> None:
+    sig = make_tag_sig(["footwork", "backhand"], ["serve"])
+    assert sig == "backhand,footwork|serve"
+
+
+def test_parse_tag_sig_roundtrip() -> None:
+    weak = ["backhand", "footwork"]
+    strong = ["serve"]
+    sig = make_tag_sig(weak, strong)
+    parsed_w, parsed_s = parse_tag_sig(sig)
+    assert sorted(parsed_w) == sorted(weak)
+    assert sorted(parsed_s) == sorted(strong)
+
+
+def test_parse_tag_sig_empty() -> None:
+    sig = make_tag_sig([], [])
+    w, s = parse_tag_sig(sig)
+    assert w == []
+    assert s == []
+
+
+# ---------------------------------------------------------------------------
+# compute_tag_delta
+# ---------------------------------------------------------------------------
+
+
+def test_compute_tag_delta_add_new_tags() -> None:
+    wd, sd = compute_tag_delta([], [], ["backhand"], ["serve"])
+    assert wd == {"backhand": 1}
+    assert sd == {"serve": 1}
+
+
+def test_compute_tag_delta_remove_old_tags() -> None:
+    wd, sd = compute_tag_delta(["backhand"], ["serve"], [], [])
+    assert wd == {"backhand": -1}
+    assert sd == {"serve": -1}
+
+
+def test_compute_tag_delta_swap_tags() -> None:
+    wd, sd = compute_tag_delta(
+        ["backhand"],
+        ["serve"],
+        ["footwork"],
+        ["volley"],
+    )
+    assert wd == {"backhand": -1, "footwork": 1}
+    assert sd == {"serve": -1, "volley": 1}
+
+
+def test_compute_tag_delta_no_change() -> None:
+    wd, sd = compute_tag_delta(["backhand"], ["serve"], ["backhand"], ["serve"])
+    assert wd == {}
+    assert sd == {}
 
 
 # ---------------------------------------------------------------------------
@@ -158,9 +232,9 @@ def test_upsert_ignores_when_cannot_resolve_opponent() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("functions.journal_triggers.scouting._write_scouting_tags")
-def test_upsert_happy_path(mock_write: MagicMock) -> None:
-    mock_write.return_value = True
+@patch("functions.journal_triggers.scouting._upsert_scouting")
+def test_upsert_happy_path(mock_upsert: MagicMock) -> None:
+    mock_upsert.return_value = True
 
     client = MagicMock()
     match_snap = MagicMock()
@@ -183,18 +257,19 @@ def test_upsert_happy_path(mock_write: MagicMock) -> None:
     )
 
     assert result is True
-    mock_write.assert_called_once()
-    call_kwargs = mock_write.call_args
-    assert call_kwargs[1]["opponent_uid"] == "u2"
-    assert call_kwargs[1]["sport"] == "tennis"
-    assert call_kwargs[1]["weak_tags"] == ["backhand", "footwork"]
-    assert call_kwargs[1]["strong_tags"] == ["serve"]
-    assert call_kwargs[1]["dedup_key"] == "m1_u1"
+    mock_upsert.assert_called_once()
+    call_kwargs = mock_upsert.call_args[1]
+    assert call_kwargs["opponent_uid"] == "u2"
+    assert call_kwargs["sport"] == "tennis"
+    assert call_kwargs["weak_tags"] == ["backhand", "footwork"]
+    assert call_kwargs["strong_tags"] == ["serve"]
+    assert call_kwargs["dedup_hash"] == hash_dedup_key("m1", "u1")
+    assert call_kwargs["reporter_hash"] == hash_reporter("u1")
 
 
-@patch("functions.journal_triggers.scouting._write_scouting_tags")
-def test_upsert_dedup_returns_false(mock_write: MagicMock) -> None:
-    mock_write.return_value = False  # already processed
+@patch("functions.journal_triggers.scouting._upsert_scouting")
+def test_upsert_dedup_returns_false(mock_upsert: MagicMock) -> None:
+    mock_upsert.return_value = False  # idempotent — same tags
 
     client = MagicMock()
     match_snap = MagicMock()
@@ -242,8 +317,12 @@ def test_delete_ignores_when_no_match_id() -> None:
     assert result is False
 
 
-def test_delete_ignores_when_no_opponent_tags() -> None:
+def test_delete_ignores_when_match_not_found() -> None:
     client = MagicMock()
+    match_snap = MagicMock()
+    match_snap.exists = False
+    client.collection.return_value.document.return_value.get.return_value = match_snap
+
     result = handle_scouting_delete(
         client=client,
         uid="u1",
@@ -251,7 +330,7 @@ def test_delete_ignores_when_no_opponent_tags() -> None:
         before={
             "sport": "tennis",
             "matchId": "m1",
-            "reflection": {"wentWell": ["serve"]},
+            "reflection": {"opponentWeak": ["backhand"]},
         },
     )
     assert result is False
@@ -262,7 +341,7 @@ def test_delete_ignores_when_no_opponent_tags() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("functions.journal_triggers.scouting._remove_scouting_tags")
+@patch("functions.journal_triggers.scouting._remove_scouting")
 def test_delete_happy_path(mock_remove: MagicMock) -> None:
     mock_remove.return_value = True
 
@@ -288,9 +367,9 @@ def test_delete_happy_path(mock_remove: MagicMock) -> None:
 
     assert result is True
     mock_remove.assert_called_once()
-    call_kwargs = mock_remove.call_args
-    assert call_kwargs[1]["opponent_uid"] == "u2"
-    assert call_kwargs[1]["dedup_key"] == "m1_u1"
+    call_kwargs = mock_remove.call_args[1]
+    assert call_kwargs["opponent_uid"] == "u2"
+    assert call_kwargs["dedup_hash"] == hash_dedup_key("m1", "u1")
 
 
 # ---------------------------------------------------------------------------
