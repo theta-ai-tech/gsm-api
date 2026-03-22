@@ -13,6 +13,7 @@ import sys
 from google.cloud import firestore
 
 from tools.seed_data import (
+    REGION_MAPPING,
     SAMPLE_JOURNAL_ENTRIES,
     SAMPLE_LEAGUES,
     SAMPLE_MATCHES,
@@ -28,6 +29,7 @@ from tools.seed_mapping import (
     league_to_firestore_doc,
     match_to_firestore_doc,
     point_history_entry_to_firestore_doc,
+    region_config_to_firestore_doc,
     skill_taxonomy_to_firestore_doc,
     tier_averages_to_firestore_doc,
     tier_config_to_firestore_doc,
@@ -89,6 +91,9 @@ def seed_all(client: firestore.Client) -> None:
     client.collection("config").document("tierAverages").set(
         tier_averages_to_firestore_doc(TIER_AVERAGES)
     )
+    client.collection("config").document("regions").set(
+        region_config_to_firestore_doc(REGION_MAPPING)
+    )
 
 
 def main() -> None:
@@ -128,7 +133,8 @@ def main() -> None:
         f"{total_ph} point history entries, "
         f"1 tier config, "
         f"1 skill taxonomy, "
-        f"1 tier averages "
+        f"1 tier averages, "
+        f"1 region config "
         f"into Firestore emulator project {project_id}."
     )
 
