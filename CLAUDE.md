@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+## Team Operations
+
+- **Skills:** `/next-issue`, `/post-merge`, `/plan-sprint`, `/standup`, `/review-pr`, `/lookup-docs`
+- **Agents:** `gsm-backend-developer` (implementation), `gsm-tpm` (specs & planning)
+- **Sprint tracking:** `.agent/SPRINT.md`, `.agent/ARCHIVE_SPRINT.md`
+
 ## Project Overview
 
 GSM (GameSetMatch) API — backend for a social sports matchmaking app (tennis, padel, pickleball). FastAPI on Cloud Run, Firestore as the database, Cloud Functions Gen 2 for event triggers, Firebase Auth for identity.

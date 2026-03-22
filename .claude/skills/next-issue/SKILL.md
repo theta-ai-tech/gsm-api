@@ -46,11 +46,24 @@ If `git branch -d` fails because the branch is not fully merged locally (can hap
 
 **If the user called `/next-issue <issue-number>`:** use that number directly — skip the lookup below.
 
-**Otherwise:** find the issue number automatically:
-1. Get the most recently merged PR: `gh pr list --state merged --limit 1 --json number,title,body`.
-2. Extract the issue number it closes (look for `Closes #N`, `Fixes #N`, or `Resolves #N` in the PR body; also check the PR title for `(#N)` patterns).
-3. The target issue is `N + 1`.
-4. Fetch that issue: `gh issue view <N+1> --json number,title,labels`.
+**Otherwise:** find the next issue automatically using this priority order:
+
+### 4a — Check the sprint tracker first
+
+1. Read `.agent/SPRINT.md` and look at the **"In Sprint"** table.
+2. Find the first row whose **Status** is `📋 Planned` (not `✅ Done`, not `🚧 In Progress`).
+3. If a planned issue is found, use that issue number as the target. Fetch its details from GitHub: `gh issue view <number> --json number,title,labels`.
+
+### 4b — Fall back to GitHub if the sprint is complete
+
+If **all** rows in the "In Sprint" table are `✅ Done` (no planned items remain):
+1. Tell the user: _"All sprint items are done. Picking the next issue from GitHub."_
+2. Get the most recently merged PR: `gh pr list --state merged --limit 1 --json number,title,body`.
+3. Extract the issue number it closes (look for `Closes #N`, `Fixes #N`, or `Resolves #N` in the PR body; also check the PR title for `(#N)` patterns).
+4. The target issue is `N + 1`.
+5. Fetch that issue: `gh issue view <N+1> --json number,title,labels`.
+
+---
 
 Show the user the chosen issue (number + title + labels) and ask for confirmation before proceeding.
 

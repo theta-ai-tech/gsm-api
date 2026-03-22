@@ -20,7 +20,7 @@ Follow these steps **in order**, stopping and informing the user if any step fai
 gh pr list --state merged --limit 1 --json number,title,body,mergedAt
 ```
 
-Show the user the PR (number + title + merge date) and confirm before proceeding.
+**Do not** ask for confirmation — proceed immediately.
 
 ---
 
