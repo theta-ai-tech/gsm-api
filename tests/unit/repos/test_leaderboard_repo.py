@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from app.models.enums import SportEnum
 from app.models.leaderboard import LeaderboardSnapshot
 from app.repos.leaderboard_repo import LeaderboardRepo
 
@@ -65,7 +66,7 @@ class TestGetSnapshot:
         assert result is not None
         assert isinstance(result, LeaderboardSnapshot)
         assert result.region == "athens"
-        assert result.sport == "tennis"
+        assert result.sport == SportEnum.TENNIS
         assert len(result.entries) == 1
         assert result.entries[0].uid == "user_123"
         assert result.entries[0].pts == 3450
@@ -116,8 +117,8 @@ class TestListByRegion:
         results = repo.list_by_region("athens")
 
         assert len(results) == 2
-        assert results[0].sport == "tennis"
-        assert results[1].sport == "padel"
+        assert results[0].sport == SportEnum.TENNIS
+        assert results[1].sport == SportEnum.PADEL
         client.collection.assert_called_once_with("leaderboards")
         client.collection.return_value.where.assert_called_once_with(
             "region", "==", "athens"

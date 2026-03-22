@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from app.models.enums import SportEnum, TierEnum
 from app.models.leaderboard import (
     LeaderboardEntry,
     LeaderboardSnapshot,
@@ -15,7 +16,7 @@ class TestLeaderboardEntry:
         assert entry.uid == "user_123"
         assert entry.name == "Alex"
         assert entry.pts == 3450
-        assert entry.tier == "advanced"
+        assert entry.tier == TierEnum.ADVANCED
         assert entry.rank == 1
         assert entry.delta7d == 250
 
@@ -43,9 +44,9 @@ class TestRisingStarEntry:
 
 class TestLeaderboardSnapshot:
     def test_minimal(self):
-        snap = LeaderboardSnapshot(region="athens", sport="tennis")
+        snap = LeaderboardSnapshot(region="athens", sport=SportEnum.TENNIS)
         assert snap.region == "athens"
-        assert snap.sport == "tennis"
+        assert snap.sport == SportEnum.TENNIS
         assert snap.entries == []
         assert snap.rising_stars == []
         assert snap.last_updated is None
@@ -60,7 +61,7 @@ class TestLeaderboardSnapshot:
         )
         snap = LeaderboardSnapshot(
             region="athens",
-            sport="tennis",
+            sport=SportEnum.TENNIS,
             entries=[entry],
             rising_stars=[star],
             last_updated=now,

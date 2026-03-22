@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from app.models.enums import SportEnum, TierEnum
 from app.models.leaderboard import LeaderboardSnapshot
 from app.repos.mappers import to_leaderboard_snapshot
 
@@ -44,11 +45,11 @@ class TestToLeaderboardSnapshot:
 
         assert isinstance(snap, LeaderboardSnapshot)
         assert snap.region == "athens"
-        assert snap.sport == "tennis"
+        assert snap.sport == SportEnum.TENNIS
         assert len(snap.entries) == 2
         assert snap.entries[0].uid == "user_123"
         assert snap.entries[0].pts == 3450
-        assert snap.entries[0].tier == "advanced"
+        assert snap.entries[0].tier == TierEnum.ADVANCED
         assert snap.entries[0].rank == 1
         assert snap.entries[0].delta7d == 250
         assert snap.entries[1].uid == "user_456"
@@ -63,7 +64,7 @@ class TestToLeaderboardSnapshot:
         doc = {"region": "thessaloniki", "sport": "padel"}
         snap = to_leaderboard_snapshot(doc)
         assert snap.region == "thessaloniki"
-        assert snap.sport == "padel"
+        assert snap.sport == SportEnum.PADEL
         assert snap.entries == []
         assert snap.rising_stars == []
         assert snap.last_updated is None
