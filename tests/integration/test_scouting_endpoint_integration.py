@@ -80,7 +80,7 @@ def _seed_scouting_doc(
 @pytest.fixture(autouse=True)
 def _cleanup_scouting(db):
     yield
-    for uid in (_OPP_UID, "scouting_low", "scouting_medium"):
+    for uid in (_OPP_UID, "scouting_low", "scouting_medium", "scouting_empty"):
         db.collection("scouting").document(uid).delete()
 
 
@@ -202,6 +202,21 @@ class TestScoutingErrors:
         _seed_scouting_doc(db, _OPP_UID, sport="padel")
 
         resp = scouting_client.get(f"/me/lab/scouting/{_OPP_UID}?sport=tennis")
+
+        assert resp.status_code == 404
+
+    def test_empty_sport_data_returns_404(self, scouting_client, db) -> None:
+        _seed_scouting_doc(
+            db,
+            "scouting_empty",
+            sport="tennis",
+            weak={},
+            strong={},
+            total_reports=0,
+            unique_reporters=0,
+        )
+
+        resp = scouting_client.get("/me/lab/scouting/scouting_empty?sport=tennis")
 
         assert resp.status_code == 404
 

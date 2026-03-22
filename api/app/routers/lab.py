@@ -584,7 +584,7 @@ def get_scouting(
         )
 
     sport_data = getattr(profile, sport.value, None)
-    if sport_data is None:
+    if sport_data is None or sport_data.total_reports == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No scouting data found for sport: {sport.value}",

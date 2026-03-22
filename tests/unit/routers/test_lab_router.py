@@ -1005,6 +1005,21 @@ class TestGetScouting:
             app.dependency_overrides = previous_overrides
         assert resp.status_code == 404
 
+    def test_empty_sport_data_returns_404(self, mock_scouting_repo) -> None:
+        profile = _make_scouting_profile(
+            weak={}, strong={}, total_reports=0, unique_reporters=0
+        )
+        mock_scouting_repo.get_profile.return_value = profile
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_scouting_repo] = lambda: mock_scouting_repo
+            resp = TestClient(app).get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
     def test_missing_token_returns_401(self) -> None:
         previous_overrides = dict(app.dependency_overrides)
         try:
