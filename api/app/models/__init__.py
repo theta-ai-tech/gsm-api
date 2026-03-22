@@ -51,6 +51,7 @@ from app.models.scouting import ScoutingProfile, ScoutingSportData, ScoutingTagC
 from app.models.skill_dna import SkillAxisData, SportSkillDna
 from app.models.skill_taxonomy import SkillTaxonomy
 from app.models.tier import TierConfig, TierThreshold
+from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile, PublicUserProfile
 
 __all__ = [
@@ -129,6 +130,8 @@ __all__ = [
     "SportSkillDna",
     # skill taxonomy
     "SkillTaxonomy",
+    # region config
+    "RegionConfig",
     # tier
     "TierThreshold",
     "TierConfig",

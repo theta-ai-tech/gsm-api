@@ -823,6 +823,31 @@ comparison mode on the radar chart. Recomputed by the D7 scheduled function.
 }
 ```
 
+## Document: config/regions
+Path: `config/regions`
+
+Purpose: maps area codes to named regions for leaderboard grouping. Each user has a `preferences.area` integer; this document translates those area codes into a region string used by the leaderboard system.
+
+### Fields: config/regions
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| mapping | map<string,string> | required | — | canonical | — | Keys are area codes (as strings); values are region names. |
+| version | number | required | — | canonical | — | Schema version for forward compatibility. |
+
+### config/regions
+```json
+{
+  "mapping": {
+    "101": "athens",
+    "102": "athens",
+    "201": "thessaloniki",
+    "202": "thessaloniki",
+    "303": "london"
+  },
+  "version": 1
+}
+```
+
 ## Collection: scouting
 Path: `scouting/{uid}`
 

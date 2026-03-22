@@ -650,6 +650,20 @@ TIER_CONFIG = TierConfig(
     updated_at=utc(2026, 1, 1),
 )
 
+# --- Region config (config/regions) ---
+# Maps area codes to named regions for leaderboard grouping.
+# Area codes align with preferences.area on seeded users:
+#   user_ignatios: area=101 -> athens
+#   user_alice:    area=202 -> thessaloniki
+#   user_bob:      area=303 -> london
+REGION_MAPPING: dict[str, str] = {
+    "101": "athens",
+    "102": "athens",
+    "201": "thessaloniki",
+    "202": "thessaloniki",
+    "303": "london",
+}
+
 # --- Tier averages (config/tierAverages) ---
 # Pre-computed average Skill DNA per tier, powers the "Show Next Level" radar comparison.
 # Shape: {tier: {sport: {axis: score, ...}, ...}, ...}

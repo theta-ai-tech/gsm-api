@@ -291,6 +291,13 @@ def tier_averages_to_firestore_doc(
     return doc
 
 
+def region_config_to_firestore_doc(mapping: dict[str, str], version: int = 1) -> Dict[str, Any]:
+    return {
+        "mapping": mapping,
+        "version": version,
+    }
+
+
 def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
     return {
         "title": entry.title,
