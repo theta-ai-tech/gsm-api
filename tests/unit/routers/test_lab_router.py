@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from app.dependencies.repos import (
     get_matches_repo,
     get_point_history_repo,
+    get_scouting_repo,
     get_tier_config_repo,
     get_users_repo,
 )
@@ -867,4 +868,156 @@ class TestGetRivalry:
 
     def test_sport_required(self, rivalry_client) -> None:
         resp = rivalry_client.get(f"/me/lab/rivalry/{_OPP_UID}")
+        assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /me/lab/scouting/{opponent_uid} (HTTP)
+# ---------------------------------------------------------------------------
+
+_SCOUTING_UID = "user_scouted"
+
+
+def _make_scouting_profile(
+    uid: str = _SCOUTING_UID,
+    sport: str = "tennis",
+    weak: dict | None = None,
+    strong: dict | None = None,
+    total_reports: int = 12,
+    unique_reporters: int = 8,
+):
+    from app.models.scouting import ScoutingProfile, ScoutingSportData, ScoutingTagCount
+
+    weak = weak or {
+        "backhand": ScoutingTagCount(count=7, last_reported=_NOW),
+        "stamina_set3": ScoutingTagCount(count=3, last_reported=_NOW),
+    }
+    strong = strong or {
+        "first_serve": ScoutingTagCount(count=5, last_reported=_NOW),
+    }
+    sport_data = ScoutingSportData(
+        weak=weak,
+        strong=strong,
+        total_reports=total_reports,
+        unique_reporters=unique_reporters,
+        last_updated=_NOW,
+    )
+    kwargs = {sport: sport_data}
+    return ScoutingProfile(uid=uid, **kwargs)
+
+
+@pytest.fixture
+def mock_scouting_repo():
+    return Mock(spec=["get_profile"])
+
+
+@pytest.fixture
+def scouting_client(mock_scouting_repo):
+    mock_scouting_repo.get_profile.return_value = _make_scouting_profile()
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_scouting_repo] = lambda: mock_scouting_repo
+    yield TestClient(app)
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetScouting:
+    def test_returns_200(self, scouting_client) -> None:
+        resp = scouting_client.get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis")
+        assert resp.status_code == 200
+
+    def test_response_shape(self, scouting_client) -> None:
+        body = scouting_client.get(
+            f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis"
+        ).json()
+        assert body["uid"] == _SCOUTING_UID
+        assert body["sport"] == "tennis"
+        assert body["total_reports"] == 12
+        assert body["unique_reporters"] == 8
+        assert body["confidence"] == "high"
+        assert body["last_updated"] is not None
+
+    def test_weak_tags_sorted_descending(self, scouting_client) -> None:
+        body = scouting_client.get(
+            f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis"
+        ).json()
+        weak = body["weak"]
+        assert len(weak) == 2
+        assert weak[0]["tag"] == "backhand"
+        assert weak[0]["count"] == 7
+        assert weak[0]["label"] == "Backhand"
+        assert weak[1]["tag"] == "stamina_set3"
+        assert weak[1]["count"] == 3
+        assert weak[1]["label"] == "Late-set stamina"
+
+    def test_strong_tags_present(self, scouting_client) -> None:
+        body = scouting_client.get(
+            f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis"
+        ).json()
+        strong = body["strong"]
+        assert len(strong) == 1
+        assert strong[0]["tag"] == "first_serve"
+        assert strong[0]["count"] == 5
+        assert strong[0]["label"] == "First serve"
+
+    def test_confidence_low(self, scouting_client, mock_scouting_repo) -> None:
+        mock_scouting_repo.get_profile.return_value = _make_scouting_profile(
+            total_reports=2
+        )
+        body = scouting_client.get(
+            f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis"
+        ).json()
+        assert body["confidence"] == "low"
+
+    def test_confidence_medium(self, scouting_client, mock_scouting_repo) -> None:
+        mock_scouting_repo.get_profile.return_value = _make_scouting_profile(
+            total_reports=5
+        )
+        body = scouting_client.get(
+            f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis"
+        ).json()
+        assert body["confidence"] == "medium"
+
+    def test_no_profile_returns_404(self, mock_scouting_repo) -> None:
+        mock_scouting_repo.get_profile.return_value = None
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_scouting_repo] = lambda: mock_scouting_repo
+            resp = TestClient(app).get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
+    def test_no_sport_data_returns_404(self, mock_scouting_repo) -> None:
+        from app.models.scouting import ScoutingProfile
+
+        mock_scouting_repo.get_profile.return_value = ScoutingProfile(uid=_SCOUTING_UID)
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides[get_current_user] = lambda: mock_user
+            app.dependency_overrides[get_scouting_repo] = lambda: mock_scouting_repo
+            resp = TestClient(app).get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 404
+
+    def test_missing_token_returns_401(self) -> None:
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=tennis")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
+
+    def test_invalid_sport_returns_422(self, scouting_client) -> None:
+        resp = scouting_client.get(f"/me/lab/scouting/{_SCOUTING_UID}?sport=badminton")
+        assert resp.status_code == 422
+
+    def test_sport_required(self, scouting_client) -> None:
+        resp = scouting_client.get(f"/me/lab/scouting/{_SCOUTING_UID}")
         assert resp.status_code == 422
