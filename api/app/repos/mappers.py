@@ -52,6 +52,7 @@ from app.models import (
     UserMatchSummary,
     UserPreferences,
 )
+from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 
 
 def _require(data: dict[str, Any], key: str) -> Any:
@@ -483,4 +484,37 @@ def to_scouting_profile(doc: dict[str, Any]) -> ScoutingProfile:
         tennis=_parse_scouting_sport_data(doc.get("tennis")),
         padel=_parse_scouting_sport_data(doc.get("padel")),
         pickleball=_parse_scouting_sport_data(doc.get("pickleball")),
+    )
+
+
+def _parse_leaderboard_entry(data: dict[str, Any]) -> LeaderboardEntry:
+    return LeaderboardEntry(
+        uid=data.get("uid", ""),
+        name=data.get("name", ""),
+        pts=int(data.get("pts", 0)),
+        tier=data.get("tier"),
+        rank=int(data.get("rank", 0)),
+        delta7d=int(data.get("delta7d", 0)),
+    )
+
+
+def _parse_rising_star_entry(data: dict[str, Any]) -> RisingStarEntry:
+    return RisingStarEntry(
+        uid=data.get("uid", ""),
+        name=data.get("name", ""),
+        pts=int(data.get("pts", 0)),
+        delta7d=int(data.get("delta7d", 0)),
+        rank=int(data.get("rank", 0)),
+    )
+
+
+def to_leaderboard_snapshot(doc: dict[str, Any]) -> LeaderboardSnapshot:
+    entries_raw = doc.get("entries", []) or []
+    rising_raw = doc.get("risingStars", []) or []
+    return LeaderboardSnapshot(
+        region=doc.get("region", ""),
+        sport=doc.get("sport", ""),
+        entries=[_parse_leaderboard_entry(e) for e in entries_raw],
+        rising_stars=[_parse_rising_star_entry(r) for r in rising_raw],
+        last_updated=doc.get("lastUpdated"),
     )
