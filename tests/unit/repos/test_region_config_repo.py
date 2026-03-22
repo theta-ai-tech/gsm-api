@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -75,10 +76,12 @@ class TestRegionConfigRepoGet:
         repo = RegionConfigRepo(client)
         repo.get()
 
-        # Simulate cache expiration
+        # Simulate cache expiration by moving the timestamp far enough into the past.
+        # Using time.monotonic() ensures this works even if the monotonic clock
+        # value is smaller than the TTL (e.g. in a freshly started CI container).
         import app.repos.region_config_repo as mod
 
-        mod._cache_ts = 0.0
+        mod._cache_ts = time.monotonic() - mod._REGION_CONFIG_TTL - 1
 
         repo.get()
         assert client.collection.return_value.document.return_value.get.call_count == 2
