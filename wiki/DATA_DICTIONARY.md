@@ -865,3 +865,43 @@ Purpose: aggregated community observations about each player. Crowd-sourced inte
   }
 }
 ```
+
+## Collection: leaderboards
+Path: `leaderboards/{region}_{sport}`
+
+Purpose: pre-computed regional top-N leaderboard snapshots. Each document contains the ranked entries and rising stars for one region+sport combination. Recomputed periodically by a scheduled function.
+
+### Fields: leaderboards/{region}_{sport}
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| region | string | required | — | canonical | index=filter | Region identifier (e.g. "athens"). |
+| sport | string | required | sport | canonical | index=filter | Sport enum. |
+| entries | array<map> | required | — | canonical | — | Top-N ranked players. |
+| entries[].uid | string | required | — | canonical | — | Player UID. |
+| entries[].name | string | required | — | canonical | — | Player display name. |
+| entries[].pts | number | required | — | canonical | — | Current point total. |
+| entries[].tier | string | optional | tier | canonical | — | Current tier. |
+| entries[].rank | number | required | — | canonical | — | Position in leaderboard (1-based). |
+| entries[].delta7d | number | optional | — | canonical | — | Point change over the last 7 days. |
+| risingStars | array<map> | optional | — | canonical | — | Players with highest 7-day point gain. |
+| risingStars[].uid | string | required | — | canonical | — | Player UID. |
+| risingStars[].name | string | required | — | canonical | — | Player display name. |
+| risingStars[].pts | number | required | — | canonical | — | Current point total. |
+| risingStars[].delta7d | number | required | — | canonical | — | Point change over the last 7 days. |
+| risingStars[].rank | number | required | — | canonical | — | Position in overall leaderboard. |
+| lastUpdated | timestamp | optional | — | canonical | — | When this snapshot was last recomputed (UTC). |
+
+### leaderboards/{region}_{sport}
+```json
+{
+  "region": "athens",
+  "sport": "tennis",
+  "entries": [
+    {"uid": "user_123", "name": "Alex", "pts": 3450, "tier": "advanced", "rank": 1, "delta7d": 250}
+  ],
+  "risingStars": [
+    {"uid": "user_789", "name": "Dana", "pts": 2100, "delta7d": 400, "rank": 15}
+  ],
+  "lastUpdated": "2026-03-01T12:00:00Z"
+}
+```

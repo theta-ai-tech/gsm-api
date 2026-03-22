@@ -46,6 +46,7 @@ from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
 from app.models.share import ShareCardData
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.models.point_history import PointHistoryEntry
+from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 from app.models.scouting import ScoutingProfile, ScoutingSportData, ScoutingTagCount
 from app.models.skill_dna import SkillAxisData, SportSkillDna
 from app.models.skill_taxonomy import SkillTaxonomy
@@ -115,6 +116,10 @@ __all__ = [
     "UserStats",
     # point history
     "PointHistoryEntry",
+    # leaderboard
+    "LeaderboardEntry",
+    "RisingStarEntry",
+    "LeaderboardSnapshot",
     # scouting
     "ScoutingTagCount",
     "ScoutingSportData",
