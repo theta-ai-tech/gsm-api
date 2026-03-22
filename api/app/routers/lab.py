@@ -20,6 +20,7 @@ from app.constants import (
 from app.dependencies.repos import (
     get_matches_repo,
     get_point_history_repo,
+    get_scouting_repo,
     get_tier_config_repo,
     get_users_repo,
 )
@@ -33,10 +34,12 @@ from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.scouting_repo import ScoutingRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
 from app.services.scoring_service import win_probability
+from app.services.scouting_service import compute_confidence, sorted_tag_list, tag_label
 
 router = APIRouter(prefix="/me/lab", tags=["lab"])
 
@@ -525,4 +528,84 @@ def get_rivalry(
         ),
         recent_matches=recent_matches,
         skill_dna_comparison=skill_dna_comparison,
+    )
+
+
+# ===== Scouting response models =====
+
+
+class ScoutingTagResponse(GsmBaseModel):
+    tag: str
+    count: int
+    label: str
+
+
+class ScoutingResponse(GsmBaseModel):
+    uid: str
+    sport: SportEnum
+    weak: list[ScoutingTagResponse]
+    strong: list[ScoutingTagResponse]
+    total_reports: int
+    unique_reporters: int
+    last_updated: datetime | None = None
+    confidence: Literal["low", "medium", "high"]
+
+
+# ===== GET /me/lab/scouting/{opponent_uid} =====
+
+
+@router.get(
+    "/scouting/{opponent_uid}",
+    response_model=ScoutingResponse,
+    summary="Get community scouting report for an opponent",
+    responses={
+        401: _401,
+        404: {"description": "No scouting data found for this opponent/sport"},
+        422: {"description": "Invalid sport"},
+    },
+)
+def get_scouting(
+    opponent_uid: str,
+    sport: SportEnum = Query(..., description="Sport to filter by"),
+    current_user: CurrentUser = Depends(get_current_user),
+    scouting_repo: ScoutingRepo = Depends(get_scouting_repo),
+) -> ScoutingResponse:
+    """
+    Return the community scouting report for a specific opponent and sport.
+
+    Tags are sorted by count descending. Confidence level is derived from
+    the total number of reports: low (< 3), medium (3-7), high (> 7).
+    """
+    profile = scouting_repo.get_profile(opponent_uid)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No scouting data found for this opponent",
+        )
+
+    sport_data = getattr(profile, sport.value, None)
+    if sport_data is None or sport_data.total_reports == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No scouting data found for sport: {sport.value}",
+        )
+
+    weak_sorted = sorted_tag_list(sport_data.weak)
+    strong_sorted = sorted_tag_list(sport_data.strong)
+
+    return ScoutingResponse(
+        uid=opponent_uid,
+        sport=sport,
+        weak=[
+            ScoutingTagResponse(tag=tag, count=count, label=tag_label(tag))
+            for tag, count in weak_sorted
+        ],
+        strong=[
+            ScoutingTagResponse(tag=tag, count=count, label=tag_label(tag))
+            for tag, count in strong_sorted
+        ],
+        total_reports=sport_data.total_reports,
+        unique_reporters=sport_data.unique_reporters,
+        last_updated=sport_data.last_updated,
+        confidence=compute_confidence(sport_data.total_reports),
     )
