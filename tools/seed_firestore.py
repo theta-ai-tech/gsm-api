@@ -15,6 +15,7 @@ from google.cloud import firestore
 from tools.seed_data import (
     REGION_MAPPING,
     SAMPLE_JOURNAL_ENTRIES,
+    SAMPLE_LEADERBOARDS,
     SAMPLE_LEAGUES,
     SAMPLE_MATCHES,
     SAMPLE_POINT_HISTORY,
@@ -25,6 +26,7 @@ from tools.seed_data import (
 )
 from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
+    leaderboard_snapshot_to_firestore_doc,
     league_member_to_firestore_doc,
     league_to_firestore_doc,
     match_to_firestore_doc,
@@ -81,6 +83,12 @@ def seed_all(client: firestore.Client) -> None:
             )
             doc_ref.set(point_history_entry_to_firestore_doc(entry))
 
+    # Leaderboard snapshots
+    for snapshot in SAMPLE_LEADERBOARDS:
+        doc_id = f"{snapshot.region}_{snapshot.sport.value}"
+        doc_ref = client.collection("leaderboards").document(doc_id)
+        doc_ref.set(leaderboard_snapshot_to_firestore_doc(snapshot))
+
     # Config documents
     client.collection("config").document("tiers").set(
         tier_config_to_firestore_doc(TIER_CONFIG)
@@ -131,6 +139,7 @@ def main() -> None:
         f"{len(SAMPLE_MATCHES)} matches, "
         f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
         f"{total_ph} point history entries, "
+        f"{len(SAMPLE_LEADERBOARDS)} leaderboard snapshots, "
         f"1 tier config, "
         f"1 skill taxonomy, "
         f"1 tier averages, "
