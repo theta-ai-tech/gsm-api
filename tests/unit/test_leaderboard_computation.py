@@ -8,6 +8,7 @@ from functions.scheduled.leaderboard_computation import (
     build_area_to_region,
     build_leaderboard_entries,
     build_rising_stars,
+    build_uid_to_rank,
     compute_delta7d_from_history,
     extract_users_by_region_sport,
 )
@@ -189,24 +190,58 @@ class TestBuildLeaderboardEntries:
 
 
 # ---------------------------------------------------------------------------
+# build_uid_to_rank
+# ---------------------------------------------------------------------------
+
+
+class TestBuildUidToRank:
+    def test_ranks_by_pts_desc(self) -> None:
+        users = [
+            _make_user("u1", "Alice", 101, {"tennis": 500}),
+            _make_user("u2", "Bob", 101, {"tennis": 800}),
+            _make_user("u3", "Carol", 101, {"tennis": 600}),
+        ]
+        result = build_uid_to_rank(users, "tennis")
+        assert result == {"u2": 1, "u3": 2, "u1": 3}
+
+    def test_empty_users(self) -> None:
+        assert build_uid_to_rank([], "tennis") == {}
+
+    def test_skips_users_without_pts(self) -> None:
+        users = [
+            _make_user("u1", "Alice", 101, {"tennis": 500}),
+            {"uid": "u2", "name": "Bob", "rankings": {"tennis": {"sport": "tennis"}}},
+        ]
+        result = build_uid_to_rank(users, "tennis")
+        assert result == {"u1": 1}
+
+
+# ---------------------------------------------------------------------------
 # build_rising_stars
 # ---------------------------------------------------------------------------
 
 
 class TestBuildRisingStars:
-    def test_sorts_by_delta7d_desc(self) -> None:
+    def test_sorts_by_delta7d_desc_with_overall_rank(self) -> None:
         users = [
             _make_user("u1", "Alice", 101, {"tennis": 500}),
             _make_user("u2", "Bob", 101, {"tennis": 800}),
             _make_user("u3", "Carol", 101, {"tennis": 600}),
         ]
         delta7d_map = {"u1": 50, "u2": 30, "u3": 80}
-        stars = build_rising_stars(users, "tennis", delta7d_map)
+        uid_to_rank = build_uid_to_rank(users, "tennis")
+        stars = build_rising_stars(users, "tennis", delta7d_map, uid_to_rank)
+        # Sorted by delta7d DESC: u3(80) > u1(50) > u2(30)
         assert stars[0]["uid"] == "u3"
         assert stars[0]["delta7d"] == 80
-        assert stars[0]["rank"] == 1
+        # u3 has 600 pts -> overall rank 2 (u2=800 is rank 1)
+        assert stars[0]["rank"] == 2
         assert stars[1]["uid"] == "u1"
+        # u1 has 500 pts -> overall rank 3
+        assert stars[1]["rank"] == 3
         assert stars[2]["uid"] == "u2"
+        # u2 has 800 pts -> overall rank 1
+        assert stars[2]["rank"] == 1
 
     def test_excludes_zero_or_negative_delta(self) -> None:
         users = [
@@ -214,7 +249,8 @@ class TestBuildRisingStars:
             _make_user("u2", "Bob", 101, {"tennis": 800}),
         ]
         delta7d_map = {"u1": 0, "u2": -10}
-        stars = build_rising_stars(users, "tennis", delta7d_map)
+        uid_to_rank = build_uid_to_rank(users, "tennis")
+        stars = build_rising_stars(users, "tennis", delta7d_map, uid_to_rank)
         assert stars == []
 
     def test_respects_top_n(self) -> None:
@@ -222,19 +258,39 @@ class TestBuildRisingStars:
             _make_user(f"u{i}", f"User{i}", 101, {"tennis": i * 100}) for i in range(10)
         ]
         delta7d_map = {f"u{i}": (i + 1) * 10 for i in range(10)}
-        stars = build_rising_stars(users, "tennis", delta7d_map, top_n=5)
+        uid_to_rank = build_uid_to_rank(users, "tennis")
+        stars = build_rising_stars(users, "tennis", delta7d_map, uid_to_rank, top_n=5)
         assert len(stars) == 5
         assert stars[0]["delta7d"] == 100
 
     def test_empty_users(self) -> None:
-        stars = build_rising_stars([], "tennis", {})
+        stars = build_rising_stars([], "tennis", {}, {})
         assert stars == []
 
     def test_includes_pts(self) -> None:
         users = [_make_user("u1", "Alice", 101, {"tennis": 750})]
         delta7d_map = {"u1": 25}
-        stars = build_rising_stars(users, "tennis", delta7d_map)
+        uid_to_rank = build_uid_to_rank(users, "tennis")
+        stars = build_rising_stars(users, "tennis", delta7d_map, uid_to_rank)
         assert stars[0]["pts"] == 750
+
+    def test_rank_reflects_overall_position_not_rising_stars_position(self) -> None:
+        """Verify that rank is the overall leaderboard position, not 1..N within stars."""
+        users = [
+            _make_user(f"u{i}", f"User{i}", 101, {"tennis": (20 - i) * 100})
+            for i in range(20)
+        ]
+        # Only u15 and u18 have positive deltas — they're low in pts
+        delta7d_map = {"u15": 40, "u18": 20}
+        uid_to_rank = build_uid_to_rank(users, "tennis")
+        stars = build_rising_stars(users, "tennis", delta7d_map, uid_to_rank)
+        assert len(stars) == 2
+        # u15 has pts=(20-15)*100=500, overall rank 16
+        assert stars[0]["uid"] == "u15"
+        assert stars[0]["rank"] == 16
+        # u18 has pts=(20-18)*100=200, overall rank 19
+        assert stars[1]["uid"] == "u18"
+        assert stars[1]["rank"] == 19
 
 
 # ---------------------------------------------------------------------------

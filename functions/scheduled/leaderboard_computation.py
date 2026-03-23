@@ -124,11 +124,17 @@ def build_rising_stars(
     users: list[dict[str, Any]],
     sport: str,
     delta7d_map: dict[str, int],
+    uid_to_rank: dict[str, int],
     top_n: int = _RISING_STARS_TOP_N,
 ) -> list[dict[str, Any]]:
     """
     Select users with positive delta7d, sort by delta7d DESC, take top N.
     Returns rising star entry dicts ready for Firestore.
+
+    ``uid_to_rank`` maps each UID to its 1-based position in the overall
+    leaderboard (sorted by pts DESC). This is used as the ``rank`` field
+    per the data dictionary (overall leaderboard position, not position
+    within the rising-stars list).
     """
     candidates: list[tuple[str, str, int, int]] = []
     for user in users:
@@ -145,16 +151,39 @@ def build_rising_stars(
 
     candidates.sort(key=lambda x: x[3], reverse=True)
     stars: list[dict[str, Any]] = []
-    for rank, (uid, name, pts, delta) in enumerate(candidates[:top_n], start=1):
+    for uid, name, pts, delta in candidates[:top_n]:
         stars.append({
             "uid": uid,
             "name": name,
             "pts": pts,
             "delta7d": delta,
-            "rank": rank,
+            "rank": uid_to_rank.get(uid, 0),
         })
 
     return stars
+
+
+def build_uid_to_rank(
+    users: list[dict[str, Any]],
+    sport: str,
+) -> dict[str, int]:
+    """
+    Sort all users by pts DESC for a sport and return a mapping from
+    UID to 1-based overall rank.  Used to populate risingStars[].rank
+    with the player's overall leaderboard position.
+    """
+    scored: list[tuple[str, int]] = []
+    for user in users:
+        uid = user.get("uid") or user.get("id") or ""
+        rankings = user.get("rankings") or {}
+        sport_ranking = rankings.get(sport) or {}
+        pts = sport_ranking.get("pts")
+        if pts is None:
+            continue
+        scored.append((uid, int(pts)))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return {uid: rank for rank, (uid, _) in enumerate(scored, start=1)}
 
 
 def compute_delta7d_from_history(
@@ -308,13 +337,16 @@ def compute_leaderboards(
         # 3a. delta7d
         delta7d_map = _compute_delta7d_for_users(client, user_uids, sport, now)
 
-        # 3b. entries
+        # 3b. overall rank map (pts-sorted position across all bucket users)
+        uid_to_rank = build_uid_to_rank(bucket_users, sport)
+
+        # 3c. entries
         entries = build_leaderboard_entries(bucket_users, sport, delta7d_map)
 
-        # 3c. rising stars
-        rising_stars = build_rising_stars(bucket_users, sport, delta7d_map)
+        # 3d. rising stars
+        rising_stars = build_rising_stars(bucket_users, sport, delta7d_map, uid_to_rank)
 
-        # 3d. write
+        # 3e. write
         _write_leaderboard_snapshot(client, region, sport, entries, rising_stars, now)
         snapshots_written += 1
 
