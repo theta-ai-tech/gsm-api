@@ -18,8 +18,10 @@ from app.constants import (
     LAB_RIVALRY_MAX_LIMIT,
 )
 from app.dependencies.repos import (
+    get_leaderboard_repo,
     get_matches_repo,
     get_point_history_repo,
+    get_region_config_repo,
     get_scouting_repo,
     get_tier_config_repo,
     get_users_repo,
@@ -28,12 +30,15 @@ from app.deps import get_current_user
 from app.models.base import GsmBaseModel
 from app.models.common import PerSportRankings, SportRanking, UserCompletedMatchSummary
 from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.leaderboard import LeaderboardEntry, RisingStarEntry
 from app.models.match import Match, compute_participant_pair
-from app.models.skill_dna import SportSkillDna
 from app.models.point_history import PointHistoryEntry
+from app.models.skill_dna import SportSkillDna
 from app.models.tier import TierConfig, TierThreshold
+from app.repos.leaderboard_repo import LeaderboardRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.scouting_repo import ScoutingRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
@@ -608,4 +613,93 @@ def get_scouting(
         unique_reporters=sport_data.unique_reporters,
         last_updated=sport_data.last_updated,
         confidence=compute_confidence(sport_data.total_reports),
+    )
+
+
+# ===== Leaderboard response model =====
+
+
+class LeaderboardResponse(GsmBaseModel):
+    region: str
+    sport: SportEnum
+    entries: list[LeaderboardEntry]
+    rising_stars: list[RisingStarEntry]
+    last_updated: datetime | None = None
+
+
+# ===== GET /me/lab/leaderboard =====
+
+
+def _resolve_region(
+    region_param: str | None,
+    current_user: CurrentUser,
+    users_repo: UsersRepo,
+    region_config_repo: RegionConfigRepo,
+) -> str:
+    """Resolve the region string from the query param or user preferences."""
+    if region_param is not None:
+        return region_param
+
+    profile = users_repo.get_private_profile(current_user.uid)
+    if profile is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User profile not found; cannot determine default region",
+        )
+
+    area_code = str(profile.preferences.area)
+    config = region_config_repo.get()
+    region = config.mapping.get(area_code)
+    if region is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No region mapping found for area code: {area_code}",
+        )
+    return region
+
+
+@router.get(
+    "/leaderboard",
+    response_model=LeaderboardResponse,
+    summary="Get regional leaderboard for a sport",
+    responses={
+        401: _401,
+        404: {"description": "No leaderboard found for region/sport combination"},
+        422: {"description": "Invalid sport"},
+    },
+)
+def get_leaderboard(
+    sport: SportEnum = Query(..., description="Sport to retrieve leaderboard for"),
+    region: str | None = Query(
+        default=None,
+        description="Region slug (e.g. 'athens'). Defaults to user's area if omitted.",
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    leaderboard_repo: LeaderboardRepo = Depends(get_leaderboard_repo),
+    users_repo: UsersRepo = Depends(get_users_repo),
+    region_config_repo: RegionConfigRepo = Depends(get_region_config_repo),
+) -> LeaderboardResponse:
+    """
+    Return the regional leaderboard for the given sport.
+
+    If `region` is omitted the endpoint defaults to the region mapped from the
+    authenticated user's `preferences.area` via the `config/regions` document.
+
+    Returns 404 when no leaderboard document exists for the region/sport pair.
+    """
+    resolved_region = _resolve_region(region, current_user, users_repo, region_config_repo)
+
+    snapshot = leaderboard_repo.get_snapshot(resolved_region, sport.value)
+    if snapshot is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No leaderboard found for region={resolved_region}, sport={sport.value}",
+        )
+
+    return LeaderboardResponse(
+        region=snapshot.region,
+        sport=snapshot.sport,
+        entries=snapshot.entries,
+        rising_stars=snapshot.rising_stars,
+        last_updated=snapshot.last_updated,
     )

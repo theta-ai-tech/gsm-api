@@ -4,6 +4,8 @@ from app.models import (
     CursorBundle,
     JournalEntry,
     JournalEntrySummary,
+    LeaderboardEntry,
+    LeaderboardSnapshot,
     League,
     LeagueMember,
     LeagueSummary,
@@ -15,6 +17,7 @@ from app.models import (
     PerSportRankings,
     PointHistoryEntry,
     PrivateUserProfile,
+    RisingStarEntry,
     SetScore,
     SkillAxisData,
     SkillTaxonomy,
@@ -295,6 +298,37 @@ def region_config_to_firestore_doc(mapping: dict[str, str], version: int = 1) ->
     return {
         "mapping": mapping,
         "version": version,
+    }
+
+
+def _leaderboard_entry_to_dict(entry: LeaderboardEntry) -> Dict[str, Any]:
+    return {
+        "uid": entry.uid,
+        "name": entry.name,
+        "pts": entry.pts,
+        "tier": entry.tier.value if entry.tier else None,
+        "rank": entry.rank,
+        "delta7d": entry.delta7d,
+    }
+
+
+def _rising_star_entry_to_dict(entry: RisingStarEntry) -> Dict[str, Any]:
+    return {
+        "uid": entry.uid,
+        "name": entry.name,
+        "pts": entry.pts,
+        "delta7d": entry.delta7d,
+        "rank": entry.rank,
+    }
+
+
+def leaderboard_snapshot_to_firestore_doc(snapshot: LeaderboardSnapshot) -> Dict[str, Any]:
+    return {
+        "region": snapshot.region,
+        "sport": snapshot.sport.value,
+        "entries": [_leaderboard_entry_to_dict(e) for e in snapshot.entries],
+        "risingStars": [_rising_star_entry_to_dict(r) for r in snapshot.rising_stars],
+        "lastUpdated": snapshot.last_updated,
     }
 
 

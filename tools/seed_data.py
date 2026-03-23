@@ -4,6 +4,8 @@ from app.models import (
     CursorBundle,
     JournalEntry,
     JournalEntrySummary,
+    LeaderboardEntry,
+    LeaderboardSnapshot,
     League,
     LeagueMember,
     LeagueSummary,
@@ -22,6 +24,7 @@ from app.models import (
     PointHistoryReasonEnum,
     PrivateUserProfile,
     PublicUserProfile,
+    RisingStarEntry,
     SetScore,
     SkillAxisData,
     SkillTaxonomy,
@@ -663,6 +666,66 @@ REGION_MAPPING: dict[str, str] = {
     "202": "thessaloniki",
     "303": "london",
 }
+
+# --- Leaderboard snapshots (leaderboards/{region}_{sport}) ---
+# Pre-populated leaderboard data for testing.
+# Region and pts values align with each user's preferences.area and rankings:
+LEADERBOARD_ATHENS_TENNIS = LeaderboardSnapshot(
+    region="athens",
+    sport=SportEnum.TENNIS,
+    entries=[
+        LeaderboardEntry(
+            uid="user_ignatios",
+            name="Ignatios",
+            pts=620,
+            tier=TierEnum.AMATEUR,
+            rank=1,
+            delta7d=50,
+        ),
+    ],
+    rising_stars=[],
+    last_updated=utc(2026, 3, 1, 12, 0),
+)
+
+LEADERBOARD_ATHENS_PADEL = LeaderboardSnapshot(
+    region="athens",
+    sport=SportEnum.PADEL,
+    entries=[
+        LeaderboardEntry(
+            uid="user_ignatios",
+            name="Ignatios",
+            pts=980,
+            tier=TierEnum.AMATEUR,
+            rank=1,
+            delta7d=100,
+        ),
+    ],
+    rising_stars=[],
+    last_updated=utc(2026, 3, 1, 12, 0),
+)
+
+LEADERBOARD_THESSALONIKI_TENNIS = LeaderboardSnapshot(
+    region="thessaloniki",
+    sport=SportEnum.TENNIS,
+    entries=[
+        LeaderboardEntry(
+            uid="user_alice",
+            name="Alice",
+            pts=820,
+            tier=TierEnum.AMATEUR,
+            rank=1,
+            delta7d=30,
+        ),
+    ],
+    rising_stars=[],
+    last_updated=utc(2026, 3, 1, 12, 0),
+)
+
+SAMPLE_LEADERBOARDS = [
+    LEADERBOARD_ATHENS_TENNIS,
+    LEADERBOARD_ATHENS_PADEL,
+    LEADERBOARD_THESSALONIKI_TENNIS,
+]
 
 # --- Tier averages (config/tierAverages) ---
 # Pre-computed average Skill DNA per tier, powers the "Show Next Level" radar comparison.

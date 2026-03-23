@@ -15,15 +15,23 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.repos import (
+    get_leaderboard_repo,
     get_matches_repo,
     get_point_history_repo,
+    get_region_config_repo,
     get_scouting_repo,
     get_tier_config_repo,
     get_users_repo,
 )
 from app.deps import get_current_user
 from app.main import app
-from app.models.common import PerSportRankings, SportRanking, UserCompletedMatchSummary
+from app.models.common import (
+    PerSportLevels,
+    PerSportRankings,
+    SportRanking,
+    UserCompletedMatchSummary,
+    UserPreferences,
+)
 from app.models.enums import (
     MatchResultEnum,
     PointHistoryReasonEnum,
@@ -32,9 +40,16 @@ from app.models.enums import (
 )
 from app.models.point_history import PointHistoryEntry
 from app.models.tier import TierConfig, TierThreshold
+from app.models.leaderboard import (
+    LeaderboardEntry,
+    LeaderboardSnapshot,
+    RisingStarEntry,
+)
+from app.models.region_config import RegionConfig
 from app.models.skill_dna import SkillAxisData, SportSkillDna
 from app.models.match import Match
 from app.models.common import MatchScore, SetScore
+from app.models.user import PrivateUserProfile
 from app.models.enums import MatchStatusEnum
 from app.routers.lab import (
     _build_axes,
@@ -1036,3 +1051,198 @@ class TestGetScouting:
     def test_sport_required(self, scouting_client) -> None:
         resp = scouting_client.get(f"/me/lab/scouting/{_SCOUTING_UID}")
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Leaderboard endpoint
+# ---------------------------------------------------------------------------
+
+_LB_NOW = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def _make_snapshot(
+    region: str = "athens", sport: SportEnum = SportEnum.TENNIS
+) -> LeaderboardSnapshot:
+    return LeaderboardSnapshot(
+        region=region,
+        sport=sport,
+        entries=[
+            LeaderboardEntry(
+                uid="user_123",
+                name="Alex",
+                pts=3450,
+                tier=TierEnum.ADVANCED,
+                rank=1,
+                delta7d=250,
+            ),
+            LeaderboardEntry(
+                uid="user_456",
+                name="Ben",
+                pts=3100,
+                tier=TierEnum.ADVANCED,
+                rank=2,
+                delta7d=-50,
+            ),
+        ],
+        rising_stars=[
+            RisingStarEntry(
+                uid="user_789", name="Dana", pts=2100, delta7d=400, rank=15
+            ),
+        ],
+        last_updated=_LB_NOW,
+    )
+
+
+def _make_region_config() -> RegionConfig:
+    return RegionConfig(
+        mapping={"101": "athens", "202": "thessaloniki", "303": "london"},
+        version=1,
+    )
+
+
+def _make_private_profile_for_lb(area: int = 101) -> PrivateUserProfile:
+    return PrivateUserProfile(
+        uid=_UID,
+        name="Test User",
+        email="test@example.com",
+        rankings=PerSportRankings(),
+        preferences=UserPreferences(
+            area=area,
+            levels=PerSportLevels(),
+            sports=[],
+        ),
+    )
+
+
+@pytest.fixture
+def leaderboard_client():
+    mock_lb_repo = Mock(spec=["get_snapshot"])
+    mock_users = Mock(spec=["get_private_profile"])
+    mock_region = Mock(spec=["get"])
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_leaderboard_repo] = lambda: mock_lb_repo
+    app.dependency_overrides[get_users_repo] = lambda: mock_users
+    app.dependency_overrides[get_region_config_repo] = lambda: mock_region
+    yield TestClient(app), mock_lb_repo, mock_users, mock_region
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetLeaderboard:
+    def test_returns_200_with_explicit_region(self, leaderboard_client):
+        client, mock_lb, _, _ = leaderboard_client
+        mock_lb.get_snapshot.return_value = _make_snapshot()
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis&region=athens")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["region"] == "athens"
+        assert body["sport"] == "tennis"
+        assert len(body["entries"]) == 2
+        assert len(body["rising_stars"]) == 1
+        assert body["last_updated"] is not None
+
+    def test_entry_fields(self, leaderboard_client):
+        client, mock_lb, _, _ = leaderboard_client
+        mock_lb.get_snapshot.return_value = _make_snapshot()
+
+        body = client.get("/me/lab/leaderboard?sport=tennis&region=athens").json()
+
+        entry = body["entries"][0]
+        assert entry["uid"] == "user_123"
+        assert entry["name"] == "Alex"
+        assert entry["pts"] == 3450
+        assert entry["tier"] == "advanced"
+        assert entry["rank"] == 1
+        assert entry["delta7d"] == 250
+
+    def test_rising_star_fields(self, leaderboard_client):
+        client, mock_lb, _, _ = leaderboard_client
+        mock_lb.get_snapshot.return_value = _make_snapshot()
+
+        body = client.get("/me/lab/leaderboard?sport=tennis&region=athens").json()
+
+        star = body["rising_stars"][0]
+        assert star["uid"] == "user_789"
+        assert star["name"] == "Dana"
+        assert star["pts"] == 2100
+        assert star["delta7d"] == 400
+        assert star["rank"] == 15
+
+    def test_defaults_region_from_user_preferences(self, leaderboard_client):
+        client, mock_lb, mock_users, mock_region = leaderboard_client
+        mock_users.get_private_profile.return_value = _make_private_profile_for_lb(
+            area=101
+        )
+        mock_region.get.return_value = _make_region_config()
+        mock_lb.get_snapshot.return_value = _make_snapshot()
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis")
+
+        assert resp.status_code == 200
+        mock_lb.get_snapshot.assert_called_once_with("athens", "tennis")
+
+    def test_explicit_region_skips_user_lookup(self, leaderboard_client):
+        client, mock_lb, mock_users, mock_region = leaderboard_client
+        mock_lb.get_snapshot.return_value = _make_snapshot(region="london")
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis&region=london")
+
+        assert resp.status_code == 200
+        mock_users.get_private_profile.assert_not_called()
+        mock_region.get.assert_not_called()
+
+    def test_404_when_no_leaderboard_for_region_sport(self, leaderboard_client):
+        client, mock_lb, _, _ = leaderboard_client
+        mock_lb.get_snapshot.return_value = None
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis&region=narnia")
+
+        assert resp.status_code == 404
+
+    def test_404_when_user_profile_not_found_for_default_region(
+        self, leaderboard_client
+    ):
+        client, mock_lb, mock_users, mock_region = leaderboard_client
+        mock_users.get_private_profile.return_value = None
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis")
+
+        assert resp.status_code == 404
+
+    def test_404_when_area_not_in_region_mapping(self, leaderboard_client):
+        client, mock_lb, mock_users, mock_region = leaderboard_client
+        mock_users.get_private_profile.return_value = _make_private_profile_for_lb(
+            area=999
+        )
+        mock_region.get.return_value = _make_region_config()
+
+        resp = client.get("/me/lab/leaderboard?sport=tennis")
+
+        assert resp.status_code == 404
+
+    def test_invalid_sport_returns_422(self, leaderboard_client):
+        client, _, _, _ = leaderboard_client
+
+        resp = client.get("/me/lab/leaderboard?sport=badminton&region=athens")
+
+        assert resp.status_code == 422
+
+    def test_sport_required_returns_422(self, leaderboard_client):
+        client, _, _, _ = leaderboard_client
+
+        resp = client.get("/me/lab/leaderboard?region=athens")
+
+        assert resp.status_code == 422
+
+    def test_missing_token_returns_401(self):
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get("/me/lab/leaderboard?sport=tennis&region=athens")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
