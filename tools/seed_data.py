@@ -668,7 +668,8 @@ REGION_MAPPING: dict[str, str] = {
 }
 
 # --- Leaderboard snapshots (leaderboards/{region}_{sport}) ---
-# Pre-populated leaderboard data for testing; aligns with seeded users.
+# Pre-populated leaderboard data for testing.
+# Region and pts values align with each user's preferences.area and rankings:
 LEADERBOARD_ATHENS_TENNIS = LeaderboardSnapshot(
     region="athens",
     sport=SportEnum.TENNIS,
@@ -681,24 +682,8 @@ LEADERBOARD_ATHENS_TENNIS = LeaderboardSnapshot(
             rank=1,
             delta7d=50,
         ),
-        LeaderboardEntry(
-            uid="user_alice",
-            name="Alice",
-            pts=580,
-            tier=TierEnum.AMATEUR,
-            rank=2,
-            delta7d=-20,
-        ),
     ],
-    rising_stars=[
-        RisingStarEntry(
-            uid="user_alice",
-            name="Alice",
-            pts=580,
-            delta7d=120,
-            rank=2,
-        ),
-    ],
+    rising_stars=[],
     last_updated=utc(2026, 3, 1, 12, 0),
 )
 
@@ -719,7 +704,28 @@ LEADERBOARD_ATHENS_PADEL = LeaderboardSnapshot(
     last_updated=utc(2026, 3, 1, 12, 0),
 )
 
-SAMPLE_LEADERBOARDS = [LEADERBOARD_ATHENS_TENNIS, LEADERBOARD_ATHENS_PADEL]
+LEADERBOARD_THESSALONIKI_TENNIS = LeaderboardSnapshot(
+    region="thessaloniki",
+    sport=SportEnum.TENNIS,
+    entries=[
+        LeaderboardEntry(
+            uid="user_alice",
+            name="Alice",
+            pts=820,
+            tier=TierEnum.AMATEUR,
+            rank=1,
+            delta7d=30,
+        ),
+    ],
+    rising_stars=[],
+    last_updated=utc(2026, 3, 1, 12, 0),
+)
+
+SAMPLE_LEADERBOARDS = [
+    LEADERBOARD_ATHENS_TENNIS,
+    LEADERBOARD_ATHENS_PADEL,
+    LEADERBOARD_THESSALONIKI_TENNIS,
+]
 
 # --- Tier averages (config/tierAverages) ---
 # Pre-computed average Skill DNA per tier, powers the "Show Next Level" radar comparison.

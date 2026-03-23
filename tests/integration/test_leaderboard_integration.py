@@ -117,7 +117,12 @@ def _seed_region_config(db) -> None:
 @pytest.fixture(autouse=True)
 def _cleanup_lb(db):
     yield
-    for doc_id in ("athens_tennis", "athens_padel", "london_tennis"):
+    for doc_id in (
+        "athens_tennis",
+        "athens_padel",
+        "london_tennis",
+        "thessaloniki_tennis",
+    ):
         db.collection("leaderboards").document(doc_id).delete()
     for uid in (_MY_UID,):
         db.collection("users").document(uid).delete()
