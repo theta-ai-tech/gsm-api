@@ -115,6 +115,12 @@ class TierEnum(StrEnum):
     COMPETITIVE = "competitive"
 
 
+class TickerEventTypeEnum(StrEnum):
+    UPSET = "upset"
+    MILESTONE = "milestone"
+    RISING_STAR = "rising_star"
+
+
 class PointHistoryReasonEnum(StrEnum):
     MATCH_WIN = "match_win"
     MATCH_LOSS = "match_loss"

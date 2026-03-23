@@ -12,6 +12,7 @@ from app.repos.point_history_repo import PointHistoryRepo
 from app.repos.leaderboard_repo import LeaderboardRepo
 from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.scouting_repo import ScoutingRepo
+from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 
@@ -60,6 +61,10 @@ def get_scouting_repo() -> ScoutingRepo:
 
 def get_region_config_repo() -> RegionConfigRepo:
     return RegionConfigRepo(get_firestore_client())
+
+
+def get_ticker_repo() -> TickerRepo:
+    return TickerRepo(get_firestore_client())
 
 
 def get_tier_config_repo() -> TierConfigRepo:

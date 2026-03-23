@@ -46,6 +46,7 @@ from app.models import (
     SportEnum,
     SportRanking,
     SportSkillDna,
+    TickerEventTypeEnum,
     TierEnum,
     TrainingFocusEnum,
     UserCompletedMatchSummary,
@@ -53,6 +54,7 @@ from app.models import (
     UserPreferences,
 )
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
+from app.models.ticker import TickerEvent
 
 
 def _require(data: dict[str, Any], key: str) -> Any:
@@ -517,4 +519,20 @@ def to_leaderboard_snapshot(doc: dict[str, Any]) -> LeaderboardSnapshot:
         entries=[_parse_leaderboard_entry(e) for e in entries_raw],
         rising_stars=[_parse_rising_star_entry(r) for r in rising_raw],
         last_updated=doc.get("lastUpdated"),
+    )
+
+
+def to_ticker_event(doc: dict[str, Any], event_id: str = "") -> TickerEvent:
+    loser_tier = doc.get("loserTier")
+    return TickerEvent(
+        event_id=event_id or doc.get("id", ""),
+        type=TickerEventTypeEnum(_require(doc, "type")),
+        sport=SportEnum(_require(doc, "sport")),
+        region=_require(doc, "region"),
+        winner_uid=_require(doc, "winnerUid"),
+        winner_name=doc.get("winnerName", ""),
+        loser_tier=TierEnum(loser_tier) if loser_tier else None,
+        delta=int(doc.get("delta", 0)),
+        created_at=_require(doc, "createdAt"),
+        expires_at=_require(doc, "expiresAt"),
     )

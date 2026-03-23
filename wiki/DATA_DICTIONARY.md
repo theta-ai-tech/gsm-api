@@ -79,6 +79,11 @@ Values below match the C1 enums in code.
 - API/Pydantic representation: string enum
 - Allowed values: `amateur`, `intermediate`, `advanced`, `competitive`
 
+### tickerEventType
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `upset`, `milestone`, `rising_star`
+
 ## Collection: users
 Path: `users/{uid}`
 
@@ -928,5 +933,38 @@ Purpose: pre-computed regional top-N leaderboard snapshots. Each document contai
     {"uid": "user_789", "name": "Dana", "pts": 2100, "delta7d": 400, "rank": 15}
   ],
   "lastUpdated": "2026-03-01T12:00:00Z"
+}
+```
+
+## Collection: ticker
+Path: `ticker/{auto}`
+
+Purpose: notable events feed for a region (upsets, milestones, rising stars). Documents are auto-ID and have a TTL (`expiresAt`) for natural expiry.
+
+### Fields: ticker/{auto}
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| type | string | required | tickerEventType | canonical | — | Event type: upset, milestone, rising_star. |
+| sport | string | required | sport | canonical | index=filter | Sport enum. |
+| region | string | required | — | canonical | index=filter | Region identifier (e.g. "athens"). |
+| winnerUid | string | required | — | canonical | — | UID of the player featured in the event. |
+| winnerName | string | required | — | canonical | — | Display name of the featured player. |
+| loserTier | string | optional | tier | canonical | — | Tier of the opponent (for upset events). |
+| delta | number | optional | — | canonical | — | Point delta associated with the event. |
+| createdAt | timestamp | required | — | canonical | index=order | When the event was created (UTC). |
+| expiresAt | timestamp | required | — | canonical | — | When the event should expire (UTC). |
+
+### ticker/{auto}
+```json
+{
+  "type": "upset",
+  "sport": "tennis",
+  "region": "athens",
+  "winnerUid": "user_789",
+  "winnerName": "Dana",
+  "loserTier": "advanced",
+  "delta": 200,
+  "createdAt": "2026-03-01T14:30:00Z",
+  "expiresAt": "2026-03-02T14:30:00Z"
 }
 ```

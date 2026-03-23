@@ -30,6 +30,7 @@ from app.models.enums import (
     PlayTabStateEnum,
     PointHistoryReasonEnum,
     SportEnum,
+    TickerEventTypeEnum,
     TierEnum,
     TrainingFocusEnum,
 )
@@ -50,6 +51,7 @@ from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, Rising
 from app.models.scouting import ScoutingProfile, ScoutingSportData, ScoutingTagCount
 from app.models.skill_dna import SkillAxisData, SportSkillDna
 from app.models.skill_taxonomy import SkillTaxonomy
+from app.models.ticker import TickerEvent
 from app.models.tier import TierConfig, TierThreshold
 from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile, PublicUserProfile
@@ -78,6 +80,7 @@ __all__ = [
     "OfferStatusEnum",
     "TierEnum",
     "PointHistoryReasonEnum",
+    "TickerEventTypeEnum",
     # common value objects
     "SportRanking",
     "PerSportRankings",
@@ -130,6 +133,8 @@ __all__ = [
     "SportSkillDna",
     # skill taxonomy
     "SkillTaxonomy",
+    # ticker
+    "TickerEvent",
     # region config
     "RegionConfig",
     # tier
