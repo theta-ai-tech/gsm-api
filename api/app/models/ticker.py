@@ -9,9 +9,27 @@ class TickerEvent(GsmBaseModel):
     type: TickerEventTypeEnum
     sport: SportEnum
     region: str
-    winner_uid: str
-    winner_name: str
-    loser_tier: TierEnum | None = None
-    delta: int = 0
     created_at: datetime
     expires_at: datetime
+
+    # upset-specific fields
+    winner_uid: str | None = None
+    winner_name: str | None = None
+    loser_tier: TierEnum | None = None
+    delta: int = 0
+
+    # shared subject fields (personal_best, win_streak, tier_crossed)
+    user_uid: str | None = None
+    user_name: str | None = None
+
+    # personal_best fields
+    new_pts: int | None = None
+    previous_best: int | None = None
+
+    # win_streak fields
+    streak: int | None = None
+
+    # tier_crossed fields
+    tier_before: TierEnum | None = None
+    tier_after: TierEnum | None = None
+    direction: str | None = None

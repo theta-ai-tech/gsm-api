@@ -117,8 +117,9 @@ class TierEnum(StrEnum):
 
 class TickerEventTypeEnum(StrEnum):
     UPSET = "upset"
-    MILESTONE = "milestone"
-    RISING_STAR = "rising_star"
+    PERSONAL_BEST = "personal_best"
+    WIN_STREAK = "win_streak"
+    TIER_CROSSED = "tier_crossed"
 
 
 class PointHistoryReasonEnum(StrEnum):

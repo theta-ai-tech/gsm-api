@@ -17,13 +17,38 @@ class TickerRepo(RepoBase):
             "type": event.type.value,
             "sport": event.sport.value,
             "region": event.region,
-            "winnerUid": event.winner_uid,
-            "winnerName": event.winner_name,
-            "loserTier": event.loser_tier.value if event.loser_tier else None,
-            "delta": event.delta,
             "createdAt": event.created_at,
             "expiresAt": event.expires_at,
         }
+        # upset fields
+        if event.winner_uid is not None:
+            doc_data["winnerUid"] = event.winner_uid
+        if event.winner_name is not None:
+            doc_data["winnerName"] = event.winner_name
+        if event.loser_tier is not None:
+            doc_data["loserTier"] = event.loser_tier.value
+        if event.delta:
+            doc_data["delta"] = event.delta
+        # shared subject fields
+        if event.user_uid is not None:
+            doc_data["userUid"] = event.user_uid
+        if event.user_name is not None:
+            doc_data["userName"] = event.user_name
+        # personal_best fields
+        if event.new_pts is not None:
+            doc_data["newPts"] = event.new_pts
+        if event.previous_best is not None:
+            doc_data["previousBest"] = event.previous_best
+        # win_streak fields
+        if event.streak is not None:
+            doc_data["streak"] = event.streak
+        # tier_crossed fields
+        if event.tier_before is not None:
+            doc_data["tierBefore"] = event.tier_before.value
+        if event.tier_after is not None:
+            doc_data["tierAfter"] = event.tier_after.value
+        if event.direction is not None:
+            doc_data["direction"] = event.direction
         _, doc_ref = self.client.collection(_COLLECTION).add(doc_data)
         return doc_ref.id
 

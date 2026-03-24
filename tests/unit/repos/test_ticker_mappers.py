@@ -8,7 +8,7 @@ from app.repos.mappers import to_ticker_event
 
 
 class TestToTickerEvent:
-    def test_complete_doc(self):
+    def test_upset_doc(self):
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
         expires = datetime(2026, 3, 2, 14, 30, 0, tzinfo=timezone.utc)
         doc = {
@@ -37,13 +37,75 @@ class TestToTickerEvent:
         assert event.created_at == now
         assert event.expires_at == expires
 
+    def test_personal_best_doc(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        doc = {
+            "type": "personal_best",
+            "sport": "padel",
+            "region": "thessaloniki",
+            "userUid": "user_1",
+            "userName": "Alex T.",
+            "newPts": 3650,
+            "previousBest": 3500,
+            "createdAt": now,
+            "expiresAt": now,
+        }
+
+        event = to_ticker_event(doc)
+
+        assert event.type == TickerEventTypeEnum.PERSONAL_BEST
+        assert event.user_uid == "user_1"
+        assert event.user_name == "Alex T."
+        assert event.new_pts == 3650
+        assert event.previous_best == 3500
+
+    def test_win_streak_doc(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        doc = {
+            "type": "win_streak",
+            "sport": "tennis",
+            "region": "athens",
+            "userUid": "user_2",
+            "userName": "Eve K.",
+            "streak": 5,
+            "createdAt": now,
+            "expiresAt": now,
+        }
+
+        event = to_ticker_event(doc)
+
+        assert event.type == TickerEventTypeEnum.WIN_STREAK
+        assert event.user_uid == "user_2"
+        assert event.streak == 5
+
+    def test_tier_crossed_doc(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        doc = {
+            "type": "tier_crossed",
+            "sport": "pickleball",
+            "region": "athens",
+            "userUid": "user_3",
+            "userName": "Nick L.",
+            "tierBefore": "intermediate",
+            "tierAfter": "advanced",
+            "direction": "up",
+            "createdAt": now,
+            "expiresAt": now,
+        }
+
+        event = to_ticker_event(doc)
+
+        assert event.type == TickerEventTypeEnum.TIER_CROSSED
+        assert event.tier_before == TierEnum.INTERMEDIATE
+        assert event.tier_after == TierEnum.ADVANCED
+        assert event.direction == "up"
+
     def test_minimal_doc(self):
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
         doc = {
-            "type": "milestone",
+            "type": "upset",
             "sport": "padel",
             "region": "thessaloniki",
-            "winnerUid": "user_1",
             "createdAt": now,
             "expiresAt": now,
         }
@@ -51,9 +113,10 @@ class TestToTickerEvent:
         event = to_ticker_event(doc)
 
         assert event.event_id == ""
-        assert event.type == TickerEventTypeEnum.MILESTONE
+        assert event.type == TickerEventTypeEnum.UPSET
         assert event.sport == SportEnum.PADEL
-        assert event.winner_name == ""
+        assert event.winner_uid is None
+        assert event.winner_name is None
         assert event.loser_tier is None
         assert event.delta == 0
 
@@ -61,11 +124,13 @@ class TestToTickerEvent:
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
         doc = {
             "id": "auto_generated_id",
-            "type": "rising_star",
+            "type": "personal_best",
             "sport": "pickleball",
             "region": "athens",
-            "winnerUid": "user_2",
-            "winnerName": "Eve",
+            "userUid": "user_2",
+            "userName": "Eve K.",
+            "newPts": 2800,
+            "previousBest": 2700,
             "createdAt": now,
             "expiresAt": now,
         }
@@ -79,7 +144,6 @@ class TestToTickerEvent:
         doc = {
             "sport": "tennis",
             "region": "athens",
-            "winnerUid": "user_1",
             "createdAt": now,
             "expiresAt": now,
         }
