@@ -249,8 +249,6 @@ class MatchConfirmationService:
         tier_config = self.tier_config_repo.get()
         sport = match.sport
         sport_value = sport.value
-        is_walkover = request.walkover or (request.score is not None and request.score.retired)
-
         match_ref = self.client.collection("matches").document(match_id)
         winner_ref = self.client.collection("users").document(winner_uid)
         loser_ref = self.client.collection("users").document(loser_uid)
@@ -258,6 +256,10 @@ class MatchConfirmationService:
 
         # Effective score: prefer request.score, fall back to stored score
         effective_score = request.score or match.score
+
+        # A match is a walkover/retirement if explicitly flagged OR if the effective
+        # score (which may come from the first submitter) has retired=True.
+        is_walkover = request.walkover or (effective_score is not None and effective_score.retired)
 
         result_holder: dict[str, Any] = {}
 

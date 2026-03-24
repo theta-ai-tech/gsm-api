@@ -709,3 +709,61 @@ class TestUpsetTickerEvent:
         # Match still completes without ticker repos
         assert response.status == MatchStatusEnum.COMPLETED
         assert mock_ticker_repo is None
+
+
+class TestRetirementFromStoredScore:
+    """When the first submitter stored retired=True on the match and the confirmer
+    does not resend score, is_walkover must still be True so pointHistory and
+    ticker writes are skipped."""
+
+    def _run_stored_retirement(self):
+        stored_score = _make_score(retired=True)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, mock_ph_repo, mock_ticker_repo, _ = _make_service(
+            match=match,
+        )
+
+        winner_snap = _make_user_snap(1500, TierEnum.AMATEUR)
+        loser_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            # Confirmer agrees with winner but does NOT resend score
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID),
+            )
+        return response, mock_ph_repo, mock_ticker_repo
+
+    def test_stored_retirement_does_not_write_point_history(self):
+        _, mock_ph_repo, _ = self._run_stored_retirement()
+        mock_ph_repo.add_entry_in_transaction.assert_not_called()
+
+    def test_stored_retirement_does_not_write_ticker(self):
+        _, _, mock_ticker_repo = self._run_stored_retirement()
+        mock_ticker_repo.add.assert_not_called()
+
+    def test_stored_retirement_produces_zero_deltas(self):
+        response, _, _ = self._run_stored_retirement()
+        assert response.winner_delta == 0
+        assert response.loser_delta == 0
