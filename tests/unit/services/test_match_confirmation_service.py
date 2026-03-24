@@ -23,9 +23,12 @@ from app.models.enums import (
     TierEnum,
 )
 from app.models.match import Match, MatchParticipant, VerifyScoreRequest, ScoringPayload
+from app.models.region_config import RegionConfig
 from app.models.tier import TierConfig, TierThreshold
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.region_config_repo import RegionConfigRepo
+from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.services.match_confirmation_service import MatchConfirmationService
@@ -100,11 +103,19 @@ def _make_score(winner_uid: str = WINNER_UID, retired: bool = False) -> MatchSco
     )
 
 
+def _region_config() -> RegionConfig:
+    return RegionConfig(mapping={"101": "athens", "202": "thessaloniki"}, version=1)
+
+
 def _make_service(
     match: Match | None = None,
     tier_config: TierConfig | None = None,
-) -> tuple[MatchConfirmationService, MagicMock, MagicMock]:
-    """Build service with mocked repos and a mock Firestore client."""
+    with_ticker: bool = True,
+) -> tuple[MatchConfirmationService, MagicMock, MagicMock, Mock, Mock]:
+    """Build service with mocked repos and a mock Firestore client.
+
+    Returns (service, mock_client, mock_ph_repo, mock_ticker_repo, mock_region_config_repo).
+    """
     mock_matches_repo = Mock(spec=MatchesRepo)
     mock_matches_repo.get_by_id.return_value = match or _make_match()
 
@@ -114,6 +125,11 @@ def _make_service(
 
     mock_tier_config_repo = Mock(spec=TierConfigRepo)
     mock_tier_config_repo.get.return_value = tier_config or _tier_config()
+
+    mock_ticker_repo = Mock(spec=TickerRepo) if with_ticker else None
+    mock_region_config_repo = Mock(spec=RegionConfigRepo) if with_ticker else None
+    if mock_region_config_repo is not None:
+        mock_region_config_repo.get.return_value = _region_config()
 
     mock_client = MagicMock()
     # Make client.transaction() return a fresh mock each call
@@ -133,21 +149,31 @@ def _make_service(
         mock_ph_repo,
         mock_tier_config_repo,
         mock_client,
+        ticker_repo=mock_ticker_repo,
+        region_config_repo=mock_region_config_repo,
     )
-    return service, mock_client, mock_ph_repo
+    return service, mock_client, mock_ph_repo, mock_ticker_repo, mock_region_config_repo
 
 
-def _make_user_snap(pts: int, tier: TierEnum, reg_tier: TierEnum | None = None) -> Mock:
+def _make_user_snap(
+    pts: int,
+    tier: TierEnum,
+    reg_tier: TierEnum | None = None,
+    name: str = "Player",
+    area: int = 101,
+) -> Mock:
     """Return a mock Firestore DocumentSnapshot with ranking data."""
     snap = Mock()
     snap.to_dict.return_value = {
+        "name": name,
+        "preferences": {"area": area},
         "rankings": {
             SPORT.value: {
                 "pts": pts,
                 "tier": tier.value,
                 "registrationTier": (reg_tier or tier).value,
             }
-        }
+        },
     }
     return snap
 
@@ -159,7 +185,7 @@ def _make_user_snap(pts: int, tier: TierEnum, reg_tier: TierEnum | None = None) 
 
 class TestVerifyScoreGuards:
     def test_match_not_found_raises_value_error(self):
-        service, _, _ = _make_service()
+        service, _, _, _, _ = _make_service()
         service.matches_repo.get_by_id.return_value = None
 
         with pytest.raises(ValueError, match="not found"):
@@ -168,7 +194,7 @@ class TestVerifyScoreGuards:
             )
 
     def test_non_participant_raises_permission_error(self):
-        service, _, _ = _make_service()
+        service, _, _, _, _ = _make_service()
 
         with pytest.raises(PermissionError):
             service.verify_score(
@@ -176,7 +202,7 @@ class TestVerifyScoreGuards:
             )
 
     def test_winner_uid_not_participant_raises_value_error(self):
-        service, _, _ = _make_service()
+        service, _, _, _, _ = _make_service()
 
         with pytest.raises(ValueError, match="not a participant"):
             service.verify_score(
@@ -184,7 +210,7 @@ class TestVerifyScoreGuards:
             )
 
     def test_completed_match_raises_value_error(self):
-        service, _, _ = _make_service(
+        service, _, _, _, _ = _make_service(
             match=_make_match(status=MatchStatusEnum.COMPLETED)
         )
 
@@ -194,7 +220,7 @@ class TestVerifyScoreGuards:
             )
 
     def test_disputed_match_raises_value_error(self):
-        service, _, _ = _make_service(
+        service, _, _, _, _ = _make_service(
             match=_make_match(status=MatchStatusEnum.DISPUTED)
         )
 
@@ -211,7 +237,7 @@ class TestVerifyScoreGuards:
 
 class TestFirstSubmission:
     def _run(self, *, score=None, walkover=False):
-        service, mock_client, _ = _make_service()
+        service, mock_client, _, _, _ = _make_service()
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             # Make @firestore.transactional a pass-through decorator
@@ -267,10 +293,12 @@ class TestConfirmationWithScoring:
         match = _make_match(
             status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
         )
-        service, mock_client, mock_ph_repo = _make_service(match=match)
+        service, mock_client, mock_ph_repo, mock_ticker_repo, _ = _make_service(
+            match=match,
+        )
 
-        winner_snap = _make_user_snap(winner_pts, TierEnum.INTERMEDIATE)
-        loser_snap = _make_user_snap(loser_pts, TierEnum.INTERMEDIATE)
+        winner_snap = _make_user_snap(winner_pts, TierEnum.INTERMEDIATE, name="Winner")
+        loser_snap = _make_user_snap(loser_pts, TierEnum.INTERMEDIATE, name="Loser")
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
@@ -300,44 +328,44 @@ class TestConfirmationWithScoring:
                     winner_uid=WINNER_UID, score=_make_score(), **kwargs
                 ),
             )
-        return response, mock_client, mock_ph_repo
+        return response, mock_client, mock_ph_repo, mock_ticker_repo
 
     def test_returns_completed_status(self):
-        response, _, _ = self._run_confirmation()
+        response, _, _, _ = self._run_confirmation()
         assert response.status == MatchStatusEnum.COMPLETED
 
     def test_winner_receives_positive_delta(self):
-        response, _, _ = self._run_confirmation()
+        response, _, _, _ = self._run_confirmation()
         assert response.winner_delta > 0
 
     def test_loser_delta_is_zero_for_same_tier(self):
-        response, _, _ = self._run_confirmation()
+        response, _, _, _ = self._run_confirmation()
         assert response.loser_delta == 0
 
     def test_winner_new_pts_is_pts_plus_delta(self):
-        response, _, _ = self._run_confirmation(winner_pts=2100, loser_pts=2050)
+        response, _, _, _ = self._run_confirmation(winner_pts=2100, loser_pts=2050)
         assert response.winner_new_pts == 2200  # base +100
 
     def test_point_history_entries_written_for_both_players(self):
-        _, _, mock_ph_repo = self._run_confirmation()
+        _, _, mock_ph_repo, _ = self._run_confirmation()
         assert mock_ph_repo.add_entry_in_transaction.call_count == 2
 
     def test_point_history_winner_entry_has_match_win_reason(self):
-        _, _, mock_ph_repo = self._run_confirmation()
+        _, _, mock_ph_repo, _ = self._run_confirmation()
         calls = mock_ph_repo.add_entry_in_transaction.call_args_list
         winner_call = next(c for c in calls if c.args[1] == WINNER_UID)
         winner_entry = winner_call.args[2]
         assert winner_entry.reason == PointHistoryReasonEnum.MATCH_WIN
 
     def test_point_history_loser_entry_has_match_loss_reason(self):
-        _, _, mock_ph_repo = self._run_confirmation()
+        _, _, mock_ph_repo, _ = self._run_confirmation()
         calls = mock_ph_repo.add_entry_in_transaction.call_args_list
         loser_call = next(c for c in calls if c.args[1] == LOSER_UID)
         loser_entry = loser_call.args[2]
         assert loser_entry.reason == PointHistoryReasonEnum.MATCH_LOSS
 
     def test_match_updates_include_finished_at_and_result_by_user(self):
-        _, mock_client, _ = self._run_confirmation()
+        _, mock_client, _, _ = self._run_confirmation()
         txn = mock_client.transaction()
         match_ref = mock_client.collection("matches").document(MATCH_ID)
         update_calls = [c for c in txn.update.call_args_list if c.args[0] == match_ref]
@@ -349,13 +377,13 @@ class TestConfirmationWithScoring:
         assert update_data["resultByUser"][LOSER_UID] == MatchResultEnum.LOSS
 
     def test_scoring_payload_present_on_completion(self):
-        response, _, _ = self._run_confirmation()
+        response, _, _, _ = self._run_confirmation()
         assert response.scoring is not None
         assert isinstance(response.scoring, ScoringPayload)
 
     def test_scoring_payload_loser_perspective_same_tier(self):
         # Caller is LOSER_UID (same tier as winner) — no penalty, delta 0
-        response, _, _ = self._run_confirmation(winner_pts=2100, loser_pts=2050)
+        response, _, _, _ = self._run_confirmation(winner_pts=2100, loser_pts=2050)
         s = response.scoring
         assert s is not None
         assert s.sport == SPORT
@@ -376,10 +404,10 @@ class TestConfirmationWithScoring:
         match = _make_match(
             status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
         )
-        service, mock_client, _ = _make_service(match=match)
+        service, mock_client, _, _, _ = _make_service(match=match)
 
-        winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
-        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE)
+        winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE, name="Winner")
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE, name="Loser")
 
         winner_doc = MagicMock()
         loser_doc = MagicMock()
@@ -427,7 +455,7 @@ class TestDispute:
         match = _make_match(
             status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
         )
-        service, mock_client, mock_ph_repo = _make_service(match=match)
+        service, mock_client, mock_ph_repo, _, _ = _make_service(match=match)
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
@@ -457,7 +485,9 @@ class TestWalkover:
         match = _make_match(
             status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
         )
-        service, mock_client, mock_ph_repo = _make_service(match=match)
+        service, mock_client, mock_ph_repo, mock_ticker_repo, _ = _make_service(
+            match=match,
+        )
 
         winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
         loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE)
@@ -486,17 +516,196 @@ class TestWalkover:
                 MATCH_ID,
                 VerifyScoreRequest(winner_uid=WINNER_UID, walkover=True),
             )
-        return response, mock_ph_repo
+        return response, mock_ph_repo, mock_ticker_repo
 
     def test_walkover_completes_match(self):
-        response, _ = self._run_walkover()
+        response, _, _ = self._run_walkover()
         assert response.status == MatchStatusEnum.COMPLETED
 
     def test_walkover_produces_zero_deltas(self):
-        response, _ = self._run_walkover()
+        response, _, _ = self._run_walkover()
         assert response.winner_delta == 0
         assert response.loser_delta == 0
 
     def test_walkover_does_not_write_point_history(self):
-        _, mock_ph_repo = self._run_walkover()
+        _, mock_ph_repo, _ = self._run_walkover()
         mock_ph_repo.add_entry_in_transaction.assert_not_called()
+
+    def test_walkover_does_not_write_ticker(self):
+        _, _, mock_ticker_repo = self._run_walkover()
+        mock_ticker_repo.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: upset ticker events
+# ---------------------------------------------------------------------------
+
+
+class TestUpsetTickerEvent:
+    """Tests for upset event detection and ticker write during match confirmation."""
+
+    def _run_upset_confirmation(
+        self,
+        winner_tier: TierEnum = TierEnum.AMATEUR,
+        loser_tier: TierEnum = TierEnum.INTERMEDIATE,
+        winner_pts: int = 1500,
+        loser_pts: int = 2100,
+        winner_name: str = "Underdog",
+        winner_area: int = 101,
+    ):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, mock_region_repo = _make_service(
+            match=match,
+        )
+
+        winner_snap = _make_user_snap(
+            winner_pts, winner_tier, name=winner_name, area=winner_area
+        )
+        loser_snap = _make_user_snap(loser_pts, loser_tier, name="Favourite")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+        return response, mock_ticker_repo, mock_region_repo
+
+    def test_upset_writes_ticker_event(self):
+        _, mock_ticker_repo, _ = self._run_upset_confirmation(
+            winner_tier=TierEnum.AMATEUR, loser_tier=TierEnum.INTERMEDIATE
+        )
+        assert mock_ticker_repo is not None
+        mock_ticker_repo.add.assert_called_once()
+        event = mock_ticker_repo.add.call_args.args[0]
+        assert event.type.value == "upset"
+        assert event.winner_uid == WINNER_UID
+        assert event.winner_name == "Underdog"
+        assert event.loser_tier == TierEnum.INTERMEDIATE
+        assert event.sport == SPORT
+        assert event.region == "athens"
+        assert event.delta > 0
+
+    def test_upset_ticker_has_24h_ttl(self):
+        _, mock_ticker_repo, _ = self._run_upset_confirmation()
+        assert mock_ticker_repo is not None
+        event = mock_ticker_repo.add.call_args.args[0]
+        ttl = event.expires_at - event.created_at
+        assert ttl.total_seconds() == 24 * 3600
+
+    def test_no_ticker_when_same_tier(self):
+        _, mock_ticker_repo, _ = self._run_upset_confirmation(
+            winner_tier=TierEnum.INTERMEDIATE, loser_tier=TierEnum.INTERMEDIATE
+        )
+        assert mock_ticker_repo is not None
+        mock_ticker_repo.add.assert_not_called()
+
+    def test_no_ticker_when_winner_higher_tier(self):
+        _, mock_ticker_repo, _ = self._run_upset_confirmation(
+            winner_tier=TierEnum.ADVANCED, loser_tier=TierEnum.INTERMEDIATE
+        )
+        assert mock_ticker_repo is not None
+        mock_ticker_repo.add.assert_not_called()
+
+    def test_ticker_failure_does_not_break_match_confirmation(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, _ = _make_service(match=match)
+        assert mock_ticker_repo is not None
+        mock_ticker_repo.add.side_effect = Exception("Firestore timeout")
+
+        winner_snap = _make_user_snap(1500, TierEnum.AMATEUR, name="Underdog", area=101)
+        loser_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE, name="Favourite")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+        # Match still completes despite ticker failure
+        assert response.status == MatchStatusEnum.COMPLETED
+        assert response.winner_delta > 0
+
+    def test_no_ticker_when_repos_not_configured(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, _ = _make_service(
+            match=match, with_ticker=False
+        )
+
+        winner_snap = _make_user_snap(1500, TierEnum.AMATEUR, name="Underdog", area=101)
+        loser_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE, name="Favourite")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+        # Match still completes without ticker repos
+        assert response.status == MatchStatusEnum.COMPLETED
+        assert mock_ticker_repo is None
