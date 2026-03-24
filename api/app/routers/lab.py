@@ -16,6 +16,8 @@ from app.constants import (
     LAB_PROGRESSION_MAX_LIMIT,
     LAB_RIVALRY_DEFAULT_LIMIT,
     LAB_RIVALRY_MAX_LIMIT,
+    TICKER_LIST_DEFAULT_LIMIT,
+    TICKER_LIST_MAX_LIMIT,
 )
 from app.dependencies.repos import (
     get_leaderboard_repo,
@@ -23,6 +25,7 @@ from app.dependencies.repos import (
     get_point_history_repo,
     get_region_config_repo,
     get_scouting_repo,
+    get_ticker_repo,
     get_tier_config_repo,
     get_users_repo,
 )
@@ -34,12 +37,14 @@ from app.models.leaderboard import LeaderboardEntry, RisingStarEntry
 from app.models.match import Match, compute_participant_pair
 from app.models.point_history import PointHistoryEntry
 from app.models.skill_dna import SportSkillDna
+from app.models.ticker import TickerEvent
 from app.models.tier import TierConfig, TierThreshold
 from app.repos.leaderboard_repo import LeaderboardRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
 from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.scouting_repo import ScoutingRepo
+from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
@@ -702,4 +707,65 @@ def get_leaderboard(
         entries=snapshot.entries,
         rising_stars=snapshot.rising_stars,
         last_updated=snapshot.last_updated,
+    )
+
+
+# ===== Ticker response model =====
+
+
+class TickerResponse(GsmBaseModel):
+    events: list[TickerEvent]
+    region: str
+    sport: SportEnum
+
+
+# ===== GET /me/lab/ticker =====
+
+
+@router.get(
+    "/ticker",
+    response_model=TickerResponse,
+    summary="Get recent ticker events for the Global Upsets feed",
+    responses={
+        401: _401,
+        404: {"description": "Cannot determine default region for user"},
+        422: {"description": "Invalid sport"},
+    },
+)
+def get_ticker(
+    sport: SportEnum = Query(..., description="Sport to filter by"),
+    region: str | None = Query(
+        default=None,
+        description="Region slug (e.g. 'athens'). Defaults to user's area if omitted.",
+    ),
+    limit: int = Query(
+        default=TICKER_LIST_DEFAULT_LIMIT,
+        ge=1,
+        le=TICKER_LIST_MAX_LIMIT,
+        description="Maximum number of events to return",
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    ticker_repo: TickerRepo = Depends(get_ticker_repo),
+    users_repo: UsersRepo = Depends(get_users_repo),
+    region_config_repo: RegionConfigRepo = Depends(get_region_config_repo),
+) -> TickerResponse:
+    """
+    Return recent ticker events for the given sport and region, ordered by
+    createdAt DESC (most recent first). Expired events are excluded server-side.
+
+    If `region` is omitted the endpoint defaults to the region mapped from the
+    authenticated user's `preferences.area` via the `config/regions` document.
+    """
+    resolved_region = _resolve_region(region, current_user, users_repo, region_config_repo)
+
+    events = ticker_repo.list_by_region_sport(
+        region=resolved_region,
+        sport=sport.value,
+        limit=limit,
+    )
+
+    return TickerResponse(
+        events=events,
+        region=resolved_region,
+        sport=sport,
     )

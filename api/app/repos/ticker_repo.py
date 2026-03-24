@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
@@ -58,10 +59,13 @@ class TickerRepo(RepoBase):
         sport: str,
         limit: int = 20,
     ) -> list[TickerEvent]:
+        now = datetime.now(tz=timezone.utc)
         query = (
             self.client.collection(_COLLECTION)
             .where("region", "==", region)
             .where("sport", "==", sport)
+            .where("expiresAt", ">", now)
+            .order_by("expiresAt", direction=firestore.Query.ASCENDING)
             .order_by("createdAt", direction=firestore.Query.DESCENDING)
             .limit(limit)
         )
@@ -69,4 +73,6 @@ class TickerRepo(RepoBase):
         for doc in query.stream():
             data = doc.to_dict() or {}
             results.append(to_ticker_event(data, event_id=doc.id))
+        # Re-sort by createdAt DESC since Firestore requires expiresAt as primary sort
+        results.sort(key=lambda e: e.created_at, reverse=True)
         return results
