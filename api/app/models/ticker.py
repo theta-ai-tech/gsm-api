@@ -1,7 +1,23 @@
 from datetime import datetime
+from typing import Self
+
+from pydantic import model_validator
 
 from app.models.base import GsmBaseModel
 from app.models.enums import SportEnum, TierEnum, TickerEventTypeEnum
+
+_REQUIRED_FIELDS: dict[TickerEventTypeEnum, list[str]] = {
+    TickerEventTypeEnum.UPSET: ["winner_uid", "winner_name", "loser_tier"],
+    TickerEventTypeEnum.PERSONAL_BEST: ["user_uid", "user_name", "new_pts", "previous_best"],
+    TickerEventTypeEnum.WIN_STREAK: ["user_uid", "user_name", "streak"],
+    TickerEventTypeEnum.TIER_CROSSED: [
+        "user_uid",
+        "user_name",
+        "tier_before",
+        "tier_after",
+        "direction",
+    ],
+}
 
 
 class TickerEvent(GsmBaseModel):
@@ -33,3 +49,11 @@ class TickerEvent(GsmBaseModel):
     tier_before: TierEnum | None = None
     tier_after: TierEnum | None = None
     direction: str | None = None
+
+    @model_validator(mode="after")
+    def _check_required_per_type(self) -> Self:
+        required = _REQUIRED_FIELDS.get(self.type, [])
+        missing = [f for f in required if getattr(self, f) is None]
+        if missing:
+            raise ValueError(f"Event type '{self.type}' requires fields: {', '.join(missing)}")
+        return self

@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from app.models.enums import SportEnum, TierEnum, TickerEventTypeEnum
 from app.models.ticker import TickerEvent
 
@@ -84,28 +86,76 @@ class TestTickerEvent:
         assert event.tier_after == TierEnum.ADVANCED
         assert event.direction == "up"
 
-    def test_defaults(self):
+    def test_defaults_on_valid_upset(self):
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
         event = TickerEvent(
             type="upset",
             sport="padel",
             region="thessaloniki",
+            winner_uid="user_1",
+            winner_name="Test",
+            loser_tier=TierEnum.ADVANCED,
             created_at=now,
             expires_at=now,
         )
         assert event.event_id == ""
-        assert event.winner_uid is None
-        assert event.winner_name is None
-        assert event.loser_tier is None
         assert event.delta == 0
         assert event.user_uid is None
-        assert event.user_name is None
         assert event.new_pts is None
-        assert event.previous_best is None
         assert event.streak is None
         assert event.tier_before is None
-        assert event.tier_after is None
-        assert event.direction is None
+
+    def test_upset_missing_required_fields_raises(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="requires fields"):
+            TickerEvent(
+                type="upset",
+                sport="padel",
+                region="thessaloniki",
+                created_at=now,
+                expires_at=now,
+            )
+
+    def test_personal_best_missing_required_fields_raises(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="requires fields"):
+            TickerEvent(
+                type="personal_best",
+                sport="padel",
+                region="thessaloniki",
+                user_uid="user_1",
+                user_name="Test",
+                created_at=now,
+                expires_at=now,
+            )
+
+    def test_win_streak_missing_streak_raises(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="requires fields"):
+            TickerEvent(
+                type="win_streak",
+                sport="tennis",
+                region="athens",
+                user_uid="user_2",
+                user_name="Eve K.",
+                created_at=now,
+                expires_at=now,
+            )
+
+    def test_tier_crossed_missing_direction_raises(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="requires fields"):
+            TickerEvent(
+                type="tier_crossed",
+                sport="pickleball",
+                region="athens",
+                user_uid="user_3",
+                user_name="Nick L.",
+                tier_before=TierEnum.INTERMEDIATE,
+                tier_after=TierEnum.ADVANCED,
+                created_at=now,
+                expires_at=now,
+            )
 
 
 class TestTickerEventTypeEnum:

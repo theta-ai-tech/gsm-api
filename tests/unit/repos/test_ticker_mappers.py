@@ -100,12 +100,15 @@ class TestToTickerEvent:
         assert event.tier_after == TierEnum.ADVANCED
         assert event.direction == "up"
 
-    def test_minimal_doc(self):
+    def test_minimal_upset_doc(self):
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
         doc = {
             "type": "upset",
             "sport": "padel",
             "region": "thessaloniki",
+            "winnerUid": "user_1",
+            "winnerName": "Test",
+            "loserTier": "advanced",
             "createdAt": now,
             "expiresAt": now,
         }
@@ -115,10 +118,23 @@ class TestToTickerEvent:
         assert event.event_id == ""
         assert event.type == TickerEventTypeEnum.UPSET
         assert event.sport == SportEnum.PADEL
-        assert event.winner_uid is None
-        assert event.winner_name is None
-        assert event.loser_tier is None
+        assert event.winner_uid == "user_1"
+        assert event.winner_name == "Test"
+        assert event.loser_tier == TierEnum.ADVANCED
         assert event.delta == 0
+
+    def test_malformed_upset_missing_fields_raises(self):
+        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
+        doc = {
+            "type": "upset",
+            "sport": "padel",
+            "region": "thessaloniki",
+            "createdAt": now,
+            "expiresAt": now,
+        }
+
+        with pytest.raises(ValueError, match="requires fields"):
+            to_ticker_event(doc)
 
     def test_event_id_from_doc_id_field(self):
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)

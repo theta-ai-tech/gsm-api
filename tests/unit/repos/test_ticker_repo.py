@@ -133,7 +133,7 @@ class TestAdd:
         assert doc_data["tierAfter"] == "advanced"
         assert doc_data["direction"] == "up"
 
-    def test_omits_none_optional_fields(self):
+    def test_omits_cross_type_optional_fields(self):
         repo, client = _make_repo()
         mock_doc_ref = MagicMock()
         mock_doc_ref.id = "auto_id_minimal"
@@ -143,6 +143,9 @@ class TestAdd:
             type=TickerEventTypeEnum.UPSET,
             sport=SportEnum.PADEL,
             region="thessaloniki",
+            winner_uid="user_1",
+            winner_name="Test",
+            loser_tier=TierEnum.ADVANCED,
             created_at=datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc),
             expires_at=datetime(2026, 3, 2, 14, 30, 0, tzinfo=timezone.utc),
         )
@@ -150,8 +153,9 @@ class TestAdd:
 
         call_args = client.collection.return_value.add.call_args
         doc_data = call_args[0][0]
-        assert "winnerUid" not in doc_data
-        assert "loserTier" not in doc_data
+        assert "winnerUid" in doc_data
+        assert "winnerName" in doc_data
+        assert "loserTier" in doc_data
         assert "delta" not in doc_data
         assert "userUid" not in doc_data
         assert "streak" not in doc_data
