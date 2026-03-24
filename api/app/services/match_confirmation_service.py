@@ -22,13 +22,20 @@ Transaction flow for POST /matches/{matchId}/verify-score:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.models.common import MatchScore
-from app.models.enums import MatchResultEnum, MatchStatusEnum, PointHistoryReasonEnum, TierEnum
+from app.models.enums import (
+    MatchResultEnum,
+    MatchStatusEnum,
+    PointHistoryReasonEnum,
+    TierEnum,
+    TickerEventTypeEnum,
+)
 from app.models.match import (
     Match,
     ScoringBreakdown,
@@ -37,14 +44,20 @@ from app.models.match import (
     VerifyScoreResponse,
 )
 from app.models.point_history import PointHistoryEntry
+from app.models.ticker import TickerEvent
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.region_config_repo import RegionConfigRepo
+from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
-from app.services.scoring_service import compute_match_scoring
+from app.services.scoring_service import TIER_ORDER, compute_match_scoring
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_PTS = 1000
 _DEFAULT_TIER = TierEnum.AMATEUR
+_TICKER_TTL_HOURS = 24
 
 
 def _score_to_doc(score: MatchScore, winner_uid: str) -> dict[str, Any]:
@@ -74,12 +87,16 @@ class MatchConfirmationService:
         point_history_repo: PointHistoryRepo,
         tier_config_repo: TierConfigRepo,
         firestore_client: firestore.Client,
+        ticker_repo: TickerRepo | None = None,
+        region_config_repo: RegionConfigRepo | None = None,
     ):
         self.matches_repo = matches_repo
         self.users_repo = users_repo
         self.point_history_repo = point_history_repo
         self.tier_config_repo = tier_config_repo
         self.client = firestore_client
+        self.ticker_repo = ticker_repo
+        self.region_config_repo = region_config_repo
 
     # -------------------------------------------------------------------------
     # Public API
@@ -232,8 +249,6 @@ class MatchConfirmationService:
         tier_config = self.tier_config_repo.get()
         sport = match.sport
         sport_value = sport.value
-        is_walkover = request.walkover or (request.score is not None and request.score.retired)
-
         match_ref = self.client.collection("matches").document(match_id)
         winner_ref = self.client.collection("users").document(winner_uid)
         loser_ref = self.client.collection("users").document(loser_uid)
@@ -241,6 +256,10 @@ class MatchConfirmationService:
 
         # Effective score: prefer request.score, fall back to stored score
         effective_score = request.score or match.score
+
+        # A match is a walkover/retirement if explicitly flagged OR if the effective
+        # score (which may come from the first submitter) has retired=True.
+        is_walkover = request.walkover or (effective_score is not None and effective_score.retired)
 
         result_holder: dict[str, Any] = {}
 
@@ -267,6 +286,8 @@ class MatchConfirmationService:
             result_holder["loser_pts_before"] = loser_pts
             result_holder["winner_tier_before"] = winner_tier
             result_holder["loser_tier_before"] = loser_tier
+            result_holder["winner_name"] = winner_data.get("name", "")
+            result_holder["winner_area"] = (winner_data.get("preferences") or {}).get("area")
 
             # --- COMPUTE (pure, no IO) ---
             scoring = compute_match_scoring(
@@ -361,6 +382,19 @@ class MatchConfirmationService:
         _scoring_txn(self.client.transaction())
 
         scoring = result_holder["scoring"]
+
+        # Fire-and-forget: write upset ticker event outside the transaction
+        if not is_walkover:
+            self._maybe_write_upset_ticker(
+                winner_uid=winner_uid,
+                winner_name=result_holder.get("winner_name", ""),
+                winner_tier=result_holder["winner_tier_before"],
+                loser_tier=result_holder["loser_tier_before"],
+                winner_delta=scoring.winner_delta.total,
+                sport=sport,
+                winner_area=result_holder.get("winner_area"),
+                now=now,
+            )
         is_winner = uid == winner_uid
         your_delta = scoring.winner_delta if is_winner else scoring.loser_delta
         scoring_payload = ScoringPayload(
@@ -393,3 +427,47 @@ class MatchConfirmationService:
             loser_new_pts=scoring.loser_new_pts,
             scoring=scoring_payload,
         )
+
+    # -------------------------------------------------------------------------
+    # Upset ticker event (fire-and-forget)
+    # -------------------------------------------------------------------------
+
+    def _maybe_write_upset_ticker(
+        self,
+        *,
+        winner_uid: str,
+        winner_name: str,
+        winner_tier: TierEnum,
+        loser_tier: TierEnum,
+        winner_delta: int,
+        sport: Any,
+        winner_area: int | None,
+        now: datetime,
+    ) -> None:
+        if TIER_ORDER[winner_tier] >= TIER_ORDER[loser_tier]:
+            return
+
+        if self.ticker_repo is None or self.region_config_repo is None:
+            return
+
+        try:
+            region_config = self.region_config_repo.get()
+            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            if not region:
+                logger.warning("Skipping upset ticker: no region mapping for area %s", winner_area)
+                return
+
+            event = TickerEvent(
+                type=TickerEventTypeEnum.UPSET,
+                sport=sport,
+                region=region,
+                created_at=now,
+                expires_at=now + timedelta(hours=_TICKER_TTL_HOURS),
+                winner_uid=winner_uid,
+                winner_name=winner_name,
+                loser_tier=loser_tier,
+                delta=winner_delta,
+            )
+            self.ticker_repo.add(event)
+        except Exception:
+            logger.exception("Failed to write upset ticker event (non-fatal)")
