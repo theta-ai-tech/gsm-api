@@ -115,6 +115,13 @@ class TierEnum(StrEnum):
     COMPETITIVE = "competitive"
 
 
+class TickerEventTypeEnum(StrEnum):
+    UPSET = "upset"
+    PERSONAL_BEST = "personal_best"
+    WIN_STREAK = "win_streak"
+    TIER_CROSSED = "tier_crossed"
+
+
 class PointHistoryReasonEnum(StrEnum):
     MATCH_WIN = "match_win"
     MATCH_LOSS = "match_loss"

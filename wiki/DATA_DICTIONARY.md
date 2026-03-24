@@ -79,6 +79,11 @@ Values below match the C1 enums in code.
 - API/Pydantic representation: string enum
 - Allowed values: `amateur`, `intermediate`, `advanced`, `competitive`
 
+### tickerEventType
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `upset`, `personal_best`, `win_streak`, `tier_crossed`
+
 ## Collection: users
 Path: `users/{uid}`
 
@@ -928,5 +933,77 @@ Purpose: pre-computed regional top-N leaderboard snapshots. Each document contai
     {"uid": "user_789", "name": "Dana", "pts": 2100, "delta7d": 400, "rank": 15}
   ],
   "lastUpdated": "2026-03-01T12:00:00Z"
+}
+```
+
+## Collection: ticker
+Path: `ticker/{auto}`
+
+Purpose: notable events feed for a region (upsets, personal bests, win streaks, tier crossings). Documents are auto-ID and have a TTL (`expiresAt`) for natural expiry.
+
+### Fields: ticker/{auto}
+| Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| type | string | required | tickerEventType | canonical | — | Event type: upset, personal_best, win_streak, tier_crossed. |
+| sport | string | required | sport | canonical | index=filter | Sport enum. |
+| region | string | required | — | canonical | index=filter | Region identifier (e.g. "athens"). |
+| createdAt | timestamp | required | — | canonical | index=order | When the event was created (UTC). |
+| expiresAt | timestamp | required | — | canonical | — | When the event should expire (UTC). |
+| winnerUid | string | optional | — | canonical | — | UID of the upset winner (upset events only). |
+| winnerName | string | optional | — | canonical | — | Display name of the upset winner (upset events only). |
+| loserTier | string | optional | tier | canonical | — | Tier of the opponent beaten (upset events only). |
+| delta | number | optional | — | canonical | — | Point delta (upset events only). |
+| userUid | string | optional | — | canonical | — | Subject of the event (personal_best, win_streak, tier_crossed). |
+| userName | string | optional | — | canonical | — | Display name of the subject (first + last initial). |
+| newPts | number | optional | — | canonical | — | New personal best score (personal_best events only). |
+| previousBest | number | optional | — | canonical | — | Previous personal best score (personal_best events only). |
+| streak | number | optional | — | canonical | — | Consecutive win count (win_streak events only). |
+| tierBefore | string | optional | tier | canonical | — | Tier before the transition (tier_crossed events only). |
+| tierAfter | string | optional | tier | canonical | — | Tier after the transition (tier_crossed events only). |
+| direction | string | optional | — | canonical | — | Tier transition direction: "up" or "down" (tier_crossed events only). |
+
+### ticker/{auto} (upset example)
+```json
+{
+  "type": "upset",
+  "sport": "tennis",
+  "region": "athens",
+  "winnerUid": "user_789",
+  "winnerName": "Dana",
+  "loserTier": "advanced",
+  "delta": 200,
+  "createdAt": "2026-03-01T14:30:00Z",
+  "expiresAt": "2026-03-02T14:30:00Z"
+}
+```
+
+### ticker/{auto} (personal_best example)
+```json
+{
+  "type": "personal_best",
+  "sport": "padel",
+  "region": "thessaloniki",
+  "userUid": "user_1",
+  "userName": "Alex T.",
+  "newPts": 3650,
+  "previousBest": 3500,
+  "createdAt": "2026-03-01T14:30:00Z",
+  "expiresAt": "2026-03-02T14:30:00Z"
+}
+```
+
+### ticker/{auto} (tier_crossed example)
+```json
+{
+  "type": "tier_crossed",
+  "sport": "tennis",
+  "region": "athens",
+  "userUid": "user_3",
+  "userName": "Nick L.",
+  "tierBefore": "intermediate",
+  "tierAfter": "advanced",
+  "direction": "up",
+  "createdAt": "2026-03-01T14:30:00Z",
+  "expiresAt": "2026-03-02T14:30:00Z"
 }
 ```
