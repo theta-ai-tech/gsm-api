@@ -185,7 +185,7 @@ class TestListByRegionSport:
         query_mock = MagicMock()
         query_mock.stream.return_value = [mock_doc]
         (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
+            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value.limit.return_value
         ) = query_mock
 
         results = repo.list_by_region_sport("athens", "tennis")
@@ -202,7 +202,7 @@ class TestListByRegionSport:
         query_mock = MagicMock()
         query_mock.stream.return_value = []
         (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
+            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value.limit.return_value
         ) = query_mock
 
         results = repo.list_by_region_sport("unknown", "tennis")
@@ -216,7 +216,7 @@ class TestListByRegionSport:
         query_mock.stream.return_value = []
         limit_mock = MagicMock(return_value=query_mock)
         (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value
+            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value
         ).limit = limit_mock
 
         repo.list_by_region_sport("athens", "tennis", limit=5)
