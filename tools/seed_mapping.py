@@ -23,6 +23,7 @@ from app.models import (
     SkillTaxonomy,
     SportRanking,
     SportSkillDna,
+    TickerEvent,
     TierConfig,
     TierThreshold,
     UserCompletedMatchSummary,
@@ -351,3 +352,38 @@ def journal_entry_to_firestore_doc(entry: JournalEntry) -> Dict[str, Any]:
         "isDeleted": entry.is_deleted,
         "deletedAt": entry.deleted_at,
     }
+
+
+def ticker_event_to_firestore_doc(event: TickerEvent) -> Dict[str, Any]:
+    doc: Dict[str, Any] = {
+        "type": event.type.value,
+        "sport": event.sport.value,
+        "region": event.region,
+        "createdAt": event.created_at,
+        "expiresAt": event.expires_at,
+    }
+    if event.winner_uid is not None:
+        doc["winnerUid"] = event.winner_uid
+    if event.winner_name is not None:
+        doc["winnerName"] = event.winner_name
+    if event.loser_tier is not None:
+        doc["loserTier"] = event.loser_tier.value
+    if event.delta:
+        doc["delta"] = event.delta
+    if event.user_uid is not None:
+        doc["userUid"] = event.user_uid
+    if event.user_name is not None:
+        doc["userName"] = event.user_name
+    if event.new_pts is not None:
+        doc["newPts"] = event.new_pts
+    if event.previous_best is not None:
+        doc["previousBest"] = event.previous_best
+    if event.streak is not None:
+        doc["streak"] = event.streak
+    if event.tier_before is not None:
+        doc["tierBefore"] = event.tier_before.value
+    if event.tier_after is not None:
+        doc["tierAfter"] = event.tier_after.value
+    if event.direction is not None:
+        doc["direction"] = event.direction
+    return doc

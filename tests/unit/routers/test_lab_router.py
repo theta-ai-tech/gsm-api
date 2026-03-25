@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import Mock
 
 import pytest
@@ -20,6 +21,7 @@ from app.dependencies.repos import (
     get_point_history_repo,
     get_region_config_repo,
     get_scouting_repo,
+    get_ticker_repo,
     get_tier_config_repo,
     get_users_repo,
 )
@@ -47,6 +49,7 @@ from app.models.leaderboard import (
 )
 from app.models.region_config import RegionConfig
 from app.models.skill_dna import SkillAxisData, SportSkillDna
+from app.models.ticker import TickerEvent
 from app.models.match import Match
 from app.models.common import MatchScore, SetScore
 from app.models.user import PrivateUserProfile
@@ -1246,3 +1249,170 @@ class TestGetLeaderboard:
         finally:
             app.dependency_overrides = previous_overrides
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Ticker endpoint
+# ---------------------------------------------------------------------------
+
+
+def _make_ticker_event(
+    event_id: str = "evt_1",
+    event_type: str = "upset",
+    sport: str = "tennis",
+    region: str = "athens",
+) -> TickerEvent:
+    kwargs: dict[str, Any] = {
+        "event_id": event_id,
+        "type": event_type,
+        "sport": sport,
+        "region": region,
+        "created_at": _NOW,
+        "expires_at": _NOW,
+    }
+    if event_type == "upset":
+        kwargs.update(
+            winner_uid="u1",
+            winner_name="Dana",
+            loser_tier=TierEnum.ADVANCED,
+            delta=200,
+        )
+    elif event_type == "win_streak":
+        kwargs.update(user_uid="u2", user_name="Alex", streak=5)
+    elif event_type == "personal_best":
+        kwargs.update(user_uid="u3", user_name="Ben", new_pts=1500, previous_best=1200)
+    return TickerEvent(**kwargs)
+
+
+@pytest.fixture
+def ticker_client():
+    mock_ticker_repo = Mock(spec=["list_by_region_sport"])
+    mock_users = Mock(spec=["get_private_profile"])
+    mock_region = Mock(spec=["get"])
+    mock_user = CurrentUser(uid=_UID, email="test@example.com")
+
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_ticker_repo] = lambda: mock_ticker_repo
+    app.dependency_overrides[get_users_repo] = lambda: mock_users
+    app.dependency_overrides[get_region_config_repo] = lambda: mock_region
+    yield TestClient(app), mock_ticker_repo, mock_users, mock_region
+    app.dependency_overrides = previous_overrides
+
+
+class TestGetTicker:
+    def test_returns_200_with_explicit_region(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = [_make_ticker_event()]
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["region"] == "athens"
+        assert body["sport"] == "tennis"
+        assert len(body["events"]) == 1
+
+    def test_event_fields_shape(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = [_make_ticker_event()]
+
+        body = client.get("/me/lab/ticker?sport=tennis&region=athens").json()
+
+        event = body["events"][0]
+        assert event["type"] == "upset"
+        assert event["sport"] == "tennis"
+        assert event["winner_name"] == "Dana"
+        assert event["loser_tier"] == "advanced"
+        assert event["delta"] == 200
+        assert "created_at" in event
+        assert "expires_at" in event
+
+    def test_repo_called_with_correct_args(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = []
+
+        client.get("/me/lab/ticker?sport=tennis&region=athens&limit=10")
+
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=10,
+        )
+
+    def test_default_limit_applied(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = []
+
+        client.get("/me/lab/ticker?sport=tennis&region=athens")
+
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=20,
+        )
+
+    def test_defaults_region_from_user_preferences(self, ticker_client):
+        client, mock_ticker, mock_users, mock_region = ticker_client
+        mock_ticker.list_by_region_sport.return_value = []
+        mock_users.get_private_profile.return_value = _make_private_profile_for_lb()
+        mock_region.get.return_value = _make_region_config()
+
+        resp = client.get("/me/lab/ticker?sport=tennis")
+
+        assert resp.status_code == 200
+        assert resp.json()["region"] == "athens"
+
+    def test_empty_events_returns_200(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = []
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens")
+
+        assert resp.status_code == 200
+        assert resp.json()["events"] == []
+
+    def test_limit_over_max_returns_422(self, ticker_client):
+        client, _, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens&limit=100")
+
+        assert resp.status_code == 422
+
+    def test_limit_zero_returns_422(self, ticker_client):
+        client, _, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens&limit=0")
+
+        assert resp.status_code == 422
+
+    def test_invalid_sport_returns_422(self, ticker_client):
+        client, _, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?sport=badminton&region=athens")
+
+        assert resp.status_code == 422
+
+    def test_sport_required_returns_422(self, ticker_client):
+        client, _, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?region=athens")
+
+        assert resp.status_code == 422
+
+    def test_missing_token_returns_401(self):
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get("/me/lab/ticker?sport=tennis&region=athens")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
+
+    def test_user_not_found_for_default_region_returns_404(self, ticker_client):
+        client, _, mock_users, _ = ticker_client
+        mock_users.get_private_profile.return_value = None
+
+        resp = client.get("/me/lab/ticker?sport=tennis")
+
+        assert resp.status_code == 404

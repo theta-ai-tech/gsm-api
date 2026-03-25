@@ -31,6 +31,8 @@ from app.models import (
     SportEnum,
     SportRanking,
     SportSkillDna,
+    TickerEvent,
+    TickerEventTypeEnum,
     TierConfig,
     TierEnum,
     TierThreshold,
@@ -752,3 +754,44 @@ TIER_AVERAGES: dict[str, dict[str, dict[str, int]]] = {
         "pickleball": {"serve": 87, "power": 82, "net_play": 89, "stamina": 86, "mental": 85},
     },
 }
+
+# --- Ticker events (ticker/{auto-id}) ---
+# Sample ticker events for the Global Upsets feed.
+# expiresAt is set far in the future so they remain visible in manual testing.
+SAMPLE_TICKER_EVENTS = [
+    TickerEvent(
+        event_id="ticker_upset_1",
+        type=TickerEventTypeEnum.UPSET,
+        sport=SportEnum.TENNIS,
+        region="athens",
+        created_at=utc(2026, 3, 1, 14, 30),
+        expires_at=utc(2027, 3, 1, 14, 30),
+        winner_uid="user_ignatios",
+        winner_name="Ignatios",
+        loser_tier=TierEnum.ADVANCED,
+        delta=200,
+    ),
+    TickerEvent(
+        event_id="ticker_streak_1",
+        type=TickerEventTypeEnum.WIN_STREAK,
+        sport=SportEnum.TENNIS,
+        region="athens",
+        created_at=utc(2026, 3, 1, 10, 0),
+        expires_at=utc(2027, 3, 1, 10, 0),
+        user_uid="user_alice",
+        user_name="Alice",
+        streak=5,
+    ),
+    TickerEvent(
+        event_id="ticker_pb_1",
+        type=TickerEventTypeEnum.PERSONAL_BEST,
+        sport=SportEnum.PADEL,
+        region="athens",
+        created_at=utc(2026, 3, 1, 9, 0),
+        expires_at=utc(2027, 3, 1, 9, 0),
+        user_uid="user_ignatios",
+        user_name="Ignatios",
+        new_pts=1050,
+        previous_best=980,
+    ),
+]
