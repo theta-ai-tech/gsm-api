@@ -1,7 +1,7 @@
 """
 Scheduled ticker TTL cleanup.
 
-Queries the ``ticker`` collection for documents where ``expiresAt < now``
+Queries the ``ticker`` collection for documents where ``expiresAt <= now``
 and deletes them in batches of 500 (Firestore batch-write limit).
 """
 
@@ -24,7 +24,11 @@ def cleanup_expired_ticker_events(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """
-    Delete all ticker documents whose ``expiresAt`` is in the past.
+    Delete all ticker documents whose ``expiresAt`` is in the past or at the boundary.
+
+    Uses ``<=`` to match the read path, which only returns events where
+    ``expiresAt > now`` — so exactly-at-boundary docs are already invisible
+    to readers and should be cleaned up too.
 
     Documents are deleted in batches of 500 (Firestore limit).
     Returns a summary dict with the total number of deleted documents.
@@ -34,7 +38,7 @@ def cleanup_expired_ticker_events(
 
     query = (
         client.collection(_COLLECTION)
-        .where("expiresAt", "<", now)
+        .where("expiresAt", "<=", now)
     )
 
     total_deleted = 0

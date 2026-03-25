@@ -81,13 +81,13 @@ class TestCleanupExpiredTickerEvents:
         batch = client.batch.return_value
         batch.commit.assert_not_called()
 
-    def test_queries_with_expires_at_less_than_now(self) -> None:
+    def test_queries_with_expires_at_lte_now(self) -> None:
         client = _build_mock_client([])
         cleanup_expired_ticker_events(client, now=_NOW)
 
         client.collection.assert_called_with("ticker")
         ticker_col = client.collection.return_value
-        ticker_col.where.assert_called_once_with("expiresAt", "<", _NOW)
+        ticker_col.where.assert_called_once_with("expiresAt", "<=", _NOW)
 
     def test_uses_default_now_when_not_provided(self) -> None:
         client = _build_mock_client([])
