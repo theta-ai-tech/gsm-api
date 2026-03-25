@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+import app.repos.region_config_repo as region_config_module
 import app.repos.tier_config_repo as tier_config_module
 from app.models.common import MatchScore, SetScore
 from app.models.enums import (
@@ -27,6 +28,8 @@ from app.models.enums import (
 from app.models.match import VerifyScoreRequest
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.repos.region_config_repo import RegionConfigRepo
+from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.services.match_confirmation_service import MatchConfirmationService
@@ -529,3 +532,142 @@ class TestConcurrentConfirmation:
 
         final_pts = get_user_pts(db, "sc06_shared")
         assert final_pts == 1700  # 1500 + 100 + 100
+
+
+# ---------------------------------------------------------------------------
+# SC-07: Upset during match confirmation writes ticker event
+# ---------------------------------------------------------------------------
+
+
+def _make_service_with_ticker(db) -> MatchConfirmationService:
+    return MatchConfirmationService(
+        matches_repo=MatchesRepo(db),
+        users_repo=UsersRepo(db),
+        point_history_repo=PointHistoryRepo(db),
+        tier_config_repo=TierConfigRepo(db),
+        firestore_client=db,
+        ticker_repo=TickerRepo(db),
+        region_config_repo=RegionConfigRepo(db),
+    )
+
+
+def _seed_user_with_area(
+    db,
+    uid: str,
+    pts: int,
+    tier: str,
+    area: int,
+    sport: str = "tennis",
+) -> None:
+    db.collection("users").document(uid).set(
+        {
+            "name": uid,
+            "email": f"{uid}@test.com",
+            "rankings": {
+                sport: {
+                    "sport": sport,
+                    "pts": pts,
+                    "tier": tier,
+                    "registrationTier": tier,
+                    "globalRanking": None,
+                    "lastUpdated": None,
+                }
+            },
+            "preferences": {
+                "area": area,
+                "levels": {},
+                "sports": [sport],
+            },
+            "playTab": {
+                "state": "MATCH_SCHEDULED",
+                "activeMatchId": None,
+                "updatedAt": None,
+            },
+        }
+    )
+
+
+def _get_ticker_events(db, region: str = "athens", sport: str = "tennis") -> list[dict]:
+    docs = (
+        db.collection("ticker")
+        .where("region", "==", region)
+        .where("sport", "==", sport)
+        .stream()
+    )
+    return [d.to_dict() or {} for d in docs]
+
+
+class TestUpsetTickerCreation:
+    @pytest.fixture(autouse=True)
+    def _reset_region_cache(self):
+        region_config_module._cache = None
+        region_config_module._cache_ts = 0.0
+        yield
+        region_config_module._cache = None
+        region_config_module._cache_ts = 0.0
+
+    @pytest.fixture(autouse=True)
+    def _cleanup_ticker_and_config(self, db):
+        yield
+        for doc in db.collection("ticker").stream():
+            doc.reference.delete()
+        db.collection("config").document("regions").delete()
+
+    def test_upset_confirmation_creates_ticker_event(self, db) -> None:
+        seed_tier_config(db)
+        db.collection("config").document("regions").set(
+            {"mapping": {"101": "athens"}, "version": 1}
+        )
+        _seed_user_with_area(db, "sc07_winner", pts=1800, tier="amateur", area=101)
+        _seed_user_with_area(db, "sc07_loser", pts=2200, tier="intermediate", area=101)
+        seed_match(db, "sc07_match", "sc07_winner", "sc07_loser")
+
+        svc = _make_service_with_ticker(db)
+        req = VerifyScoreRequest(winner_uid="sc07_winner", score=_SCORE)
+        svc.verify_score("sc07_winner", "sc07_match", req)
+        svc.verify_score("sc07_loser", "sc07_match", req)
+
+        events = _get_ticker_events(db)
+        assert len(events) == 1
+        event = events[0]
+        assert event["type"] == "upset"
+        assert event["sport"] == "tennis"
+        assert event["region"] == "athens"
+        assert event["winnerUid"] == "sc07_winner"
+        assert event["winnerName"] == "sc07_winner"
+        assert event["loserTier"] == "intermediate"
+        assert event["delta"] > 0
+
+    def test_same_tier_match_no_ticker_event(self, db) -> None:
+        seed_tier_config(db)
+        db.collection("config").document("regions").set(
+            {"mapping": {"101": "athens"}, "version": 1}
+        )
+        _seed_user_with_area(db, "sc07b_winner", pts=1500, tier="amateur", area=101)
+        _seed_user_with_area(db, "sc07b_loser", pts=1400, tier="amateur", area=101)
+        seed_match(db, "sc07b_match", "sc07b_winner", "sc07b_loser")
+
+        svc = _make_service_with_ticker(db)
+        req = VerifyScoreRequest(winner_uid="sc07b_winner", score=_SCORE)
+        svc.verify_score("sc07b_winner", "sc07b_match", req)
+        svc.verify_score("sc07b_loser", "sc07b_match", req)
+
+        events = _get_ticker_events(db)
+        assert len(events) == 0
+
+    def test_walkover_does_not_create_ticker_event(self, db) -> None:
+        seed_tier_config(db)
+        db.collection("config").document("regions").set(
+            {"mapping": {"101": "athens"}, "version": 1}
+        )
+        _seed_user_with_area(db, "sc07c_winner", pts=1800, tier="amateur", area=101)
+        _seed_user_with_area(db, "sc07c_loser", pts=2200, tier="intermediate", area=101)
+        seed_match(db, "sc07c_match", "sc07c_winner", "sc07c_loser")
+
+        svc = _make_service_with_ticker(db)
+        req = VerifyScoreRequest(winner_uid="sc07c_winner", walkover=True)
+        svc.verify_score("sc07c_winner", "sc07c_match", req)
+        svc.verify_score("sc07c_loser", "sc07c_match", req)
+
+        events = _get_ticker_events(db)
+        assert len(events) == 0
