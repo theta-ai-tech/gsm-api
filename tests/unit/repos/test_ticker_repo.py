@@ -163,30 +163,53 @@ class TestAdd:
 
 
 class TestListByRegionSport:
-    def test_returns_non_expired_events(self):
-        repo, client = _make_repo()
-        now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
-        future_expiry = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    def _setup_query_mock(self, client: MagicMock, pages: list[list[MagicMock]]):
+        """Wire up the mock client so each loop iteration returns a page of docs.
 
+        ``pages`` is a list of lists — each inner list is returned by
+        ``stream()`` for one pagination pass.  After the last page an empty
+        list is returned to terminate the loop.
+        """
+        base_query = client.collection.return_value.where.return_value.where.return_value.order_by.return_value
+
+        # First call goes through limit(); subsequent ones also call start_after().
+        limit_mock = base_query.limit.return_value
+
+        page_iter = iter(pages + [[]])  # sentinel empty page
+        limit_mock.stream.side_effect = lambda: iter(next(page_iter))
+        limit_mock.start_after.return_value = limit_mock
+        return base_query
+
+    def _make_doc(
+        self,
+        doc_id: str,
+        *,
+        expires_at: datetime,
+        created_at: datetime | None = None,
+        event_type: str = "upset",
+    ) -> MagicMock:
         mock_doc = MagicMock()
-        mock_doc.id = "evt_1"
-        mock_doc.to_dict.return_value = {
-            "type": "upset",
+        mock_doc.id = doc_id
+        data: dict = {
+            "type": event_type,
             "sport": "tennis",
             "region": "athens",
-            "winnerUid": "user_789",
-            "winnerName": "Dana",
-            "loserTier": "advanced",
-            "delta": 200,
-            "createdAt": now,
-            "expiresAt": future_expiry,
+            "createdAt": created_at
+            or datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc),
+            "expiresAt": expires_at,
         }
+        if event_type == "upset":
+            data.update(
+                winnerUid="user_789", winnerName="Dana", loserTier="advanced", delta=200
+            )
+        mock_doc.to_dict.return_value = data
+        return mock_doc
 
-        query_mock = MagicMock()
-        query_mock.stream.return_value = [mock_doc]
-        (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
-        ) = query_mock
+    def test_returns_non_expired_events(self):
+        repo, client = _make_repo()
+        future = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        doc = self._make_doc("evt_1", expires_at=future)
+        self._setup_query_mock(client, [[doc]])
 
         results = repo.list_by_region_sport("athens", "tennis")
 
@@ -198,53 +221,39 @@ class TestListByRegionSport:
 
     def test_filters_out_expired_events(self):
         repo, client = _make_repo()
-        past_expiry = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-
-        mock_doc = MagicMock()
-        mock_doc.id = "evt_expired"
-        mock_doc.to_dict.return_value = {
-            "type": "upset",
-            "sport": "tennis",
-            "region": "athens",
-            "winnerUid": "user_1",
-            "winnerName": "A",
-            "loserTier": "advanced",
-            "createdAt": datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-            "expiresAt": past_expiry,
-        }
-
-        query_mock = MagicMock()
-        query_mock.stream.return_value = [mock_doc]
-        (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
-        ) = query_mock
+        past = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        doc = self._make_doc("evt_expired", expires_at=past)
+        self._setup_query_mock(client, [[doc]])
 
         results = repo.list_by_region_sport("athens", "tennis")
         assert results == []
 
     def test_returns_empty_list_when_no_docs(self):
         repo, client = _make_repo()
-
-        query_mock = MagicMock()
-        query_mock.stream.return_value = []
-        (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
-        ) = query_mock
+        self._setup_query_mock(client, [[]])
 
         results = repo.list_by_region_sport("unknown", "tennis")
-
         assert results == []
 
-    def test_over_fetches_by_3x(self):
+    def test_paginates_past_expired_events_to_fill_limit(self):
+        """When the first batch is all expired, the repo fetches the next page."""
         repo, client = _make_repo()
+        past = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        future = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
-        query_mock = MagicMock()
-        query_mock.stream.return_value = []
-        limit_mock = MagicMock(return_value=query_mock)
-        (
-            client.collection.return_value.where.return_value.where.return_value.order_by.return_value
-        ).limit = limit_mock
+        expired_docs = [self._make_doc(f"exp_{i}", expires_at=past) for i in range(5)]
+        live_doc = self._make_doc("live_1", expires_at=future)
+        self._setup_query_mock(client, [expired_docs, [live_doc]])
+
+        results = repo.list_by_region_sport("athens", "tennis", limit=1)
+
+        assert len(results) == 1
+        assert results[0].event_id == "live_1"
+
+    def test_initial_batch_size_is_3x_limit(self):
+        repo, client = _make_repo()
+        base_query = self._setup_query_mock(client, [[]])
 
         repo.list_by_region_sport("athens", "tennis", limit=5)
 
-        limit_mock.assert_called_once_with(15)
+        base_query.limit.assert_called_with(15)

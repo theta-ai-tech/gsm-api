@@ -60,22 +60,38 @@ class TickerRepo(RepoBase):
         limit: int = 20,
     ) -> list[TickerEvent]:
         now = datetime.now(tz=timezone.utc)
-        # Fetch ordered by createdAt DESC (the feed's true sort order) so the
-        # limit is applied to the *newest* events.  Expired events are filtered
-        # in memory afterwards.  We over-fetch by 3x so the final list still
-        # has enough entries after removing expired items.
-        over_fetch = limit * 3
-        query = (
+        # Fetch ordered by createdAt DESC (the feed's true sort order).
+        # Expired events are filtered in memory, so we paginate through
+        # batches until we have collected `limit` live events or the
+        # query is exhausted.
+        batch_size = limit * 3
+        base_query = (
             self.client.collection(_COLLECTION)
             .where("region", "==", region)
             .where("sport", "==", sport)
             .order_by("createdAt", direction=firestore.Query.DESCENDING)
-            .limit(over_fetch)
         )
+
         results: list[TickerEvent] = []
-        for doc in query.stream():
-            data = doc.to_dict() or {}
-            event = to_ticker_event(data, event_id=doc.id)
-            if event.expires_at > now:
-                results.append(event)
-        return results[:limit]
+        cursor: Any | None = None
+
+        while len(results) < limit:
+            page_query = base_query.limit(batch_size)
+            if cursor is not None:
+                page_query = page_query.start_after(cursor)
+
+            docs = list(page_query.stream())
+            if not docs:
+                break
+
+            for doc in docs:
+                data = doc.to_dict() or {}
+                event = to_ticker_event(data, event_id=doc.id)
+                if event.expires_at > now:
+                    results.append(event)
+                    if len(results) >= limit:
+                        break
+
+            cursor = docs[-1]
+
+        return results
