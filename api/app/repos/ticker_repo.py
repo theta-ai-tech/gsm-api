@@ -60,19 +60,22 @@ class TickerRepo(RepoBase):
         limit: int = 20,
     ) -> list[TickerEvent]:
         now = datetime.now(tz=timezone.utc)
+        # Fetch ordered by createdAt DESC (the feed's true sort order) so the
+        # limit is applied to the *newest* events.  Expired events are filtered
+        # in memory afterwards.  We over-fetch by 3x so the final list still
+        # has enough entries after removing expired items.
+        over_fetch = limit * 3
         query = (
             self.client.collection(_COLLECTION)
             .where("region", "==", region)
             .where("sport", "==", sport)
-            .where("expiresAt", ">", now)
-            .order_by("expiresAt", direction=firestore.Query.ASCENDING)
             .order_by("createdAt", direction=firestore.Query.DESCENDING)
-            .limit(limit)
+            .limit(over_fetch)
         )
         results: list[TickerEvent] = []
         for doc in query.stream():
             data = doc.to_dict() or {}
-            results.append(to_ticker_event(data, event_id=doc.id))
-        # Re-sort by createdAt DESC since Firestore requires expiresAt as primary sort
-        results.sort(key=lambda e: e.created_at, reverse=True)
-        return results
+            event = to_ticker_event(data, event_id=doc.id)
+            if event.expires_at > now:
+                results.append(event)
+        return results[:limit]

@@ -163,10 +163,10 @@ class TestAdd:
 
 
 class TestListByRegionSport:
-    def test_returns_events(self):
+    def test_returns_non_expired_events(self):
         repo, client = _make_repo()
         now = datetime(2026, 3, 1, 14, 30, 0, tzinfo=timezone.utc)
-        expires = datetime(2026, 3, 2, 14, 30, 0, tzinfo=timezone.utc)
+        future_expiry = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
         mock_doc = MagicMock()
         mock_doc.id = "evt_1"
@@ -179,13 +179,13 @@ class TestListByRegionSport:
             "loserTier": "advanced",
             "delta": 200,
             "createdAt": now,
-            "expiresAt": expires,
+            "expiresAt": future_expiry,
         }
 
         query_mock = MagicMock()
         query_mock.stream.return_value = [mock_doc]
         (
-            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value.limit.return_value
+            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
         ) = query_mock
 
         results = repo.list_by_region_sport("athens", "tennis")
@@ -196,29 +196,55 @@ class TestListByRegionSport:
         assert results[0].sport == SportEnum.TENNIS
         client.collection.assert_called_once_with("ticker")
 
+    def test_filters_out_expired_events(self):
+        repo, client = _make_repo()
+        past_expiry = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+        mock_doc = MagicMock()
+        mock_doc.id = "evt_expired"
+        mock_doc.to_dict.return_value = {
+            "type": "upset",
+            "sport": "tennis",
+            "region": "athens",
+            "winnerUid": "user_1",
+            "winnerName": "A",
+            "loserTier": "advanced",
+            "createdAt": datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+            "expiresAt": past_expiry,
+        }
+
+        query_mock = MagicMock()
+        query_mock.stream.return_value = [mock_doc]
+        (
+            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
+        ) = query_mock
+
+        results = repo.list_by_region_sport("athens", "tennis")
+        assert results == []
+
     def test_returns_empty_list_when_no_docs(self):
         repo, client = _make_repo()
 
         query_mock = MagicMock()
         query_mock.stream.return_value = []
         (
-            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value.limit.return_value
+            client.collection.return_value.where.return_value.where.return_value.order_by.return_value.limit.return_value
         ) = query_mock
 
         results = repo.list_by_region_sport("unknown", "tennis")
 
         assert results == []
 
-    def test_respects_limit_parameter(self):
+    def test_over_fetches_by_3x(self):
         repo, client = _make_repo()
 
         query_mock = MagicMock()
         query_mock.stream.return_value = []
         limit_mock = MagicMock(return_value=query_mock)
         (
-            client.collection.return_value.where.return_value.where.return_value.where.return_value.order_by.return_value.order_by.return_value
+            client.collection.return_value.where.return_value.where.return_value.order_by.return_value
         ).limit = limit_mock
 
         repo.list_by_region_sport("athens", "tennis", limit=5)
 
-        limit_mock.assert_called_once_with(5)
+        limit_mock.assert_called_once_with(15)
