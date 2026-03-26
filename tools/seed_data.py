@@ -25,6 +25,9 @@ from app.models import (
     PrivateUserProfile,
     PublicUserProfile,
     RisingStarEntry,
+    ScoutingProfile,
+    ScoutingSportData,
+    ScoutingTagCount,
     SetScore,
     SkillAxisData,
     SkillTaxonomy,
@@ -754,6 +757,71 @@ TIER_AVERAGES: dict[str, dict[str, dict[str, int]]] = {
         "pickleball": {"serve": 87, "power": 82, "net_play": 89, "stamina": 86, "mental": 85},
     },
 }
+
+# --- Scouting profiles (scouting/{uid}) ---
+# Pre-populated opponent-sourced scouting data for sample users.
+# Tags align with the skill taxonomy axes (serve, power, net_play, stamina, mental).
+SCOUTING_IGNATIOS = ScoutingProfile(
+    uid="user_ignatios",
+    padel=ScoutingSportData(
+        weak={
+            "serve": ScoutingTagCount(count=3, last_reported=utc(2026, 2, 18)),
+            "stamina": ScoutingTagCount(count=2, last_reported=utc(2026, 2, 10)),
+        },
+        strong={
+            "net_play": ScoutingTagCount(count=5, last_reported=utc(2026, 2, 20)),
+            "mental": ScoutingTagCount(count=3, last_reported=utc(2026, 2, 15)),
+        },
+        total_reports=4,
+        unique_reporters=2,
+        last_updated=utc(2026, 2, 20),
+    ),
+    tennis=ScoutingSportData(
+        weak={
+            "net_play": ScoutingTagCount(count=2, last_reported=utc(2026, 2, 12)),
+        },
+        strong={
+            "stamina": ScoutingTagCount(count=3, last_reported=utc(2026, 2, 15)),
+        },
+        total_reports=3,
+        unique_reporters=2,
+        last_updated=utc(2026, 2, 15),
+    ),
+)
+
+SCOUTING_ALICE = ScoutingProfile(
+    uid="user_alice",
+    tennis=ScoutingSportData(
+        weak={
+            "mental": ScoutingTagCount(count=2, last_reported=utc(2026, 2, 16)),
+        },
+        strong={
+            "serve": ScoutingTagCount(count=4, last_reported=utc(2026, 2, 18)),
+            "power": ScoutingTagCount(count=3, last_reported=utc(2026, 2, 14)),
+        },
+        total_reports=3,
+        unique_reporters=1,
+        last_updated=utc(2026, 2, 18),
+    ),
+)
+
+SCOUTING_BOB = ScoutingProfile(
+    uid="user_bob",
+    padel=ScoutingSportData(
+        weak={
+            "stamina": ScoutingTagCount(count=4, last_reported=utc(2026, 2, 8)),
+            "serve": ScoutingTagCount(count=2, last_reported=utc(2026, 1, 28)),
+        },
+        strong={
+            "power": ScoutingTagCount(count=3, last_reported=utc(2026, 2, 10)),
+        },
+        total_reports=3,
+        unique_reporters=2,
+        last_updated=utc(2026, 2, 10),
+    ),
+)
+
+SAMPLE_SCOUTING_PROFILES = [SCOUTING_IGNATIOS, SCOUTING_ALICE, SCOUTING_BOB]
 
 # --- Ticker events (ticker/{auto-id}) ---
 # Sample ticker events for the Global Upsets feed.

@@ -18,6 +18,9 @@ from app.models import (
     PointHistoryEntry,
     PrivateUserProfile,
     RisingStarEntry,
+    ScoutingProfile,
+    ScoutingSportData,
+    ScoutingTagCount,
     SetScore,
     SkillAxisData,
     SkillTaxonomy,
@@ -386,4 +389,32 @@ def ticker_event_to_firestore_doc(event: TickerEvent) -> Dict[str, Any]:
         doc["tierAfter"] = event.tier_after.value
     if event.direction is not None:
         doc["direction"] = event.direction
+    return doc
+
+
+def _scouting_tag_count_to_dict(tag: ScoutingTagCount) -> Dict[str, Any]:
+    return {
+        "count": tag.count,
+        "lastReported": tag.last_reported,
+    }
+
+
+def _scouting_sport_data_to_dict(data: ScoutingSportData) -> Dict[str, Any]:
+    return {
+        "weak": {k: _scouting_tag_count_to_dict(v) for k, v in data.weak.items()},
+        "strong": {k: _scouting_tag_count_to_dict(v) for k, v in data.strong.items()},
+        "totalReports": data.total_reports,
+        "uniqueReporters": data.unique_reporters,
+        "lastUpdated": data.last_updated,
+    }
+
+
+def scouting_profile_to_firestore_doc(profile: ScoutingProfile) -> Dict[str, Any]:
+    doc: Dict[str, Any] = {"uid": profile.uid}
+    if profile.tennis is not None:
+        doc["tennis"] = _scouting_sport_data_to_dict(profile.tennis)
+    if profile.padel is not None:
+        doc["padel"] = _scouting_sport_data_to_dict(profile.padel)
+    if profile.pickleball is not None:
+        doc["pickleball"] = _scouting_sport_data_to_dict(profile.pickleball)
     return doc
