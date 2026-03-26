@@ -608,6 +608,9 @@ class TestUpsetTickerCreation:
 
     @pytest.fixture(autouse=True)
     def _cleanup_ticker_and_config(self, db):
+        # Pre-test: wipe any ticker docs left over from previous tests or seeding
+        for doc in db.collection("ticker").stream():
+            doc.reference.delete()
         yield
         for doc in db.collection("ticker").stream():
             doc.reference.delete()
