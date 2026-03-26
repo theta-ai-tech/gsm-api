@@ -19,6 +19,7 @@ from tools.seed_data import (
     SAMPLE_LEAGUES,
     SAMPLE_MATCHES,
     SAMPLE_POINT_HISTORY,
+    SAMPLE_SCOUTING_PROFILES,
     SAMPLE_TICKER_EVENTS,
     SAMPLE_USERS,
     SKILL_TAXONOMY,
@@ -33,6 +34,7 @@ from tools.seed_mapping import (
     match_to_firestore_doc,
     point_history_entry_to_firestore_doc,
     region_config_to_firestore_doc,
+    scouting_profile_to_firestore_doc,
     skill_taxonomy_to_firestore_doc,
     ticker_event_to_firestore_doc,
     tier_averages_to_firestore_doc,
@@ -91,6 +93,11 @@ def seed_all(client: firestore.Client) -> None:
         doc_ref = client.collection("leaderboards").document(doc_id)
         doc_ref.set(leaderboard_snapshot_to_firestore_doc(snapshot))
 
+    # Scouting profiles
+    for profile in SAMPLE_SCOUTING_PROFILES:
+        doc_ref = client.collection("scouting").document(profile.uid)
+        doc_ref.set(scouting_profile_to_firestore_doc(profile))
+
     # Config documents
     client.collection("config").document("tiers").set(
         tier_config_to_firestore_doc(TIER_CONFIG)
@@ -147,6 +154,7 @@ def main() -> None:
         f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
         f"{total_ph} point history entries, "
         f"{len(SAMPLE_LEADERBOARDS)} leaderboard snapshots, "
+        f"{len(SAMPLE_SCOUTING_PROFILES)} scouting profiles, "
         f"{len(SAMPLE_TICKER_EVENTS)} ticker events, "
         f"1 tier config, "
         f"1 skill taxonomy, "
