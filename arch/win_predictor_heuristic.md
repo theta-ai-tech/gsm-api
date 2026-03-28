@@ -68,13 +68,14 @@ An ML model is premature for three reasons:
 
 ### Overview
 
-The win predictor adjusts the base sigmoid probability with a bounded additive term derived from training relevance:
+The win predictor computes a **preparation bonus** — a separate signal alongside the unchanged base win probability. The bonus reflects how well a user's recent training targets their opponent's known weaknesses:
 
 ```
-preparation_bonus = training_adjustment    # 0.0 to MAX_ADJUSTMENT (0.05)
+win_probability    = 1 / (1 + 10^(-point_diff / 1000))   # unchanged sigmoid
+preparation_bonus  = min(1.0, raw_relevance / 3.0) * 0.05 # 0.0 to 0.05
 ```
 
-Where `training_adjustment` is in the range `[0, MAX_ADJUSTMENT]` with `MAX_ADJUSTMENT = 0.05` (5 percentage points).
+The `preparation_bonus` is in the range `[0, MAX_ADJUSTMENT]` with `MAX_ADJUSTMENT = 0.05` (5 percentage points). It is returned as a separate field on the rivalry response, never added to `win_probability`.
 
 ### Step 1: Compute base probability (existing)
 
@@ -307,18 +308,16 @@ All required data already exists in production. No new collections or fields are
 
 ## V. Integration with Existing Code
 
-### Where the adjustment lives
+### Where the computation lives
 
-The adjustment is implemented as a new pure function in `api/app/services/scoring_service.py` alongside the existing `win_probability()` function:
+The preparation bonus is implemented as a new pure function in `api/app/services/scoring_service.py` alongside the existing `win_probability()` function:
 
 ```python
-def adjusted_win_probability(
-    my_pts: int,
-    opponent_pts: int,
+def compute_preparation_bonus(
     training_sessions: list[TrainingSession],
     opponent_weaknesses: dict[str, int],  # tag -> count
     now: datetime | None = None,
-) -> AdjustedWinProbability:
+) -> PreparationBonus:
     ...
 ```
 
@@ -331,35 +330,35 @@ class TrainingSession:
     created_at: datetime
 ```
 
-And the return type includes both the base and adjusted values for the UI:
+And the return type:
 
 ```python
 @dataclass(frozen=True, slots=True)
-class AdjustedWinProbability:
-    base: float           # original sigmoid probability
-    adjusted: float       # after training recency weighting
-    adjustment: float     # delta (adjusted - base)
-    training_sessions_used: int  # how many sessions contributed
+class PreparationBonus:
+    bonus: float                  # 0.0 to MAX_ADJUSTMENT (0.05)
+    relevant_sessions: int        # how many sessions matched opponent weaknesses
+    matched_weaknesses: list[str] # which opponent weakness tags were targeted
+    recency_weighted_score: float # raw relevance score before normalization
 ```
 
 ### Endpoint changes
 
-The `GET /me/lab/rivalry/{opponent_uid}` endpoint currently returns `win_probability: float`. This would be extended to include the adjustment breakdown:
+The `GET /me/lab/rivalry/{opponent_uid}` endpoint currently returns `win_probability: float`. The `win_probability` field remains the **pure sigmoid** (unchanged). A new `preparation_bonus` field is added alongside it:
 
 ```python
-class WinProbabilityDetail(GsmBaseModel):
-    base: float
-    adjusted: float
-    training_boost: float
-    training_sessions_used: int
+class PreparationDetail(GsmBaseModel):
+    relevant_sessions: int
+    matched_weaknesses: list[str]
+    recency_weighted_score: float
 
 class RivalryResponse(GsmBaseModel):
     # ... existing fields ...
-    win_probability: float             # backward compat: returns adjusted value
-    win_probability_detail: WinProbabilityDetail | None = None  # new, optional
+    win_probability: float                          # pure sigmoid, unchanged
+    preparation_bonus: float = 0.0                  # 0.0–0.05 training edge signal
+    preparation_detail: PreparationDetail | None = None  # breakdown for UI
 ```
 
-The top-level `win_probability` field continues to return a single float (now the adjusted value) for backward compatibility. The new `win_probability_detail` field provides the breakdown for clients that want to display it.
+The `win_probability` field is never modified by the training heuristic — it always reflects the pure point-based sigmoid and sums to 100% across both players. The `preparation_bonus` is a separate confidence signal for the mobile client to display independently (e.g., "Your preparation gives you an edge").
 
 ### Endpoint data flow
 
@@ -444,12 +443,12 @@ WIN_PREDICTOR_MAX_SESSIONS = 20           # max training sessions to consider
 ### Phase 4a: Core heuristic (this issue)
 
 1. Add `TRAINING_TO_WEAKNESS_MAP` constant and `WIN_PREDICTOR_*` constants to `constants.py`.
-2. Add `TrainingSession` and `AdjustedWinProbability` dataclasses to `scoring_service.py`.
-3. Implement `compute_training_adjustment()` pure function in `scoring_service.py`.
-4. Add `list_recent_training()` repo method to `journal_repo.py`.
+2. Add `TrainingSession` and `PreparationBonus` dataclasses to `scoring_service.py`.
+3. Implement `compute_preparation_bonus()` pure function in `scoring_service.py`.
+4. Add `list_recent_training()` repo method to `journal_repo.py` (with soft-delete filtering).
 5. Add Firestore composite index for the new query.
-6. Update `get_rivalry()` endpoint to call the adjustment function.
-7. Add `WinProbabilityDetail` to the `RivalryResponse`.
+6. Update `get_rivalry()` endpoint to call the preparation bonus function.
+7. Add `preparation_bonus` and `PreparationDetail` to the `RivalryResponse` (`win_probability` stays unchanged).
 8. Unit tests for the pure function (edge cases, boundary values, examples from this doc).
 9. Integration test for the rivalry endpoint with seeded training and scouting data.
 
@@ -513,18 +512,19 @@ users/{uid}
     |         trainingFocus: [...]   ------+  |
     |         createdAt: ...               |  |
     |                                      v  v
-    +-- skillDna.{sport}       compute_training_adjustment() [new]
+    +-- skillDna.{sport}       compute_preparation_bonus() [new]
                                            |
 scouting/{opponentUid}                     |
     +-- {sport}.weak: {tag: count} --------+
                                            |
                                            v
-                               adjusted_win_probability [new]
+                               PreparationBonus [new]
                                            |
                                            v
                           GET /me/lab/rivalry/{opponent_uid}
-                                  RivalryResponse.win_probability
-                                  RivalryResponse.win_probability_detail
+                                  RivalryResponse.win_probability  (pure sigmoid, unchanged)
+                                  RivalryResponse.preparation_bonus (new, separate signal)
+                                  RivalryResponse.preparation_detail (new, breakdown)
 ```
 
 No new Firestore collections are introduced. No new triggers are needed. The feature is entirely compute-on-read, consistent with the existing rivalry endpoint's architecture.
@@ -535,7 +535,7 @@ No new Firestore collections are introduced. No new triggers are needed. The fea
 
 ### Logging
 
-The `adjusted_win_probability` function should log at `DEBUG` level:
+The `compute_preparation_bonus` function should log at `DEBUG` level:
 - Number of training sessions found in the window
 - Number of sessions that matched opponent weaknesses
 - Raw relevance score
