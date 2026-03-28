@@ -433,7 +433,7 @@ WIN_PREDICTOR_MAX_SESSIONS = 20           # max training sessions to consider
 | **Opponent has only "strong" tags, no "weak"** | No weakness tags to match against. Adjustment = 0. |
 | **Multiple training focuses in one session** | Each focus pill is checked against weakness tags. One match is enough for `session_match = 1`. Multiple matches in the same session do not double-count (binary match per session). |
 | **Same weakness matched by multiple sessions** | Each session contributes independently. Three sessions targeting the same weakness all count (with recency weighting). This rewards sustained, focused preparation. |
-| **Very high base probability (>95%)** | Adjustment is additive but clamped at 0.99. A 97% base + 5pp cap = 0.99 (clamped). The feature does not create false certainty. |
+| **Very high base probability (>95%)** | `preparation_bonus` is computed independently (0.0–0.05) regardless of base probability. Since it is a separate signal and not added to `win_probability`, no clamping is needed. The UI may choose to suppress the bonus display when `win_probability` is already very high. |
 | **Daylight saving / timezone edge** | All timestamps are UTC. `days_since` computed from UTC datetimes. No timezone ambiguity. |
 
 ---
