@@ -505,7 +505,7 @@ dangerZone/{uid} (new -- aggregated patterns)
 ### Phase 4a: Data collection layer
 
 - Add `matchAnalysis` collection, Pydantic models, repo, and mapper.
-- Add `POST /matches/{matchId}/analysis` and `GET /matches/{matchId}/analysis` endpoints.
+- Add `POST /me/matches/{matchId}/analysis` and `GET /me/matches/{matchId}/analysis` endpoints (owner-scoped — see privacy model in section III).
 - Integrate analysis form into post-match reflection flow (mobile).
 - No pattern detection yet -- just collecting data.
 
