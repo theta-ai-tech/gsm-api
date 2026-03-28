@@ -2,6 +2,10 @@
 
 Architecture document for the "Danger Zone" feature (Phase 4, Tab 3 - THE LAB). This feature identifies specific point-level patterns where a user loses to a particular opponent, enabling insights like "You lose 70% of points when the rally goes over 6 shots."
 
+> **Scope**: This document covers **singles matches only**. Doubles matches (4 participants) use a different `participantPair` model (`None` for >2 UIDs) and require separate design work for team-level pattern aggregation. See #200 for doubles extension.
+>
+> **Known open items**: #198 (taxonomy v2 extension for tags), #199 (Firestore index fix for dynamic map keys), #200 (doubles semantics), #201 (privacy boundary for GET endpoint).
+
 ---
 
 ## I. Open Questions Analysis
@@ -140,7 +144,7 @@ One document per completed match, created during the post-match reflection flow.
 | `dominantPlayStyle` | string (enum) | No | `baseline`, `net_approach`, `all_court`, `defensive` | Primary style of play this set |
 | `turningPoint` | string (enum) | No | `broke_serve_early`, `broke_serve_late`, `lost_tiebreak`, `won_tiebreak`, `service_run`, `none` | Key turning point of the set |
 | `energyLevel` | string (enum) | No | `high`, `medium`, `low` | Perceived energy/fitness level |
-| `tags` | array[string] | No | Skill taxonomy tags | Free-form tags using existing taxonomy |
+| `tags` | array[string] | No | Skill taxonomy tags | Tags from skill taxonomy (**Note**: several example tags in this doc are not in the current v1 taxonomy — see #198 for the taxonomy v2 extension plan) |
 
 ### D. Field definitions: `keyMoments[]`
 
@@ -286,10 +290,14 @@ Journal entry saved + matchAnalysis/{matchId} created
 
 | Method | Path | Purpose | Phase |
 |--------|------|---------|-------|
-| POST | `/matches/{matchId}/analysis` | Submit match analysis (creates or updates `matchAnalysis/{matchId}`) | P4 |
-| GET | `/matches/{matchId}/analysis` | Retrieve match analysis (both participants' views) | P4 |
+| POST | `/me/matches/{matchId}/analysis` | Submit match analysis (creates or updates `matchAnalysis/{matchId}`) | P4 |
+| GET | `/me/matches/{matchId}/analysis` | Retrieve requesting user's own analysis only (see #201 — opponent analysis is never exposed raw; it feeds `dangerZone` aggregates only) | P4 |
 | GET | `/me/lab/danger-zone/{opponentUid}?sport=tennis` | Danger Zone patterns for a specific opponent | P4 |
 | GET | `/me/lab/danger-zone?sport=tennis` | Global Danger Zone patterns (cross-opponent) | P4 |
+
+### Privacy model
+
+Match analysis follows the same privacy boundary as Tab 2 journal reflections: **owner-only**. A user's raw annotations, key moments, and subjective notes are never visible to their opponent. Opponent analysis data is only surfaced through aggregated, anonymized patterns in the `dangerZone/{uid}` collection — the same model used by `scouting/{uid}` (counts only, no reporter identity).
 
 ### Data volume considerations
 
@@ -388,7 +396,7 @@ These enhancements do not change the data model -- they consume the same `matchA
 
 | Collection | Purpose | Write trigger |
 |------------|---------|---------------|
-| `matchAnalysis/{matchId}` | Per-match structured annotations from participants | User submits via `POST /matches/{matchId}/analysis` |
+| `matchAnalysis/{matchId}` | Per-match structured annotations from participants | User submits via `POST /me/matches/{matchId}/analysis` |
 | `dangerZone/{uid}` | Aggregated pattern profiles per user | Trigger on `matchAnalysis` writes |
 
 ### New indexes
@@ -396,7 +404,7 @@ These enhancements do not change the data model -- they consume the same `matchA
 | Collection | Fields | Purpose |
 |------------|--------|---------|
 | `matchAnalysis` | `participantPair ASC, createdAt DESC` | Query all analyses for a H2H pair |
-| `matchAnalysis` | `sport ASC, analyses.{uid}.submittedAt DESC` | Query user's recent analyses |
+| `matchAnalysis` | ⚠️ **Needs redesign** — see #199. The original `sport ASC, analyses.{uid}.submittedAt DESC` is invalid because `{uid}` is a dynamic map key. Likely fix: add `participantUids: array` and use `array-contains` + `createdAt DESC`. | Query user's recent analyses |
 
 ### New enums
 
