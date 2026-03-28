@@ -71,7 +71,7 @@ An ML model is premature for three reasons:
 The win predictor adjusts the base sigmoid probability with a bounded additive term derived from training relevance:
 
 ```
-adjusted_prob = clamp(base_prob + training_adjustment, 0.01, 0.99)
+preparation_bonus = training_adjustment    # 0.0 to MAX_ADJUSTMENT (0.05)
 ```
 
 Where `training_adjustment` is in the range `[0, MAX_ADJUSTMENT]` with `MAX_ADJUSTMENT = 0.05` (5 percentage points).
@@ -151,20 +151,41 @@ The saturation threshold prevents users who log 10 training sessions from gettin
 ### Step 7: Apply adjustment
 
 ```
-adjusted_prob = clamp(base_prob + training_adjustment, 0.01, 0.99)
+preparation_bonus = training_adjustment    # 0.0 to MAX_ADJUSTMENT (0.05)
 ```
 
-The adjustment is **additive and one-sided**: it only benefits the requesting user based on their own training. The opponent's training data is not factored in (the opponent would see their own adjustment when they query the rivalry endpoint). This is both a privacy decision (you should not see how much your opponent trained) and a simplicity decision.
+**Important: the training adjustment is NOT applied to `win_probability`.** Because the adjustment is one-sided (computed from the requesting user's training only), both players could see boosted probabilities that sum to more than 100%, which breaks probability semantics. Computing a bilateral adjustment would require reading the opponent's training data, violating the privacy model.
+
+Instead, the adjustment is exposed as a **separate field** on the rivalry response:
+
+```json
+{
+  "win_probability": 0.33,
+  "preparation_bonus": 0.05,
+  "preparation_detail": {
+    "relevant_sessions": 3,
+    "matched_weaknesses": ["backhand"],
+    "recency_weighted_score": 2.4
+  }
+}
+```
+
+- `win_probability` remains the pure sigmoid based on point difference (unchanged, always sums to 100% across both players)
+- `preparation_bonus` is the one-sided training adjustment (0.0–0.05) — a confidence signal, not a probability correction
+- `preparation_detail` gives the user insight into what drove the bonus
+
+The mobile client can display this as "Your preparation gives you an edge" or similar, without corrupting the core probability display.
 
 ### Complete formula summary
 
 ```
-adjusted_prob = clamp(
-    base_prob + min(1.0, sum(recency_i * match_i) / 3.0) * 0.05,
-    0.01,
-    0.99
-)
+win_probability = 1 / (1 + 10^(-point_diff / 1000))    # unchanged sigmoid
+
+preparation_bonus = min(1.0, sum(recency_i * match_i) / 3.0) * 0.05
+                                                         # separate signal, 0.0–0.05
 ```
+
+Note: `preparation_bonus` is returned as a separate field, NOT added to `win_probability`. See Step 7 above for rationale.
 
 ---
 
@@ -190,10 +211,10 @@ Session 3 (6 days ago):  recency = (7-6)/7 = 0.14,  match = 0  -> score = 0.00
 raw_relevance   = 0.71 + 0.43 + 0.00 = 1.14
 normalized      = min(1.0, 1.14 / 3.0) = 0.38
 adjustment      = 0.38 * 0.05 = 0.019
-adjusted_prob   = clamp(0.24 + 0.019, 0.01, 0.99) = 0.26
+preparation_bonus = 0.019 (≈ 2pp)
 ```
 
-**Result:** 24% -> 26%. A modest but visible improvement reflecting targeted preparation.
+**Result:** `win_probability` stays at 24%, `preparation_bonus` = 0.02. The UI can show: "Your recent backhand training gives you a slight edge."
 
 ### Example 2: Heavy training, all relevant
 
@@ -217,10 +238,10 @@ Session 4 (3 days): recency = 0.57, match = 1 -> 0.57
 raw_relevance   = 1.00 + 0.86 + 0.71 + 0.57 = 3.14
 normalized      = min(1.0, 3.14 / 3.0) = 1.0
 adjustment      = 1.0 * 0.05 = 0.05
-adjusted_prob   = clamp(0.50 + 0.05, 0.01, 0.99) = 0.55
+preparation_bonus = 0.05 (5pp — max)
 ```
 
-**Result:** 50% -> 55%. Maximum adjustment achieved through sustained, targeted training.
+**Result:** `win_probability` stays at 50%, `preparation_bonus` = 0.05 (maximum). The UI shows: "Your preparation gives you a strong edge — you've been training exactly against their weaknesses."
 
 ### Example 3: Training with no scouting data
 
@@ -234,10 +255,10 @@ adjusted_prob   = clamp(0.50 + 0.05, 0.01, 0.99) = 0.55
 ```
 No opponent weakness tags -> all session_match = 0 -> raw_relevance = 0
 adjustment = 0
-adjusted_prob = 0.61
+preparation_bonus = 0.0
 ```
 
-**Result:** 61% -> 61%. No adjustment. The feature degrades gracefully when scouting data is unavailable. The UI can display: "Train against your opponent's weaknesses to boost your win probability. Ask the community to scout them!"
+**Result:** `win_probability` = 61%, `preparation_bonus` = 0.0. No bonus. The UI can display: "Train against your opponent's weaknesses to earn a preparation edge. Ask the community to scout them!"
 
 ### Example 4: Training but not relevant to opponent
 
@@ -252,10 +273,10 @@ adjusted_prob = 0.61
 "serve" does not map to "stamina_set3" -> all session_match = 0
 raw_relevance = 0
 adjustment = 0
-adjusted_prob = 0.50
+preparation_bonus = 0.0
 ```
 
-**Result:** 50% -> 50%. Training on serve does not help against an opponent whose weakness is stamina. The UI can hint: "Your opponent's known weakness is late-set stamina. Consider cardio or footwork training."
+**Result:** `win_probability` = 50%, `preparation_bonus` = 0.0. Training on serve doesn't help against an opponent whose weakness is stamina. The UI can hint: "Your opponent's known weakness is late-set stamina. Consider cardio or footwork training."
 
 ---
 
@@ -358,13 +379,13 @@ GET /me/lab/rivalry/{opponent_uid}?sport=tennis
 4. [NEW] Fetch opponent scouting profile (scouting_repo, already fetched nearby)
     |
     v
-5. [NEW] Compute adjusted_prob = adjusted_win_probability(...)
+5. [NEW] Compute preparation_bonus = compute_preparation_bonus(...)
     |
     v
-6. Return RivalryResponse with adjusted probability
+6. Return RivalryResponse with win_probability (unchanged) + preparation_bonus (new field)
 ```
 
-Steps 3-5 are the only additions. Step 3 requires a new repo method on the journal repo to query recent training entries. Step 4 uses the existing `scouting_repo.get_profile()`. Step 5 is a pure function with no I/O.
+Steps 3-5 are the only additions. Step 3 requires a new repo method on the journal repo to query recent training entries. Step 4 uses the existing `scouting_repo.get_profile()`. Step 5 is a pure function with no I/O. The `win_probability` field remains the pure sigmoid — `preparation_bonus` is a separate field.
 
 ### New repo method needed
 
@@ -382,6 +403,8 @@ This queries `users/{uid}/journalEntries` with:
 - `createdAt >= since`
 - `order by createdAt DESC`
 - `limit`
+
+**Soft-delete filtering**: Journal entries support soft deletion (`isDeleted` / `deletedAt` fields). The query must either add `isDeleted == false` as a filter condition (requires composite index update) or the repo method must filter deleted entries after reading. The latter is simpler given the small result set (max 20 entries in a 7-day window) and avoids an additional composite index.
 
 A composite index on `(entryType ASC, sport ASC, createdAt DESC)` is required.
 
@@ -536,8 +559,8 @@ These can be promoted to `config/winPredictor` (Firestore config document) in a 
 ### Success metrics
 
 The feature is successful if:
-1. Users who receive a positive adjustment win at a rate closer to the adjusted probability than the base probability.
-2. The adjustment is non-zero for at least 20% of rivalry queries (indicating sufficient training + scouting data coverage).
-3. No user reports the adjusted probability as "feeling wrong" in feedback (qualitative signal).
+1. Users who receive a positive `preparation_bonus` win at a rate higher than those who don't, after controlling for the base `win_probability`.
+2. The bonus is non-zero for at least 20% of rivalry queries (indicating sufficient training + scouting data coverage).
+3. No user reports the preparation bonus as "feeling wrong" in feedback (qualitative signal).
 
-Metric 1 requires tracking: for each rivalry query where adjustment > 0, log the (adjusted_prob, base_prob, actual_outcome) triple. After 200+ data points, compute calibration error for both probabilities.
+Metric 1 requires tracking: for each rivalry query where `preparation_bonus > 0`, log the `(preparation_bonus, win_probability, actual_outcome)` triple. After 200+ data points, compute whether the bonus correlates with win rate uplift.
