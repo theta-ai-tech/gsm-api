@@ -107,10 +107,10 @@ Static content collection containing the drill catalogue. Drills are sport-tagge
 | `drillId` | string | Yes | Stable identifier, used as document ID |
 | `title` | string | Yes | Short drill name (max 80 chars) |
 | `description` | string | Yes | Drill instructions (max 500 chars) |
-| `sport` | string (enum) | Yes | `tennis`, `padel`, `pickleball`, or `universal` |
+| `sport` | string (enum) | Yes | One of `SportEnum` (`tennis`, `padel`, `pickleball`) or `universal`. **Note:** `universal` is a drill-only value not present in `SportEnum`. The filtering logic treats it as matching any sport — see Step 1 in section III. A `DrillSportEnum` extending `SportEnum` with `universal` should be defined in `models/`. |
 | `axis` | string (enum) | Yes | Primary Skill DNA axis: `serve`, `power`, `net_play`, `stamina`, `mental` |
 | `tags` | array[string] | Yes | Scouting/taxonomy tags this drill addresses (from `config/skillTaxonomy.tagMap`) |
-| `difficulty` | string (enum) | Yes | `beginner`, `intermediate`, `advanced`, `competitive` (aligns with `TierEnum`) |
+| `difficulty` | string (enum) | Yes | `DrillDifficultyEnum`: `beginner`, `intermediate`, `advanced`, `competitive`. **Note:** This is a new drill-specific enum, *not* `TierEnum` (`amateur`, `intermediate`, `advanced`, `competitive`). The one-tier-adjacent filtering maps user tiers to drill difficulties: `amateur` → sees `beginner` + `intermediate`; `intermediate` → sees `beginner` + `intermediate` + `advanced`; `advanced` → sees `intermediate` + `advanced` + `competitive`; `competitive` → sees `advanced` + `competitive`. |
 | `durationMinutes` | int | Yes | Estimated duration (10-60 range) |
 | `equipment` | array[string] | No | Required equipment beyond standard (e.g., `["targets", "cones"]`) |
 | `playerCount` | int | Yes | Minimum players needed (1 = solo drill, 2 = partner required) |
@@ -211,30 +211,39 @@ recommend_drills(
 From the full drill catalogue, filter to:
 - `sport` matches the requested sport OR `sport == "universal"`
 - `isActive == true`
-- `difficulty` is within one tier of the user's current tier (e.g., an intermediate player sees beginner, intermediate, and advanced drills — not competitive)
+- `difficulty` is within one tier of the user's tier, using the tier-to-difficulty mapping: `amateur` → `beginner` + `intermediate`; `intermediate` → `beginner` + `intermediate` + `advanced`; `advanced` → `intermediate` + `advanced` + `competitive`; `competitive` → `advanced` + `competitive`
 
-The one-tier-adjacent rule prevents beginners from seeing drills they cannot execute and competitive players from seeing drills too basic to be useful.
+The tier-to-difficulty mapping bridges `TierEnum` (user tiers) to `DrillDifficultyEnum` (drill difficulties). This prevents beginners from seeing drills they cannot execute and competitive players from seeing drills too basic to be useful.
 
 ### Step 2: Compute weakness scores
 
-Extract the user's Skill DNA and identify weak axes:
+Extract the user's Skill DNA and identify weak axes. Axes may be `None` (insufficient data — fewer than 3 reflections for that axis). Missing axes are assigned a neutral need score of 0.50 so that drills targeting them appear mid-rank rather than being hidden or over-prioritised.
 
 ```python
 WEAKNESS_THRESHOLD = 50  # axes scoring below this are "weak"
+DEFAULT_AXIS_NEED = 0.50 # neutral need for axes with insufficient data
 
-axis_scores = {
-    "serve": skill_dna.serve.score,
-    "power": skill_dna.power.score,
-    "net_play": skill_dna.net_play.score,
-    "stamina": skill_dna.stamina.score,
-    "mental": skill_dna.mental.score,
-}
+ALL_AXES = ["serve", "power", "net_play", "stamina", "mental"]
+
+axis_scores = {}
+for axis_name in ALL_AXES:
+    axis_obj = getattr(skill_dna, axis_name, None)  # SportSkillDna axes are nullable
+    if axis_obj is not None and axis_obj.score is not None:
+        axis_scores[axis_name] = axis_obj.score
+    else:
+        axis_scores[axis_name] = None  # insufficient data
 
 # Invert scores: lower skill = higher need = higher weight
-axis_need = {axis: max(0, 100 - score) / 100.0 for axis, score in axis_scores.items()}
+# Missing axes get DEFAULT_AXIS_NEED (0.50) — mid-rank, neither prioritised nor hidden
+axis_need = {
+    axis: DEFAULT_AXIS_NEED if score is None else max(0, 100 - score) / 100.0
+    for axis, score in axis_scores.items()
+}
 ```
 
-An axis with score 20 gets need 0.80; an axis with score 80 gets need 0.20. This creates a continuous gradient rather than a binary weak/strong split.
+An axis with score 20 gets need 0.80; an axis with score 80 gets need 0.20; an axis with `None` (insufficient data) gets need 0.50. This creates a continuous gradient rather than a binary weak/strong split, and degrades gracefully for users with partial Skill DNA profiles.
+
+> **Note**: The endpoint still returns 404 if the user has *no* Skill DNA at all for the sport (zero axes populated). Partial profiles (1-4 axes populated) are handled by the neutral fallback above.
 
 ### Step 3: Score each drill — base relevance
 
@@ -324,19 +333,19 @@ final_score  = clamp(base + opp_bonus + recency_pen, 0.0, 1.0)
 |-------|------|------|---------------|
 | Target Serve Placement | serve | first_serve, serve | serve |
 | Net Rush Drill | net_play | volley, net_approach | volley |
-| Endurance Rallies | stamina | endurance, fitness | cardio |
+| 3rd Set Stamina Builder | stamina | stamina_set3, endurance | cardio |
 | Backhand Cross-Court | power | backhand_winner | backhand |
 
-**Scoring:**
+**Scoring (applying Steps 3-6):**
 
-| Drill | Base (axis need) | Opp Bonus | Recency Pen | Final |
+| Drill | Base (axis need) | Opp Bonus (Step 4: drill.tags ∩ opponent weak tags) | Recency Pen (Step 5: focusMapping ∩ recent training) | Final |
 |-------|-----------------|-----------|-------------|-------|
-| Target Serve Placement | 0.65 (serve=35) | +0.3 (first_serve matches) | -0.2 (serve recently trained) | **0.75** |
-| Net Rush Drill | 0.55 (net_play=45) | 0.0 | 0.0 | **0.55** |
-| Endurance Rallies | 0.40 (stamina=60) | +0.3 (stamina_set3 via cardio mapping) | -0.2 (footwork overlaps) | **0.50** |
-| Backhand Cross-Court | 0.28 (power=72) | 0.0 | 0.0 | **0.28** |
+| Target Serve Placement | 0.65 (serve=35) | +0.3 (`first_serve` ∈ opponent tags ✓) | -0.2 (`serve` ∈ recent training ✓) | **0.75** |
+| Net Rush Drill | 0.55 (net_play=45) | 0.0 (no tag match) | 0.0 (`volley` ∉ recent training) | **0.55** |
+| 3rd Set Stamina Builder | 0.40 (stamina=60) | +0.3 (`stamina_set3` ∈ opponent tags ✓) | 0.0 (`cardio` ∉ recent training) | **0.70** |
+| Backhand Cross-Court | 0.28 (power=72) | 0.0 (no tag match) | 0.0 (`backhand` ∉ recent training) | **0.28** |
 
-**Result:** Serve drill ranks first despite the recency penalty, because the axis need (0.65) plus opponent bonus (0.3) overwhelm the penalty. Net rush is second — decent weakness, no penalty. The engine correctly prioritises the user's weak areas that also exploit the opponent's known weaknesses.
+**Result:** Serve drill ranks first (0.75) — despite the recency penalty, the axis need (0.65) plus opponent bonus (0.3) overwhelm it. Stamina Builder is second (0.70) — moderate weakness but a direct opponent tag match via `stamina_set3`. Net rush is third (0.55) — decent weakness, no bonuses or penalties. The engine correctly prioritises the user's weak areas that also exploit the opponent's known weaknesses.
 
 ---
 
@@ -561,7 +570,8 @@ TRAINING_PLAN_DRILL_CACHE_TTL_SECS = 3600 # 1 hour in-memory cache for drill cat
 
 | Case | Handling |
 |------|----------|
-| **No Skill DNA data** | Return 404 with message: "No Skill DNA data for {sport}. Play and reflect on more matches to build your profile." Minimum 3 data points per axis before Skill DNA is available. |
+| **No Skill DNA data at all** | Return 404 with message: "No Skill DNA data for {sport}. Play and reflect on more matches to build your profile." Zero axes populated for this sport. |
+| **Partial Skill DNA (some axes missing)** | Axes with insufficient data (`None`) get a neutral need of 0.50 — mid-rank. Drills targeting these axes still appear but don't dominate. The `weakness_summary` only includes populated axes; `insufficient_axes` is listed separately so the client can prompt the user to reflect more. |
 | **All axes above threshold (no weaknesses)** | The algorithm still works — axes with score 80 get need 0.20. Recommendations are less urgent but still valid. The `weakness_summary.axes_below_threshold` is empty. Response includes a note: "Your skills are well-balanced. These drills maintain your edge." |
 | **No scouting data for opponent** | `opponent_context` is null. `opponent_bonus` is 0 for all drills. Base relevance drives ranking entirely. |
 | **Opponent UID not found** | Return 404: "User not found." |
@@ -570,7 +580,7 @@ TRAINING_PLAN_DRILL_CACHE_TTL_SECS = 3600 # 1 hour in-memory cache for drill cat
 | **User trained every focus area recently** | All drills receive a -0.2 penalty. The ranking still works — the highest-need axis drills are still on top, just with lower absolute scores. |
 | **Non-Pro user** | 403 before any data is fetched. Zero Firestore reads wasted. |
 | **Universal drills vs sport-specific** | Universal drills (`sport == "universal"`) are included for every sport query. They rank alongside sport-specific drills using the same scoring formula. |
-| **Difficulty mismatch** | A beginner user never sees competitive drills (2-tier gap). An intermediate user sees beginner + intermediate + advanced (1-tier adjacent). |
+| **Difficulty mismatch** | An `amateur` user sees `beginner` + `intermediate` drills only. An `intermediate` user sees `beginner` + `intermediate` + `advanced`. Mapping from `TierEnum` → `DrillDifficultyEnum` is explicit (see Step 1 in section III). |
 
 ---
 
