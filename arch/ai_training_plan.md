@@ -144,7 +144,8 @@ The recommendation endpoint returns a ranked list of drills with relevance scori
   "weakness_summary": {
     "weakest_axis": "serve",
     "weakest_score": 35,
-    "axes_below_threshold": ["serve", "stamina"]
+    "axes_below_threshold": ["serve", "stamina"],
+    "insufficient_axes": []
   },
   "opponent_context": {
     "opponent_uid": "user_bob",
@@ -468,9 +469,10 @@ class DrillRecommendation(GsmBaseModel):
     opponent_reason: str | None     # explanation of opponent relevance
 
 class WeaknessSummary(GsmBaseModel):
-    weakest_axis: str
-    weakest_score: int
-    axes_below_threshold: list[str]  # axes with score < 50
+    weakest_axis: str               # axis with lowest score (among populated axes)
+    weakest_score: int              # score of that axis
+    axes_below_threshold: list[str] # populated axes with score < 50
+    insufficient_axes: list[str]    # axes with < 3 data points (None in Skill DNA)
 
 class OpponentContext(GsmBaseModel):
     opponent_uid: str
