@@ -795,10 +795,10 @@ This phase is deliberately left at a high level. Detailed architecture should be
 
 | Feature | Description | Complexity |
 | :---- | :---- | :---- |
-| Danger Zone | AI identifies patterns where you lose to a specific opponent. Requires point-by-point data (not yet captured). | Very High |
-| Win Predictor | Real-time win probability adjustment based on recent training logs. | High |
-| AI Training Plan | Personalised drills based on “went_wrong” trends from skillDna aggregation. | High |
-| Scout of the Month | Gamification badge for users whose scouting tags most accurately predict outcomes. | Medium |
+| Danger Zone | AI-identified loss patterns via post-match annotations (`matchAnalysis/{matchId}`) + aggregated profiles (`dangerZone/{uid}`). Singles only, owner-only access. See `arch/danger_zone_data_model.md`. UI/UX spec: #211. | Very High |
+| Win Predictor | `preparation_bonus` (0.0–0.05) as separate signal alongside `win_probability` on rivalry endpoint. Linear recency decay over 7-day window, training-to-weakness matching. See `arch/win_predictor_heuristic.md`. UI/UX spec: #211. | High |
+| AI Training Plan | `GET /me/lab/training-plan` — ranked drill recommendations from `drills/{drillId}` collection. Weakness-first scoring + opponent bonus + recency penalty. Pro subscription gate. Feeds Win Predictor via `trainingFocusMapping`. See `arch/ai_training_plan.md`. UI/UX spec: #218. | High |
+| Scout of the Month | Outcome correlation pipeline (D5.3 trigger) validates scouting weak tags against match results. `scoutAccuracy/{uid}` + `scoutLeaderboard` collections. Achievement tiers (Bronze→Elite) on Athlete Card. Opt-in, not premium-gated. Singles/weak-tags only for v1. See `arch/scout_of_the_month.md`. UI/UX spec: #225. | Medium |
 | Interactive Haptics | Haptic “clicks” when scrubbing through the progression graph. Mobile-only, no backend. | Low |
 
 ## **6.7 API Endpoints Reference (All Phases)**
