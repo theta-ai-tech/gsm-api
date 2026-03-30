@@ -76,6 +76,7 @@ def _parse_sport_ranking(data: Optional[dict[str, Any]]) -> Optional[SportRankin
         tier=TierEnum(tier) if tier else None,
         registration_tier=TierEnum(reg_tier) if reg_tier else None,
         last_updated=data.get("lastUpdated"),
+        personal_best=data.get("personalBest"),
     )
 
 
