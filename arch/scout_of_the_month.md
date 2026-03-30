@@ -2,7 +2,9 @@
 
 Architecture document for the "Scout of the Month" gamification feature (Phase 4, Tab 3 - THE LAB). This feature rewards users whose scouting observations most accurately predict match outcomes, creating a feedback loop that incentivises high-quality community intelligence.
 
-> **Scope**: This document covers the correlation pipeline, scoring model, data model, badge/reward system, API integration, and phased rollout. It does not cover ML-based tag prediction or natural-language scouting (deferred to Phase 5+).
+> **Scope**: This document covers the correlation pipeline, scoring model, data model, badge/reward system, API integration, and phased rollout. **Singles matches only** — doubles matches (4 participants) require team-level correlation semantics (which player's weakness was exploited?) that are out of scope for v1. See open item below. It does not cover ML-based tag prediction or natural-language scouting (deferred to Phase 5+).
+>
+> **Known open items**: Doubles correlation extension (how to attribute weakness tags when 2 players share a side).
 >
 > **Dependencies**: Phase 3 (scouting profiles with reporter tracking via `processedReports` subcollection), match confirmation pipeline (verify-score), journal reflection triggers (D4.3 scouting upsert).
 
@@ -209,10 +211,10 @@ Aggregated scouting accuracy stats per user, per sport. Updated incrementally by
 | `uid` | string | Yes | User this profile belongs to |
 | `optedIn` | boolean | Yes | Whether user participates in the scouting leaderboard |
 | `{sport}` | map | No | Per-sport accuracy data |
-| `{sport}.totalTags` | int | Yes | Total scouting tags that have been correlated |
-| `{sport}.confirmedTags` | int | Yes | Tags validated by subsequent match outcomes |
-| `{sport}.unconfirmedTags` | int | Yes | Tags not validated (no confirming match or contradicted) |
-| `{sport}.accuracy` | float | Yes | `confirmedTags / totalTags` (0.0-1.0) |
+| `{sport}.totalTags` | int | Yes | Total scouting tags that have been **evaluated** (a confirming match exists). Tags with no confirming match are not counted — see edge cases. `totalTags = confirmedTags + unconfirmedTags`. |
+| `{sport}.confirmedTags` | int | Yes | Tags validated by subsequent match outcomes (winner reflection or score pattern matched) |
+| `{sport}.unconfirmedTags` | int | Yes | Tags that were **evaluated** (a confirming match existed) but not validated — the winner's reflection and score pattern did not confirm the weakness. Tags with no confirming match at all are excluded and do not increment this counter. |
+| `{sport}.accuracy` | float | Yes | `confirmedTags / totalTags` (0.0-1.0). Only evaluated tags contribute. |
 | `{sport}.confidenceScore` | float | Yes | `accuracy * min(1.0, confirmedTags / MIN_CORRELATIONS_FOR_RANKING)` |
 | `{sport}.currentMonthTags` | int | Yes | Tags correlated in the current calendar month |
 | `{sport}.currentMonthConfirmed` | int | Yes | Confirmed tags in the current month |
@@ -462,6 +464,8 @@ def run_scouting_correlation(match_id: str) -> None:
     match = get_match(match_id)
     if match.status != "completed" or not match.score.winner_uid:
         return  # skip walkovers, retirements, draws
+    if len(match.participant_uids) != 2:
+        return  # singles only — doubles correlation deferred
 
     sport = match.sport
     winner_uid = match.score.winner_uid
@@ -824,7 +828,7 @@ SCOUT_ELITE_ACCURACY = 0.75               # minimum accuracy for Elite
 | **No confirming match** | A scouting tag that is never correlated (the scouted player never plays another match) stays uncorrelated. It does not count for or against accuracy. Only tags that have been evaluated (a confirming match exists) contribute to the accuracy calculation. |
 | **Scouted player is inactive** | Same as above — no confirming match means no correlation. The tag exists in `scoutingReports` but generates no `scoutingCorrelations` events. |
 | **Multiple scouts tag the same weakness** | Each scout is credited independently. If Alice and Bob both tag User C's backhand as weak, and User C loses a match where the winner confirms "backhand", both Alice and Bob receive a confirmed correlation. |
-| **Scout tags "strong" instead of "weak"** | Strong tags are correlated separately. A "strong serve" tag is confirmed when the scouted player wins a match where the opponent notes "opponent's serve was strong" or where the score shows dominant service games. Strong tag correlations count toward the same accuracy metric. |
+| **Scout tags "strong" instead of "weak"** | **v1 correlates weak tags only.** Strong tags (`opponentStrong`) are stored in `scoutingReports` but not processed by the correlation pipeline. Strong-tag correlation requires inverse logic (confirming a strength when the scouted player *wins*) and different matching semantics. Deferred to a future phase. |
 | **Journal entry deleted after correlation** | The `scoutingReports` document is soft-deleted. Future correlation events will skip it. Existing `scoutingCorrelations` entries are **not** retroactively removed — the historical accuracy snapshot is preserved. This prevents accuracy manipulation via selective deletion. |
 | **Match disputed or cancelled after correlation** | If a confirming match is later disputed or cancelled, the correlation events from that match should be reversed. The monthly batch job includes a cleanup step that checks correlation events against match statuses and removes invalid correlations. |
 | **Region change** | If a user changes their area/region, their `scoutAccuracy` profile is unchanged (it is not region-scoped). The monthly leaderboard uses the user's region at computation time. Historical leaderboard entries are not retroactively updated. |
