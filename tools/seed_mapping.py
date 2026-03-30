@@ -162,6 +162,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
         "journalRecent": [_journal_entry_summary_to_dict(j) for j in user.journal_recent],
         "cursors": _cursors_to_dict(user.cursors),
         "skillDna": _skill_dna_to_dict(user.skill_dna),
+        "isPro": user.is_pro,
     }
 
 

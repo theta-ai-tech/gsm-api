@@ -60,6 +60,7 @@ USER_IGNATIOS = PrivateUserProfile(
     email="ignatios@example.com",
     phone="+301111111111",
     profile_url="http://example.com/ignatios.png",
+    is_pro=True,
     rankings=PerSportRankings(
         padel=SportRanking(
             sport=SportEnum.PADEL,

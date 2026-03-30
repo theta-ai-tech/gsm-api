@@ -19,6 +19,7 @@ from app.constants import (
     TICKER_LIST_DEFAULT_LIMIT,
     TICKER_LIST_MAX_LIMIT,
 )
+from app.dependencies.premium import require_pro
 from app.dependencies.repos import (
     get_leaderboard_repo,
     get_matches_repo,
@@ -769,3 +770,34 @@ def get_ticker(
         region=resolved_region,
         sport=sport,
     )
+
+
+# ===== Training Plan (Pro-only stub) =====
+
+
+_402 = {"description": "Pro subscription required"}
+
+
+class TrainingPlanResponse(GsmBaseModel):
+    message: str
+
+
+@router.get(
+    "/training-plan",
+    response_model=TrainingPlanResponse,
+    summary="Get AI training plan (Pro only)",
+    responses={
+        401: _401,
+        402: _402,
+    },
+)
+def get_training_plan(
+    current_user: CurrentUser = Depends(require_pro),
+) -> TrainingPlanResponse:
+    """
+    Return the AI-generated training plan for the authenticated user.
+
+    This endpoint requires a Pro subscription. Free-tier users receive HTTP 402.
+    Full implementation is deferred to the AI Training Plan issue.
+    """
+    return TrainingPlanResponse(message="Training plan coming soon")
