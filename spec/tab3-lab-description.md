@@ -363,10 +363,10 @@ Deliberately left at a high level — detailed architecture after Phases 1–3 a
 
 | Feature | Description | Complexity |
 |---------|-------------|------------|
-| **Danger Zone** | AI identifies loss patterns vs. specific opponents (e.g., "70% loss on baseline rallies > 6 shots"). Requires point-by-point data model. | Very High |
-| **Win Predictor** | Real-time win probability adjustment based on recent training logs. | High |
-| **AI Training Plan** | Personalised drills based on "went_wrong" trends from skillDna. | High |
-| **Scout of the Month** | Gamification badge for users whose scouting tags best predict match outcomes. | Medium |
+| **Danger Zone** | AI identifies loss patterns vs. specific opponents. Architecture: `arch/danger_zone_data_model.md`. Uses post-match set-level annotations (`matchAnalysis/{matchId}`) instead of point-by-point data. Aggregated patterns in `dangerZone/{uid}`. Owner-only privacy model. Singles only for v1. UI/UX spec needed: #211. | Very High |
+| **Win Predictor** | Preparation bonus based on recent training targeting opponent weaknesses. Architecture: `arch/win_predictor_heuristic.md`. `preparation_bonus` (0.0–0.05) returned as a **separate signal** alongside unchanged `win_probability` on the rivalry endpoint. Linear recency decay, 7-day window, 5pp cap. UI/UX spec needed: #211. | High |
+| **AI Training Plan** | Personalised drill recommendations from Skill DNA weaknesses + opponent scouting. Architecture: `arch/ai_training_plan.md`. `drills/{drillId}` collection, `GET /me/lab/training-plan` endpoint, opponent-aware mode from rivalry view. Pro subscription required. Creates feedback loop with Win Predictor `preparation_bonus`. UI/UX spec needed: #218. | High |
+| **Scout of the Month** | Gamification badge for users whose scouting tags best predict match outcomes. Architecture: `arch/scout_of_the_month.md`. Correlation pipeline (D5.3 trigger) validates weak tags against subsequent match outcomes using winner reflections and score patterns. Endpoints: `GET /me/lab/scout-stats`, `GET /lab/scout-leaderboard`, `PATCH /me/settings/scout-leaderboard`. Achievement tiers (Bronze→Elite) display on Athlete Card (Tab 4). Monthly title awarded per region+sport. Opt-in, not premium-gated. Singles only for v1. UI/UX spec needed: #225. | Medium |
 | **Interactive Haptics** | Haptic "clicks" when scrubbing the progression graph. Mobile-only, no backend. | Low |
 
 ---
