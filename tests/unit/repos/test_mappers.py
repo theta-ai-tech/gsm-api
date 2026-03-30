@@ -16,6 +16,7 @@ from app.repos.mappers import (
     _parse_broadcast_location,
     _parse_geo_location,
     _parse_journal_entry_summary,
+    _parse_sport_ranking,
     to_broadcast,
     to_journal_entry,
     to_offer,
@@ -408,3 +409,43 @@ class TestJournalEntryToFirestoreDoc:
 
         assert doc["reflection"] is None
         assert doc["trainingFocus"] == []
+
+
+# ── _parse_sport_ranking (personal_best) ─────────────────────────────────────
+
+
+class TestParseSportRankingPersonalBest:
+    def test_personal_best_parsed_from_firestore(self):
+        """personalBest in Firestore doc maps to personal_best on the model."""
+        data = {"sport": "tennis", "pts": 1200, "personalBest": 1350}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.personal_best == 1350
+
+    def test_personal_best_none_when_absent(self):
+        """Legacy docs without personalBest default to None."""
+        data = {"sport": "tennis", "pts": 1000}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.personal_best is None
+
+    def test_personal_best_none_when_explicitly_null(self):
+        """Explicitly null personalBest maps to None."""
+        data = {"sport": "padel", "pts": 800, "personalBest": None}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.personal_best is None
+
+    def test_sport_ranking_model_default(self):
+        """SportRanking model defaults personal_best to None."""
+        from app.models.common import SportRanking
+
+        ranking = SportRanking(sport=SportEnum.TENNIS, pts=1000)
+
+        assert ranking.personal_best is None

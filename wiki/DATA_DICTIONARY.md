@@ -122,6 +122,7 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | rankings.*.tier | string | optional | tier | canonical | — | Current tier derived from pts + config/tiers. Cached. |
 | rankings.*.registrationTier | string | optional | tier | canonical | — | Tier at signup. Determines point floor. Immutable. |
 | rankings.*.lastUpdated | timestamp | optional | — | canonical | — | When this ranking was last modified. |
+| rankings.*.personalBest | number | optional | — | canonical | — | Highest pts ever achieved in this sport. Null for legacy users. |
 | preferences | map | optional | — | canonical | — | Private. |
 | preferences.area | number | optional | — | canonical | — | Private; area code. |
 | preferences.levels | map | optional | level | canonical | — | Per-sport level preferences. |
