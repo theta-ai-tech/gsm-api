@@ -236,6 +236,7 @@ def to_public_user_profile(doc: dict[str, Any]) -> PublicUserProfile:
         leagues_active=_league_summary_list("leaguesActive"),
         leagues_completed=_league_summary_list("leaguesCompleted"),
         skill_dna=_parse_skill_dna(doc.get("skillDna")),
+        is_pro=bool(doc.get("isPro", False)),
     )
 
 

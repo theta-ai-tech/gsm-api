@@ -24,6 +24,7 @@ class PublicUserProfile(GsmBaseModel):
     leagues_active: list[LeagueSummary] = []
     leagues_completed: list[LeagueSummary] = []
     skill_dna: dict[str, SportSkillDna] | None = None
+    is_pro: bool = False
 
 
 class PrivateUserProfile(PublicUserProfile):

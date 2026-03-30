@@ -1416,3 +1416,115 @@ class TestGetTicker:
         resp = client.get("/me/lab/ticker?sport=tennis")
 
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Premium gate — require_pro dependency & training-plan endpoint
+# ---------------------------------------------------------------------------
+
+
+def _make_premium_public_profile(is_pro: bool = False) -> Any:
+    from app.models.user import PublicUserProfile
+    from app.models.common import PerSportRankings
+
+    return PublicUserProfile(
+        uid=_UID,
+        name="Test User",
+        rankings=PerSportRankings(),
+        is_pro=is_pro,
+    )
+
+
+class TestRequirePro:
+    """Unit tests for the require_pro hard gate via the training-plan endpoint."""
+
+    @pytest.fixture
+    def premium_client(self):
+        mock_users = Mock(spec=["get_public_profile"])
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+        previous_overrides = dict(app.dependency_overrides)
+        app.dependency_overrides[get_current_user] = lambda: mock_user
+        app.dependency_overrides[get_users_repo] = lambda: mock_users
+        yield TestClient(app), mock_users
+        app.dependency_overrides = previous_overrides
+
+    def test_pro_user_gets_200(self, premium_client):
+        client, mock_users = premium_client
+        mock_users.get_public_profile.return_value = _make_premium_public_profile(
+            is_pro=True
+        )
+
+        resp = client.get("/me/lab/training-plan")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["message"] == "Training plan coming soon"
+
+    def test_free_user_gets_402(self, premium_client):
+        client, mock_users = premium_client
+        mock_users.get_public_profile.return_value = _make_premium_public_profile(
+            is_pro=False
+        )
+
+        resp = client.get("/me/lab/training-plan")
+
+        assert resp.status_code == 402
+        assert "Pro subscription" in resp.json()["detail"]
+
+    def test_missing_profile_gets_402(self, premium_client):
+        client, mock_users = premium_client
+        mock_users.get_public_profile.return_value = None
+
+        resp = client.get("/me/lab/training-plan")
+
+        assert resp.status_code == 402
+
+    def test_missing_token_returns_401(self):
+        previous_overrides = dict(app.dependency_overrides)
+        try:
+            app.dependency_overrides = {}
+            resp = TestClient(app).get("/me/lab/training-plan")
+        finally:
+            app.dependency_overrides = previous_overrides
+        assert resp.status_code == 401
+
+
+class TestGetSubscriptionStatus:
+    """Unit tests for get_subscription_status soft gate."""
+
+    def test_returns_true_for_pro_user(self):
+        from app.dependencies.premium import get_subscription_status
+
+        mock_users = Mock(spec=["get_public_profile"])
+        mock_users.get_public_profile.return_value = _make_premium_public_profile(
+            is_pro=True
+        )
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+
+        result = get_subscription_status(current_user=mock_user, users_repo=mock_users)
+
+        assert result is True
+
+    def test_returns_false_for_free_user(self):
+        from app.dependencies.premium import get_subscription_status
+
+        mock_users = Mock(spec=["get_public_profile"])
+        mock_users.get_public_profile.return_value = _make_premium_public_profile(
+            is_pro=False
+        )
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+
+        result = get_subscription_status(current_user=mock_user, users_repo=mock_users)
+
+        assert result is False
+
+    def test_returns_false_for_missing_profile(self):
+        from app.dependencies.premium import get_subscription_status
+
+        mock_users = Mock(spec=["get_public_profile"])
+        mock_users.get_public_profile.return_value = None
+        mock_user = CurrentUser(uid=_UID, email="test@example.com")
+
+        result = get_subscription_status(current_user=mock_user, users_repo=mock_users)
+
+        assert result is False
