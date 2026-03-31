@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import pytest
+
+from app.constants import STREAK_MILESTONES
+from app.services.clubhouse_service import (
+    is_streak_milestone,
+    update_streak_on_loss,
+    update_streak_on_win,
+)
+
+
+# ---------------------------------------------------------------------------
+# update_streak_on_win
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateStreakOnWin:
+    def test_first_win_ever(self) -> None:
+        new_current, new_best = update_streak_on_win(0, 0)
+        assert new_current == 1
+        assert new_best == 1
+
+    def test_consecutive_win_below_best(self) -> None:
+        new_current, new_best = update_streak_on_win(2, 5)
+        assert new_current == 3
+        assert new_best == 5
+
+    def test_consecutive_win_equals_best(self) -> None:
+        new_current, new_best = update_streak_on_win(4, 5)
+        assert new_current == 5
+        assert new_best == 5
+
+    def test_consecutive_win_exceeds_best(self) -> None:
+        new_current, new_best = update_streak_on_win(5, 5)
+        assert new_current == 6
+        assert new_best == 6
+
+    def test_win_after_loss_resets_current(self) -> None:
+        # After a loss, current_streak is 0; first win brings it to 1
+        new_current, new_best = update_streak_on_win(0, 10)
+        assert new_current == 1
+        assert new_best == 10
+
+    def test_large_streak(self) -> None:
+        new_current, new_best = update_streak_on_win(99, 99)
+        assert new_current == 100
+        assert new_best == 100
+
+
+# ---------------------------------------------------------------------------
+# update_streak_on_loss
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateStreakOnLoss:
+    def test_loss_resets_current_streak(self) -> None:
+        new_current, new_best = update_streak_on_loss(7, 10)
+        assert new_current == 0
+        assert new_best == 10
+
+    def test_loss_when_already_zero(self) -> None:
+        new_current, new_best = update_streak_on_loss(0, 3)
+        assert new_current == 0
+        assert new_best == 3
+
+    def test_loss_preserves_best_streak(self) -> None:
+        new_current, new_best = update_streak_on_loss(5, 5)
+        assert new_current == 0
+        assert new_best == 5
+
+    def test_first_match_loss(self) -> None:
+        new_current, new_best = update_streak_on_loss(0, 0)
+        assert new_current == 0
+        assert new_best == 0
+
+
+# ---------------------------------------------------------------------------
+# is_streak_milestone
+# ---------------------------------------------------------------------------
+
+
+class TestIsStreakMilestone:
+    @pytest.mark.parametrize("streak", sorted(STREAK_MILESTONES))
+    def test_milestone_values(self, streak: int) -> None:
+        assert is_streak_milestone(streak) is True
+
+    @pytest.mark.parametrize("streak", [0, 1, 2, 4, 6, 7, 8, 9, 11, 15, 19, 21, 50])
+    def test_non_milestone_values(self, streak: int) -> None:
+        assert is_streak_milestone(streak) is False
+
+    def test_milestone_set_contains_expected_values(self) -> None:
+        assert STREAK_MILESTONES == frozenset({3, 5, 10, 20})
+
+
+# ---------------------------------------------------------------------------
+# Integrated streak sequence
+# ---------------------------------------------------------------------------
+
+
+class TestStreakSequence:
+    def test_win_loss_win_sequence(self) -> None:
+        """Simulate: W, W, W, L, W, W — verify streak tracking end-to-end."""
+        current, best = 0, 0
+
+        # 3 wins
+        current, best = update_streak_on_win(current, best)
+        assert (current, best) == (1, 1)
+        current, best = update_streak_on_win(current, best)
+        assert (current, best) == (2, 2)
+        current, best = update_streak_on_win(current, best)
+        assert (current, best) == (3, 3)
+        assert is_streak_milestone(current) is True
+
+        # loss
+        current, best = update_streak_on_loss(current, best)
+        assert (current, best) == (0, 3)
+
+        # 2 more wins
+        current, best = update_streak_on_win(current, best)
+        assert (current, best) == (1, 3)
+        current, best = update_streak_on_win(current, best)
+        assert (current, best) == (2, 3)

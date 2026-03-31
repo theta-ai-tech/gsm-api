@@ -28,3 +28,6 @@ LAB_RIVALRY_MAX_LIMIT = 20
 # Ticker pagination defaults
 TICKER_LIST_DEFAULT_LIMIT = 20
 TICKER_LIST_MAX_LIMIT = 50
+
+# Streak milestone thresholds (used for badges / notifications)
+STREAK_MILESTONES: frozenset[int] = frozenset({3, 5, 10, 20})
