@@ -1,5 +1,25 @@
 # CLAUDE.md
 
+## Workflow Operations
+
+### 1. Plan Node Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately - don't keep pushing.
+- One plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
+
+### 2. Subagent strategy
+- Use subagents liberally to keep main context window clean. If user has prompted for a specific subagent delegate the appropriate task.
+- Offload research, exploration and parallel analysis to subagents
+- For complex problems, throw more compute via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement loop
+- After ANY correction from the user : update `.claude/rules/lessons_learned.md` with the pattern.
+- Write rules for yourself that prevent the same mistake
+- Iterate on these lessons until error rate drops
+- Review lessons at session start for relevant project! DO THIS ALWAYS!
+
 ## Team Operations
 
 - **Skills:** `/next-issue`, `/post-merge`, `/plan-sprint`, `/standup`, `/review-pr`, `/lookup-docs`
@@ -101,6 +121,7 @@ make docker-run                # Run locally (port 8080)
 - After any code edits, run `make fmt format type` inside the active venv and ensure they pass.
 - Never point tests at production Firestore; always use the emulator.
 - Keep secrets out of code; use env vars for credentials.
+- For `/review-pr`, run required `gh` commands directly and do not ask in chat first. This workflow rule does not override platform sandbox or approval policies; if a `gh` command still triggers an approval UI, invoke it directly and let the platform handle it. Prefer approved `gh` prefix rules to reduce repeated prompts.
 
 ## Commit Style
 
