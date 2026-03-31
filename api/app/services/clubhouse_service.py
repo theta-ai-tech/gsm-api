@@ -3,6 +3,12 @@ from __future__ import annotations
 from app.constants import STREAK_MILESTONES
 
 
+def check_personal_best(new_pts: int, current_best: int | None) -> tuple[bool, int]:
+    if current_best is None or new_pts > current_best:
+        return True, new_pts
+    return False, current_best
+
+
 def update_streak_on_win(current_streak: int, best_streak: int) -> tuple[int, int]:
     new_current = current_streak + 1
     new_best = max(new_current, best_streak)

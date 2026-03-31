@@ -4,10 +4,53 @@ import pytest
 
 from app.constants import STREAK_MILESTONES
 from app.services.clubhouse_service import (
+    check_personal_best,
     is_streak_milestone,
     update_streak_on_loss,
     update_streak_on_win,
 )
+
+
+# ---------------------------------------------------------------------------
+# check_personal_best
+# ---------------------------------------------------------------------------
+
+
+class TestCheckPersonalBest:
+    def test_first_match_sets_personal_best(self) -> None:
+        is_new, value = check_personal_best(500, None)
+        assert is_new is True
+        assert value == 500
+
+    def test_new_pts_exceeds_current_best(self) -> None:
+        is_new, value = check_personal_best(600, 500)
+        assert is_new is True
+        assert value == 600
+
+    def test_new_pts_equals_current_best(self) -> None:
+        is_new, value = check_personal_best(500, 500)
+        assert is_new is False
+        assert value == 500
+
+    def test_new_pts_below_current_best(self) -> None:
+        is_new, value = check_personal_best(400, 500)
+        assert is_new is False
+        assert value == 500
+
+    def test_loss_decreased_pts_not_personal_best(self) -> None:
+        is_new, value = check_personal_best(350, 500)
+        assert is_new is False
+        assert value == 500
+
+    def test_first_match_zero_pts(self) -> None:
+        is_new, value = check_personal_best(0, None)
+        assert is_new is True
+        assert value == 0
+
+    def test_exceeds_by_one(self) -> None:
+        is_new, value = check_personal_best(501, 500)
+        assert is_new is True
+        assert value == 501
 
 
 # ---------------------------------------------------------------------------
