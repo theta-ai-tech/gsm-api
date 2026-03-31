@@ -123,6 +123,8 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | rankings.*.registrationTier | string | optional | tier | canonical | — | Tier at signup. Determines point floor. Immutable. |
 | rankings.*.lastUpdated | timestamp | optional | — | canonical | — | When this ranking was last modified. |
 | rankings.*.personalBest | number | optional | — | canonical | — | Highest pts ever achieved in this sport. Null for legacy users. |
+| rankings.*.currentStreak | number | optional | — | canonical | — | Current consecutive win count. Defaults to 0. |
+| rankings.*.bestStreak | number | optional | — | canonical | — | All-time best consecutive win count. Defaults to 0. |
 | preferences | map | optional | — | canonical | — | Private. |
 | preferences.area | number | optional | — | canonical | — | Private; area code. |
 | preferences.levels | map | optional | level | canonical | — | Per-sport level preferences. |

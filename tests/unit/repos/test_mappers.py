@@ -449,3 +449,47 @@ class TestParseSportRankingPersonalBest:
         ranking = SportRanking(sport=SportEnum.TENNIS, pts=1000)
 
         assert ranking.personal_best is None
+
+
+# ── _parse_sport_ranking (currentStreak, bestStreak) ─────────────────────────
+
+
+class TestParseSportRankingStreaks:
+    def test_streaks_parsed_from_firestore(self):
+        """currentStreak and bestStreak in Firestore doc map to model fields."""
+        data = {"sport": "tennis", "pts": 1200, "currentStreak": 5, "bestStreak": 8}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.current_streak == 5
+        assert ranking.best_streak == 8
+
+    def test_streaks_default_to_zero_when_absent(self):
+        """Legacy docs without streak fields default to 0."""
+        data = {"sport": "tennis", "pts": 1000}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.current_streak == 0
+        assert ranking.best_streak == 0
+
+    def test_streaks_zero_when_explicitly_zero(self):
+        """Explicitly zero streak values are preserved."""
+        data = {"sport": "padel", "pts": 800, "currentStreak": 0, "bestStreak": 0}
+
+        ranking = _parse_sport_ranking(data)
+
+        assert ranking is not None
+        assert ranking.current_streak == 0
+        assert ranking.best_streak == 0
+
+    def test_sport_ranking_model_streak_defaults(self):
+        """SportRanking model defaults current_streak and best_streak to 0."""
+        from app.models.common import SportRanking
+
+        ranking = SportRanking(sport=SportEnum.TENNIS, pts=1000)
+
+        assert ranking.current_streak == 0
+        assert ranking.best_streak == 0
