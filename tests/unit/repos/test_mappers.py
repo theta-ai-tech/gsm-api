@@ -485,6 +485,20 @@ class TestParseSportRankingStreaks:
         assert ranking.current_streak == 0
         assert ranking.best_streak == 0
 
+    def test_streaks_default_to_zero_when_explicitly_null(self):
+        """Explicit null in Firestore doesn't raise TypeError — defaults to 0."""
+        data = {
+            "sport": "tennis",
+            "pts": 900,
+            "currentStreak": None,
+            "bestStreak": None,
+        }
+
+        result = _parse_sport_ranking(data)
+
+        assert result.current_streak == 0
+        assert result.best_streak == 0
+
     def test_sport_ranking_model_streak_defaults(self):
         """SportRanking model defaults current_streak and best_streak to 0."""
         from app.models.common import SportRanking
