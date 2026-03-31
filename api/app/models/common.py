@@ -20,6 +20,8 @@ class SportRanking(GsmBaseModel):
     registration_tier: TierEnum | None = None
     last_updated: datetime | None = None
     personal_best: int | None = None
+    current_streak: int = 0
+    best_streak: int = 0
 
 
 class PerSportRankings(GsmBaseModel):

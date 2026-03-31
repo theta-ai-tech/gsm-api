@@ -44,6 +44,8 @@ def _sport_ranking_to_dict(ranking: SportRanking) -> Dict[str, Any]:
             ranking.registration_tier.value if ranking.registration_tier else None
         ),
         "personalBest": ranking.personal_best,
+        "currentStreak": ranking.current_streak,
+        "bestStreak": ranking.best_streak,
         "lastUpdated": ranking.last_updated,
     }
 
