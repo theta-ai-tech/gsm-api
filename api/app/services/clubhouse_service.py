@@ -1,6 +1,44 @@
 from __future__ import annotations
 
 from app.constants import STREAK_MILESTONES
+from app.models.common import SportRanking, UserCompletedMatchSummary
+from app.models.enums import MatchResultEnum
+
+
+def build_athlete_card_sports(
+    rankings_by_sport: dict[str, SportRanking | None],
+) -> list[dict[str, object]]:
+    """Build per-sport athlete card data from the user's rankings map.
+
+    Returns a list of dicts with keys matching AthleteCardSport fields.
+    Only sports where the user has a ranking are included.
+    """
+    result: list[dict[str, object]] = []
+    for sport_key in ("tennis", "padel", "pickleball"):
+        ranking = rankings_by_sport.get(sport_key)
+        if ranking is None:
+            continue
+        result.append(
+            {
+                "sport": ranking.sport,
+                "pts": ranking.pts,
+                "tier": ranking.tier.value if ranking.tier else "amateur",
+                "global_ranking": ranking.global_ranking,
+                "personal_best": ranking.personal_best,
+                "current_streak": ranking.current_streak,
+                "best_streak": ranking.best_streak,
+            }
+        )
+    return result
+
+
+def compute_match_totals(
+    completed_matches: list[UserCompletedMatchSummary],
+) -> tuple[int, int]:
+    """Return (total_matches, total_wins) from the completedMatches cache."""
+    total = len(completed_matches)
+    wins = sum(1 for m in completed_matches if m.result == MatchResultEnum.WIN)
+    return total, wins
 
 
 def check_personal_best(new_pts: int, current_best: int | None) -> tuple[bool, int]:

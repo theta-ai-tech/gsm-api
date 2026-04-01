@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import pytest
 
+from datetime import datetime, timezone
+
 from app.constants import STREAK_MILESTONES
+from app.models.common import SportRanking, UserCompletedMatchSummary
+from app.models.enums import MatchResultEnum, SportEnum, TierEnum
 from app.services.clubhouse_service import (
+    build_athlete_card_sports,
     check_personal_best,
+    compute_match_totals,
     is_streak_milestone,
     update_streak_on_loss,
     update_streak_on_win,
@@ -164,3 +170,127 @@ class TestStreakSequence:
         assert (current, best) == (1, 3)
         current, best = update_streak_on_win(current, best)
         assert (current, best) == (2, 3)
+
+
+# ---------------------------------------------------------------------------
+# build_athlete_card_sports
+# ---------------------------------------------------------------------------
+
+
+def _utc(year: int, month: int, day: int) -> datetime:
+    return datetime(year, month, day, tzinfo=timezone.utc)
+
+
+class TestBuildAthleteCardSports:
+    def test_single_sport(self) -> None:
+        rankings = {
+            "tennis": SportRanking(
+                sport=SportEnum.TENNIS,
+                pts=820,
+                global_ranking=340,
+                tier=TierEnum.AMATEUR,
+                personal_best=850,
+                current_streak=3,
+                best_streak=5,
+            ),
+            "padel": None,
+            "pickleball": None,
+        }
+        result = build_athlete_card_sports(rankings)
+        assert len(result) == 1
+        assert result[0]["sport"] == SportEnum.TENNIS
+        assert result[0]["pts"] == 820
+        assert result[0]["tier"] == "amateur"
+        assert result[0]["global_ranking"] == 340
+        assert result[0]["personal_best"] == 850
+        assert result[0]["current_streak"] == 3
+        assert result[0]["best_streak"] == 5
+
+    def test_multiple_sports(self) -> None:
+        rankings = {
+            "tennis": SportRanking(sport=SportEnum.TENNIS, pts=500),
+            "padel": SportRanking(
+                sport=SportEnum.PADEL, pts=700, tier=TierEnum.INTERMEDIATE
+            ),
+            "pickleball": None,
+        }
+        result = build_athlete_card_sports(rankings)
+        assert len(result) == 2
+
+    def test_no_rankings(self) -> None:
+        rankings = {"tennis": None, "padel": None, "pickleball": None}
+        result = build_athlete_card_sports(rankings)
+        assert result == []
+
+    def test_tier_defaults_to_amateur(self) -> None:
+        rankings = {
+            "tennis": SportRanking(sport=SportEnum.TENNIS, pts=100),
+            "padel": None,
+            "pickleball": None,
+        }
+        result = build_athlete_card_sports(rankings)
+        assert result[0]["tier"] == "amateur"
+
+
+# ---------------------------------------------------------------------------
+# compute_match_totals
+# ---------------------------------------------------------------------------
+
+
+class TestComputeMatchTotals:
+    def test_empty_list(self) -> None:
+        total, wins = compute_match_totals([])
+        assert total == 0
+        assert wins == 0
+
+    def test_mixed_results(self) -> None:
+        matches = [
+            UserCompletedMatchSummary(
+                match_id="m1",
+                sport=SportEnum.TENNIS,
+                finished_at=_utc(2026, 1, 10),
+                result=MatchResultEnum.WIN,
+            ),
+            UserCompletedMatchSummary(
+                match_id="m2",
+                sport=SportEnum.TENNIS,
+                finished_at=_utc(2026, 1, 15),
+                result=MatchResultEnum.LOSS,
+            ),
+            UserCompletedMatchSummary(
+                match_id="m3",
+                sport=SportEnum.PADEL,
+                finished_at=_utc(2026, 1, 20),
+                result=MatchResultEnum.WIN,
+            ),
+        ]
+        total, wins = compute_match_totals(matches)
+        assert total == 3
+        assert wins == 2
+
+    def test_all_wins(self) -> None:
+        matches = [
+            UserCompletedMatchSummary(
+                match_id=f"m{i}",
+                sport=SportEnum.TENNIS,
+                finished_at=_utc(2026, 1, i + 1),
+                result=MatchResultEnum.WIN,
+            )
+            for i in range(4)
+        ]
+        total, wins = compute_match_totals(matches)
+        assert total == 4
+        assert wins == 4
+
+    def test_none_result_not_counted_as_win(self) -> None:
+        matches = [
+            UserCompletedMatchSummary(
+                match_id="m1",
+                sport=SportEnum.TENNIS,
+                finished_at=_utc(2026, 1, 10),
+                result=None,
+            ),
+        ]
+        total, wins = compute_match_totals(matches)
+        assert total == 1
+        assert wins == 0
