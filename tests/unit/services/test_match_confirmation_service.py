@@ -792,6 +792,7 @@ class TestRetirementFromStoredScore:
     def test_stored_retirement_produces_zero_deltas(self):
         response, _, _, _ = self._run_stored_retirement()
         assert response.winner_delta == 0
+        assert response.loser_delta == 0
 
     def test_retirement_preserves_winner_streak(self):
         _, _, _, mock_client = self._run_stored_retirement(
