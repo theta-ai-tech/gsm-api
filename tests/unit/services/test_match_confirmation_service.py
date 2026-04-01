@@ -728,6 +728,9 @@ class TestRetirementFromStoredScore:
         winner_current_streak: int = 3,
         winner_best_streak: int = 5,
         winner_personal_best: int | None = 1800,
+        loser_current_streak: int = 2,
+        loser_best_streak: int = 4,
+        loser_personal_best: int | None = 1700,
     ):
         stored_score = _make_score(retired=True)
         match = _make_match(
@@ -744,7 +747,13 @@ class TestRetirementFromStoredScore:
             best_streak=winner_best_streak,
             personal_best=winner_personal_best,
         )
-        loser_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
+        loser_snap = _make_user_snap(
+            2100,
+            TierEnum.INTERMEDIATE,
+            current_streak=loser_current_streak,
+            best_streak=loser_best_streak,
+            personal_best=loser_personal_best,
+        )
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
@@ -807,6 +816,20 @@ class TestRetirementFromStoredScore:
         updates = self._get_user_update(mock_client, WINNER_UID)
         pb_key = f"rankings.{SPORT.value}.personalBest"
         assert pb_key not in updates or updates[pb_key] == 1800
+
+    def test_retirement_preserves_loser_streak(self):
+        _, _, _, mock_client = self._run_stored_retirement(
+            loser_current_streak=2, loser_best_streak=4
+        )
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 2
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 4
+
+    def test_retirement_preserves_loser_personal_best(self):
+        _, _, _, mock_client = self._run_stored_retirement(loser_personal_best=1700)
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        pb_key = f"rankings.{SPORT.value}.personalBest"
+        assert pb_key not in updates or updates[pb_key] == 1700
 
 
 # ---------------------------------------------------------------------------
