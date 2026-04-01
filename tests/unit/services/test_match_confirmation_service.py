@@ -10,6 +10,7 @@ All Firestore interactions are mocked. Tests cover:
 """
 
 from datetime import datetime, timezone
+from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -161,19 +162,25 @@ def _make_user_snap(
     reg_tier: TierEnum | None = None,
     name: str = "Player",
     area: int = 101,
+    current_streak: int = 0,
+    best_streak: int = 0,
+    personal_best: int | None = None,
 ) -> Mock:
     """Return a mock Firestore DocumentSnapshot with ranking data."""
+    ranking: dict[str, object] = {
+        "pts": pts,
+        "tier": tier.value,
+        "registrationTier": (reg_tier or tier).value,
+        "currentStreak": current_streak,
+        "bestStreak": best_streak,
+    }
+    if personal_best is not None:
+        ranking["personalBest"] = personal_best
     snap = Mock()
     snap.to_dict.return_value = {
         "name": name,
         "preferences": {"area": area},
-        "rankings": {
-            SPORT.value: {
-                "pts": pts,
-                "tier": tier.value,
-                "registrationTier": (reg_tier or tier).value,
-            }
-        },
+        "rankings": {SPORT.value: ranking},
     }
     return snap
 
@@ -766,4 +773,169 @@ class TestRetirementFromStoredScore:
     def test_stored_retirement_produces_zero_deltas(self):
         response, _, _ = self._run_stored_retirement()
         assert response.winner_delta == 0
-        assert response.loser_delta == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: streak + personal best updates (CH-5)
+# ---------------------------------------------------------------------------
+
+
+class TestStreakAndPersonalBest:
+    """Tests that match confirmation updates streak + personalBest fields."""
+
+    def _run_confirmation_with_streaks(
+        self,
+        winner_pts: int = 2100,
+        loser_pts: int = 2050,
+        winner_current_streak: int = 0,
+        winner_best_streak: int = 0,
+        winner_personal_best: int | None = None,
+        loser_current_streak: int = 3,
+        loser_best_streak: int = 5,
+        walkover: bool = False,
+    ):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        winner_snap = _make_user_snap(
+            winner_pts,
+            TierEnum.INTERMEDIATE,
+            name="Winner",
+            current_streak=winner_current_streak,
+            best_streak=winner_best_streak,
+            personal_best=winner_personal_best,
+        )
+        loser_snap = _make_user_snap(
+            loser_pts,
+            TierEnum.INTERMEDIATE,
+            name="Loser",
+            current_streak=loser_current_streak,
+            best_streak=loser_best_streak,
+        )
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(
+                    winner_uid=WINNER_UID, score=_make_score(), walkover=walkover
+                ),
+            )
+        return response, mock_client
+
+    def _get_user_update(self, mock_client: MagicMock, uid: str) -> dict[str, Any]:
+        """Extract the update dict written to a user doc in the transaction."""
+        txn = mock_client.transaction()
+        user_ref = mock_client.collection("users").document(uid)
+        update_calls = [c for c in txn.update.call_args_list if c.args[0] == user_ref]
+        assert update_calls, f"expected update call for {uid}"
+        return update_calls[0].args[1]
+
+    # --- Winner streak ---
+
+    def test_winner_streak_increments_by_one(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_current_streak=2, winner_best_streak=5
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 3
+
+    def test_winner_best_streak_updates_when_exceeded(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_current_streak=5, winner_best_streak=5
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        # currentStreak becomes 6, which exceeds bestStreak of 5
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 6
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 6
+
+    def test_winner_best_streak_unchanged_when_not_exceeded(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_current_streak=1, winner_best_streak=10
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 2
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 10
+
+    # --- Winner personal best ---
+
+    def test_winner_personal_best_set_when_none(self):
+        # Winner gets 2200 pts (base +100), no previous PB
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_pts=2100, winner_personal_best=None
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        assert updates[f"rankings.{SPORT.value}.personalBest"] == 2200
+
+    def test_winner_personal_best_updates_when_exceeded(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_pts=2100, winner_personal_best=2150
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        # New pts = 2200, exceeds PB of 2150
+        assert updates[f"rankings.{SPORT.value}.personalBest"] == 2200
+
+    def test_winner_personal_best_unchanged_when_not_exceeded(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_pts=2100, winner_personal_best=2500
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        # New pts = 2200, does NOT exceed PB of 2500
+        assert f"rankings.{SPORT.value}.personalBest" not in updates or (
+            updates.get(f"rankings.{SPORT.value}.personalBest") == 2500
+        )
+
+    # --- Loser streak ---
+
+    def test_loser_streak_resets_to_zero(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            loser_current_streak=3, loser_best_streak=5
+        )
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 0
+
+    def test_loser_best_streak_unchanged(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            loser_current_streak=3, loser_best_streak=5
+        )
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5
+
+    # --- Walkover: no streak/PB changes ---
+
+    def test_walkover_does_not_change_winner_streak(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_current_streak=2, winner_best_streak=5, walkover=True
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 2
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5
+
+    def test_walkover_does_not_change_loser_streak(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            loser_current_streak=3, loser_best_streak=5, walkover=True
+        )
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 3
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5

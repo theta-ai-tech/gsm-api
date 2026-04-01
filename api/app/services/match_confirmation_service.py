@@ -51,6 +51,11 @@ from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
+from app.services.clubhouse_service import (
+    check_personal_best,
+    update_streak_on_loss,
+    update_streak_on_win,
+)
 from app.services.scoring_service import TIER_ORDER, compute_match_scoring
 
 logger = logging.getLogger(__name__)
@@ -282,6 +287,17 @@ class MatchConfirmationService:
             winner_reg_tier = TierEnum(winner_ranking.get("registrationTier", winner_tier))
             loser_reg_tier = TierEnum(loser_ranking.get("registrationTier", loser_tier))
 
+            # Streak + personal best fields (CH-5)
+            winner_current_streak = int(winner_ranking.get("currentStreak", 0))
+            winner_best_streak = int(winner_ranking.get("bestStreak", 0))
+            winner_personal_best = (
+                int(winner_ranking["personalBest"])
+                if winner_ranking.get("personalBest") is not None
+                else None
+            )
+            loser_current_streak = int(loser_ranking.get("currentStreak", 0))
+            loser_best_streak = int(loser_ranking.get("bestStreak", 0))
+
             result_holder["winner_pts_before"] = winner_pts
             result_holder["loser_pts_before"] = loser_pts
             result_holder["winner_tier_before"] = winner_tier
@@ -303,6 +319,27 @@ class MatchConfirmationService:
             )
             result_holder["scoring"] = scoring
 
+            # Streak + personal best computation (CH-5)
+            # Only update on non-walkover matches
+            new_w_personal_best: int | None
+            if not is_walkover:
+                new_w_streak, new_w_best_streak = update_streak_on_win(
+                    winner_current_streak, winner_best_streak
+                )
+                _, new_w_personal_best = check_personal_best(
+                    scoring.winner_new_pts, winner_personal_best
+                )
+                new_l_streak, new_l_best_streak = update_streak_on_loss(
+                    loser_current_streak, loser_best_streak
+                )
+            else:
+                # Walkover/retirement: no streak or PB changes
+                new_w_streak = winner_current_streak
+                new_w_best_streak = winner_best_streak
+                new_w_personal_best = winner_personal_best
+                new_l_streak = loser_current_streak
+                new_l_best_streak = loser_best_streak
+
             score_doc = _score_to_doc(effective_score, winner_uid) if effective_score else None
 
             # --- WRITES ---
@@ -320,26 +357,30 @@ class MatchConfirmationService:
                 },
             )
 
-            # 2. Winner ranking + playTab
-            txn.update(
-                winner_ref,
-                {
-                    _ranking_field(sport_value, "pts"): scoring.winner_new_pts,
-                    _ranking_field(sport_value, "tier"): scoring.winner_new_tier.value,
-                    _ranking_field(sport_value, "lastUpdated"): now,
-                    "playTab.state": "DISCOVERY",
-                    "playTab.activeMatchId": None,
-                    "playTab.updatedAt": now,
-                },
-            )
+            # 2. Winner ranking + playTab + streak/PB
+            winner_updates: dict[str, Any] = {
+                _ranking_field(sport_value, "pts"): scoring.winner_new_pts,
+                _ranking_field(sport_value, "tier"): scoring.winner_new_tier.value,
+                _ranking_field(sport_value, "lastUpdated"): now,
+                _ranking_field(sport_value, "currentStreak"): new_w_streak,
+                _ranking_field(sport_value, "bestStreak"): new_w_best_streak,
+                "playTab.state": "DISCOVERY",
+                "playTab.activeMatchId": None,
+                "playTab.updatedAt": now,
+            }
+            if new_w_personal_best is not None:
+                winner_updates[_ranking_field(sport_value, "personalBest")] = new_w_personal_best
+            txn.update(winner_ref, winner_updates)
 
-            # 3. Loser ranking + playTab
+            # 3. Loser ranking + playTab + streak
             txn.update(
                 loser_ref,
                 {
                     _ranking_field(sport_value, "pts"): scoring.loser_new_pts,
                     _ranking_field(sport_value, "tier"): scoring.loser_new_tier.value,
                     _ranking_field(sport_value, "lastUpdated"): now,
+                    _ranking_field(sport_value, "currentStreak"): new_l_streak,
+                    _ranking_field(sport_value, "bestStreak"): new_l_best_streak,
                     "playTab.state": "DISCOVERY",
                     "playTab.activeMatchId": None,
                     "playTab.updatedAt": now,
