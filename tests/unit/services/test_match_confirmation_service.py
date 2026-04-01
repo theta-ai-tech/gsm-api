@@ -723,7 +723,12 @@ class TestRetirementFromStoredScore:
     does not resend score, is_walkover must still be True so pointHistory and
     ticker writes are skipped."""
 
-    def _run_stored_retirement(self):
+    def _run_stored_retirement(
+        self,
+        winner_current_streak: int = 3,
+        winner_best_streak: int = 5,
+        winner_personal_best: int | None = 1800,
+    ):
         stored_score = _make_score(retired=True)
         match = _make_match(
             status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
@@ -732,7 +737,13 @@ class TestRetirementFromStoredScore:
             match=match,
         )
 
-        winner_snap = _make_user_snap(1500, TierEnum.AMATEUR)
+        winner_snap = _make_user_snap(
+            1500,
+            TierEnum.AMATEUR,
+            current_streak=winner_current_streak,
+            best_streak=winner_best_streak,
+            personal_best=winner_personal_best,
+        )
         loser_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE)
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
@@ -760,19 +771,41 @@ class TestRetirementFromStoredScore:
                 MATCH_ID,
                 VerifyScoreRequest(winner_uid=WINNER_UID),
             )
-        return response, mock_ph_repo, mock_ticker_repo
+        return response, mock_ph_repo, mock_ticker_repo, mock_client
+
+    def _get_user_update(self, mock_client: MagicMock, uid: str) -> dict[str, Any]:
+        """Extract the update dict written to a user doc in the transaction."""
+        txn = mock_client.transaction()
+        user_ref = mock_client.collection("users").document(uid)
+        update_calls = [c for c in txn.update.call_args_list if c.args[0] == user_ref]
+        assert update_calls, f"expected update call for {uid}"
+        return update_calls[0].args[1]
 
     def test_stored_retirement_does_not_write_point_history(self):
-        _, mock_ph_repo, _ = self._run_stored_retirement()
+        _, mock_ph_repo, _, _ = self._run_stored_retirement()
         mock_ph_repo.add_entry_in_transaction.assert_not_called()
 
     def test_stored_retirement_does_not_write_ticker(self):
-        _, _, mock_ticker_repo = self._run_stored_retirement()
+        _, _, mock_ticker_repo, _ = self._run_stored_retirement()
         mock_ticker_repo.add.assert_not_called()
 
     def test_stored_retirement_produces_zero_deltas(self):
-        response, _, _ = self._run_stored_retirement()
+        response, _, _, _ = self._run_stored_retirement()
         assert response.winner_delta == 0
+
+    def test_retirement_preserves_winner_streak(self):
+        _, _, _, mock_client = self._run_stored_retirement(
+            winner_current_streak=3, winner_best_streak=5
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        assert updates[f"rankings.{SPORT.value}.currentStreak"] == 3
+        assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5
+
+    def test_retirement_preserves_winner_personal_best(self):
+        _, _, _, mock_client = self._run_stored_retirement(winner_personal_best=1800)
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        pb_key = f"rankings.{SPORT.value}.personalBest"
+        assert pb_key not in updates or updates[pb_key] == 1800
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +955,15 @@ class TestStreakAndPersonalBest:
         updates = self._get_user_update(mock_client, LOSER_UID)
         assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5
 
+    # --- Loser personal best should never be written ---
+
+    def test_loser_personal_best_not_in_update(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_pts=2100, loser_pts=2050
+        )
+        updates = self._get_user_update(mock_client, LOSER_UID)
+        assert f"rankings.{SPORT.value}.personalBest" not in updates
+
     # --- Walkover: no streak/PB changes ---
 
     def test_walkover_does_not_change_winner_streak(self):
@@ -939,3 +981,11 @@ class TestStreakAndPersonalBest:
         updates = self._get_user_update(mock_client, LOSER_UID)
         assert updates[f"rankings.{SPORT.value}.currentStreak"] == 3
         assert updates[f"rankings.{SPORT.value}.bestStreak"] == 5
+
+    def test_walkover_does_not_change_winner_personal_best(self):
+        _, mock_client = self._run_confirmation_with_streaks(
+            winner_pts=2100, winner_personal_best=2500, walkover=True
+        )
+        updates = self._get_user_update(mock_client, WINNER_UID)
+        pb_key = f"rankings.{SPORT.value}.personalBest"
+        assert pb_key not in updates or updates[pb_key] == 2500
