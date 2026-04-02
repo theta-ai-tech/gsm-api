@@ -13,11 +13,16 @@
 #   ./scripts/get_emu_token.sh                         # defaults: uid=user_1
 #   ./scripts/get_emu_token.sh user_2                  # sign in as user_2
 #   ./scripts/get_emu_token.sh user_1 my@email.com     # custom email
+#   ./scripts/get_emu_token.sh user_1 --token-only     # raw JWT only (for scripts)
+#   TOKEN=$(./scripts/get_emu_token.sh user_1 -t)      # capture token in a variable
 #
 # Positional args:
 #   $1  TARGET_UID  — the Firestore doc ID to authenticate as (default: user_1)
 #   $2  EMAIL       — email to register (default: <uid>@gsm.local)
 #   $3  PASSWORD    — password (default: test_pass_123)
+#
+# Flags:
+#   --token-only, -t  — print only the raw JWT string (no surrounding text)
 #
 # Optional env overrides:
 #   FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
@@ -29,9 +34,21 @@ AUTH_EMU="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}"
 AUTH_BASE="http://${AUTH_EMU}/identitytoolkit.googleapis.com/v1"
 FAKE_API_KEY="fake-api-key"
 
-TARGET_UID="${1:-user_1}"
-EMAIL="${2:-${TARGET_UID}@gsm.local}"
-PASSWORD="${3:-test_pass_123}"
+# --- Parse args: extract --token-only / -t flag, collect positional args ------
+TOKEN_ONLY=false
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --token-only|-t) TOKEN_ONLY=true ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+
+TARGET_UID="${POSITIONAL[0]:-user_1}"
+_EMAIL_ARG="${POSITIONAL[1]:-}"
+EMAIL="${_EMAIL_ARG:-${TARGET_UID}@gsm.local}"
+_PASS_ARG="${POSITIONAL[2]:-}"
+PASSWORD="${_PASS_ARG:-test_pass_123}"
 
 # Check jq is available
 if ! command -v jq &> /dev/null; then
@@ -68,17 +85,21 @@ fi
 
 RETURNED_UID=$(echo "$RESP" | jq -r '.localId // empty')
 
-echo ""
-echo "Auth emulator : ${AUTH_EMU}"
-echo "Email         : ${EMAIL}"
-echo "UID           : ${RETURNED_UID}"
-echo ""
-echo "Authorization header (copy-paste into curl -H):"
-echo ""
-echo "  Authorization: Bearer ${TOKEN}"
-echo ""
-echo "Quick curl example:"
-echo ""
-echo "  curl -s http://127.0.0.1:8000/me/lab/dashboard/tennis \\"
-echo "    -H 'Authorization: Bearer ${TOKEN}' | jq ."
-echo ""
+if [[ "$TOKEN_ONLY" == true ]]; then
+  printf '%s' "$TOKEN"
+else
+  echo ""
+  echo "Auth emulator : ${AUTH_EMU}"
+  echo "Email         : ${EMAIL}"
+  echo "UID           : ${RETURNED_UID}"
+  echo ""
+  echo "Authorization header (copy-paste into curl -H):"
+  echo ""
+  echo "  Authorization: Bearer ${TOKEN}"
+  echo ""
+  echo "Quick curl example:"
+  echo ""
+  echo "  curl -s http://127.0.0.1:8000/me/lab/dashboard/tennis \\"
+  echo "    -H 'Authorization: Bearer ${TOKEN}' | jq ."
+  echo ""
+fi
