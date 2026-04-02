@@ -45,8 +45,10 @@ for arg in "$@"; do
 done
 
 TARGET_UID="${POSITIONAL[0]:-user_1}"
-EMAIL="${POSITIONAL[1]:-${TARGET_UID}@gsm.local}"
-PASSWORD="${POSITIONAL[2]:-test_pass_123}"
+_EMAIL_ARG="${POSITIONAL[1]:-}"
+EMAIL="${_EMAIL_ARG:-${TARGET_UID}@gsm.local}"
+_PASS_ARG="${POSITIONAL[2]:-}"
+PASSWORD="${_PASS_ARG:-test_pass_123}"
 
 # Check jq is available
 if ! command -v jq &> /dev/null; then
