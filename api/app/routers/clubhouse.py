@@ -73,10 +73,9 @@ def get_clubhouse_profile(
 
     total_matches, total_wins = compute_match_totals(profile.completed_matches)
 
-    # TODO: profile.leagues_completed is a capped D2 cache (max 20 items).
-    # Replace with an uncapped counter field (e.g. totalLeaguesCompleted) on the
-    # user document once it exists. Using 0 as a safe fallback until then.
-    leagues_completed_count = 0
+    # NOTE: leagues_completed cache is capped at 20 — replace with uncapped
+    # counter field in a future schema migration.
+    leagues_completed_count = len(profile.leagues_completed)
 
     resume = AthleteResume(
         total_matches=total_matches,

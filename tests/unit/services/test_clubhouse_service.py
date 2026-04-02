@@ -243,12 +243,8 @@ class TestComputeMatchTotals:
         assert total == 0
         assert wins == 0
 
-    def test_ignores_capped_cache_returns_zero(self) -> None:
-        """completedMatches is capped at 10 items; totals must not use it.
-
-        Until uncapped counter fields are added to the user document,
-        compute_match_totals returns (0, 0) as a safe fallback.
-        """
+    def test_counts_from_capped_cache(self) -> None:
+        """completedMatches cache is capped at 10 — counts are accurate for most users."""
         matches = [
             UserCompletedMatchSummary(
                 match_id="m1",
@@ -264,5 +260,5 @@ class TestComputeMatchTotals:
             ),
         ]
         total, wins = compute_match_totals(matches)
-        assert total == 0
-        assert wins == 0
+        assert total == 2
+        assert wins == 1
