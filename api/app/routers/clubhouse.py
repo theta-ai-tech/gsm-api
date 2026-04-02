@@ -23,7 +23,7 @@ from app.services.clubhouse_service import build_athlete_card_sports, compute_ma
 class AthleteCardSport(GsmBaseModel):
     sport: SportEnum
     pts: int
-    tier: str
+    tier: str | None
     global_ranking: int | None
     personal_best: int | None
     current_streak: int

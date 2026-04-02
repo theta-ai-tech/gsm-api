@@ -222,14 +222,14 @@ class TestBuildAthleteCardSports:
         result = build_athlete_card_sports(rankings)
         assert result == []
 
-    def test_tier_defaults_to_amateur(self) -> None:
+    def test_tier_none_when_absent(self) -> None:
         rankings = {
             "tennis": SportRanking(sport=SportEnum.TENNIS, pts=100),
             "padel": None,
             "pickleball": None,
         }
         result = build_athlete_card_sports(rankings)
-        assert result[0]["tier"] == "amateur"
+        assert result[0]["tier"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -22,7 +22,7 @@ def build_athlete_card_sports(
             {
                 "sport": ranking.sport,
                 "pts": ranking.pts,
-                "tier": ranking.tier.value if ranking.tier else "amateur",
+                "tier": ranking.tier.value if ranking.tier else None,
                 "global_ranking": ranking.global_ranking,
                 "personal_best": ranking.personal_best,
                 "current_streak": ranking.current_streak,
