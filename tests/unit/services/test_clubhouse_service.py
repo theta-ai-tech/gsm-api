@@ -53,10 +53,42 @@ class TestCheckPersonalBest:
         assert is_new is True
         assert value == 0
 
+    def test_new_best_2100_over_2000(self) -> None:
+        """Issue example: 2100 > 2000 is a new personal best."""
+        is_new, value = check_personal_best(2100, 2000)
+        assert is_new is True
+        assert value == 2100
+
+    def test_not_best_1900_below_2000(self) -> None:
+        """Issue example: 1900 < 2000 is not a new personal best."""
+        is_new, value = check_personal_best(1900, 2000)
+        assert is_new is False
+        assert value == 2000
+
     def test_exceeds_by_one(self) -> None:
         is_new, value = check_personal_best(501, 500)
         assert is_new is True
         assert value == 501
+
+    def test_floor_enforcement_does_not_create_personal_best(self) -> None:
+        """Floor clamping may keep loser pts above raw value, but that should
+        never produce a new personalBest — the clamped pts are still below the
+        previous best."""
+        # Scenario: player had PB of 1200, lost and raw pts would be 950,
+        # floor enforcement brings them to 1000.  1000 < 1200 => not a PB.
+        is_new, value = check_personal_best(1000, 1200)
+        assert is_new is False
+        assert value == 1200
+
+    def test_floor_enforced_pts_still_tracks_high_watermark(self) -> None:
+        """personalBest is the max pts ever reached — independent of floors.
+        If a player earns new pts above their PB, it's a new PB regardless of
+        whether floor enforcement was involved for a previous loss."""
+        # Player's PB was 1100 (set before a loss that was floor-clamped).
+        # They now win and reach 1150.  1150 > 1100 => new PB.
+        is_new, value = check_personal_best(1150, 1100)
+        assert is_new is True
+        assert value == 1150
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +108,18 @@ class TestUpdateStreakOnWin:
         assert new_best == 5
 
     def test_consecutive_win_equals_best(self) -> None:
+        new_current, new_best = update_streak_on_win(4, 5)
+        assert new_current == 5
+        assert new_best == 5
+
+    def test_new_best_streak_from_three(self) -> None:
+        """Issue example: bestStreak 3, currentStreak 3 -> 4, bestStreak -> 4."""
+        new_current, new_best = update_streak_on_win(3, 3)
+        assert new_current == 4
+        assert new_best == 4
+
+    def test_continuing_streak_best_stays(self) -> None:
+        """Issue example: currentStreak 4 -> 5, bestStreak stays at 5."""
         new_current, new_best = update_streak_on_win(4, 5)
         assert new_current == 5
         assert new_best == 5
