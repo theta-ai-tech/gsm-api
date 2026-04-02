@@ -238,12 +238,17 @@ class TestBuildAthleteCardSports:
 
 
 class TestComputeMatchTotals:
-    def test_empty_list(self) -> None:
+    def test_empty_list_returns_zero(self) -> None:
         total, wins = compute_match_totals([])
         assert total == 0
         assert wins == 0
 
-    def test_mixed_results(self) -> None:
+    def test_ignores_capped_cache_returns_zero(self) -> None:
+        """completedMatches is capped at 10 items; totals must not use it.
+
+        Until uncapped counter fields are added to the user document,
+        compute_match_totals returns (0, 0) as a safe fallback.
+        """
         matches = [
             UserCompletedMatchSummary(
                 match_id="m1",
@@ -257,40 +262,7 @@ class TestComputeMatchTotals:
                 finished_at=_utc(2026, 1, 15),
                 result=MatchResultEnum.LOSS,
             ),
-            UserCompletedMatchSummary(
-                match_id="m3",
-                sport=SportEnum.PADEL,
-                finished_at=_utc(2026, 1, 20),
-                result=MatchResultEnum.WIN,
-            ),
         ]
         total, wins = compute_match_totals(matches)
-        assert total == 3
-        assert wins == 2
-
-    def test_all_wins(self) -> None:
-        matches = [
-            UserCompletedMatchSummary(
-                match_id=f"m{i}",
-                sport=SportEnum.TENNIS,
-                finished_at=_utc(2026, 1, i + 1),
-                result=MatchResultEnum.WIN,
-            )
-            for i in range(4)
-        ]
-        total, wins = compute_match_totals(matches)
-        assert total == 4
-        assert wins == 4
-
-    def test_none_result_not_counted_as_win(self) -> None:
-        matches = [
-            UserCompletedMatchSummary(
-                match_id="m1",
-                sport=SportEnum.TENNIS,
-                finished_at=_utc(2026, 1, 10),
-                result=None,
-            ),
-        ]
-        total, wins = compute_match_totals(matches)
-        assert total == 1
+        assert total == 0
         assert wins == 0

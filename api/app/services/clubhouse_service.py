@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from app.constants import STREAK_MILESTONES
 from app.models.common import SportRanking, UserCompletedMatchSummary
-from app.models.enums import MatchResultEnum
 
 
 def build_athlete_card_sports(
@@ -35,10 +34,16 @@ def build_athlete_card_sports(
 def compute_match_totals(
     completed_matches: list[UserCompletedMatchSummary],
 ) -> tuple[int, int]:
-    """Return (total_matches, total_wins) from the completedMatches cache."""
-    total = len(completed_matches)
-    wins = sum(1 for m in completed_matches if m.result == MatchResultEnum.WIN)
-    return total, wins
+    """Return (total_matches, total_wins).
+
+    TODO: completedMatches is a capped D2 cache (max 10 items) and must not be
+    used for lifetime totals.  Wire this up to uncapped counter fields on the
+    user document (e.g. ``totalMatchesPlayed``, ``totalWins``) once they exist,
+    or use a Firestore aggregation count query on the matches collection.
+    Returning 0 as a safe fallback until then.
+    """
+    del completed_matches  # capped cache — not suitable for totals
+    return 0, 0
 
 
 def check_personal_best(new_pts: int, current_best: int | None) -> tuple[bool, int]:
