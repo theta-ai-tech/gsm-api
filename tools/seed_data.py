@@ -69,6 +69,9 @@ USER_IGNATIOS = PrivateUserProfile(
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 2, 20, 14, 0),
+            personal_best=1050,
+            current_streak=3,
+            best_streak=5,
         ),
         tennis=SportRanking(
             sport=SportEnum.TENNIS,
@@ -77,6 +80,9 @@ USER_IGNATIOS = PrivateUserProfile(
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 2, 15, 10, 0),
+            personal_best=680,
+            current_streak=0,
+            best_streak=2,
         ),
     ),
     preferences=UserPreferences(
@@ -129,6 +135,9 @@ USER_ALICE = PrivateUserProfile(
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 2, 18, 9, 30),
+            personal_best=920,
+            current_streak=3,
+            best_streak=4,
         ),
     ),
     preferences=UserPreferences(
@@ -171,6 +180,9 @@ USER_BOB = PrivateUserProfile(
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 2, 10, 16, 0),
+            personal_best=600,
+            current_streak=0,
+            best_streak=3,
         ),
         pickleball=SportRanking(
             sport=SportEnum.PICKLEBALL,
@@ -179,6 +191,9 @@ USER_BOB = PrivateUserProfile(
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 1, 25, 11, 0),
+            personal_best=None,
+            current_streak=0,
+            best_streak=0,
         ),
     ),
     preferences=UserPreferences(
