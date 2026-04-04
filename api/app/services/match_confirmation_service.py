@@ -65,6 +65,14 @@ _DEFAULT_TIER = TierEnum.AMATEUR
 _TICKER_TTL_HOURS = 24
 
 
+def _format_short_name(full_name: str) -> str:
+    """Format 'Firstname Lastname' as 'Firstname L.' for ticker display."""
+    parts = full_name.strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[-1][0]}."
+    return parts[0] if parts else ""
+
+
 def _score_to_doc(score: MatchScore, winner_uid: str) -> dict[str, Any]:
     return {
         "sets": [
@@ -304,6 +312,14 @@ class MatchConfirmationService:
             result_holder["loser_tier_before"] = loser_tier
             result_holder["winner_name"] = winner_data.get("name", "")
             result_holder["winner_area"] = (winner_data.get("preferences") or {}).get("area")
+            result_holder["loser_name"] = loser_data.get("name", "")
+            result_holder["loser_area"] = (loser_data.get("preferences") or {}).get("area")
+            result_holder["winner_feed_opt_out"] = (winner_data.get("preferences") or {}).get(
+                "feedOptOut", False
+            )
+            result_holder["loser_feed_opt_out"] = (loser_data.get("preferences") or {}).get(
+                "feedOptOut", False
+            )
 
             # --- COMPUTE (pure, no IO) ---
             scoring = compute_match_scoring(
@@ -436,6 +452,26 @@ class MatchConfirmationService:
                 winner_area=result_holder.get("winner_area"),
                 now=now,
             )
+            self._maybe_write_tier_crossed_ticker(
+                uid=winner_uid,
+                name=result_holder.get("winner_name", ""),
+                area=result_holder.get("winner_area"),
+                tier_before=result_holder["winner_tier_before"],
+                tier_after=scoring.winner_new_tier,
+                sport=sport,
+                now=now,
+                feed_opt_out=result_holder.get("winner_feed_opt_out", False),
+            )
+            self._maybe_write_tier_crossed_ticker(
+                uid=loser_uid,
+                name=result_holder.get("loser_name", ""),
+                area=result_holder.get("loser_area"),
+                tier_before=result_holder["loser_tier_before"],
+                tier_after=scoring.loser_new_tier,
+                sport=sport,
+                now=now,
+                feed_opt_out=result_holder.get("loser_feed_opt_out", False),
+            )
         is_winner = uid == winner_uid
         your_delta = scoring.winner_delta if is_winner else scoring.loser_delta
         scoring_payload = ScoringPayload(
@@ -512,3 +548,54 @@ class MatchConfirmationService:
             self.ticker_repo.add(event)
         except Exception:
             logger.exception("Failed to write upset ticker event (non-fatal)")
+
+    # -------------------------------------------------------------------------
+    # Tier-crossed ticker event (fire-and-forget)
+    # -------------------------------------------------------------------------
+
+    def _maybe_write_tier_crossed_ticker(
+        self,
+        *,
+        uid: str,
+        name: str,
+        area: int | None,
+        tier_before: TierEnum,
+        tier_after: TierEnum,
+        sport: Any,
+        now: datetime,
+        feed_opt_out: bool = False,
+    ) -> None:
+        if tier_before == tier_after:
+            return
+
+        if feed_opt_out:
+            return
+
+        if self.ticker_repo is None or self.region_config_repo is None:
+            return
+
+        try:
+            region_config = self.region_config_repo.get()
+            region = region_config.mapping.get(str(area)) if area else None
+            if not region:
+                logger.warning("Skipping tier_crossed ticker: no region mapping for area %s", area)
+                return
+
+            direction = "up" if TIER_ORDER[tier_after] > TIER_ORDER[tier_before] else "down"
+            user_name = _format_short_name(name)
+
+            event = TickerEvent(
+                type=TickerEventTypeEnum.TIER_CROSSED,
+                sport=sport,
+                region=region,
+                created_at=now,
+                expires_at=now + timedelta(hours=_TICKER_TTL_HOURS),
+                user_uid=uid,
+                user_name=user_name,
+                tier_before=tier_before,
+                tier_after=tier_after,
+                direction=direction,
+            )
+            self.ticker_repo.add(event)
+        except Exception:
+            logger.exception("Failed to write tier_crossed ticker event (non-fatal)")
