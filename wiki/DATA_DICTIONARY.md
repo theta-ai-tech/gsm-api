@@ -995,6 +995,20 @@ Purpose: notable events feed for a region (upsets, personal bests, win streaks, 
 }
 ```
 
+### ticker/{auto} (win_streak example)
+```json
+{
+  "type": "win_streak",
+  "sport": "tennis",
+  "region": "athens",
+  "userUid": "user_2",
+  "userName": "Eve K.",
+  "streak": 5,
+  "createdAt": "2026-03-01T14:30:00Z",
+  "expiresAt": "2026-03-02T14:30:00Z"
+}
+```
+
 ### ticker/{auto} (tier_crossed example)
 ```json
 {
