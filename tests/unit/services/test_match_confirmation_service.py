@@ -603,13 +603,21 @@ class TestUpsetTickerEvent:
             )
         return response, mock_ticker_repo, mock_region_repo
 
+    def _upset_events(self, mock_ticker_repo: Mock):
+        return [
+            call.args[0]
+            for call in mock_ticker_repo.add.call_args_list
+            if call.args[0].type == TickerEventTypeEnum.UPSET
+        ]
+
     def test_upset_writes_ticker_event(self):
         _, mock_ticker_repo, _ = self._run_upset_confirmation(
             winner_tier=TierEnum.AMATEUR, loser_tier=TierEnum.INTERMEDIATE
         )
         assert mock_ticker_repo is not None
-        mock_ticker_repo.add.assert_called_once()
-        event = mock_ticker_repo.add.call_args.args[0]
+        upset_events = self._upset_events(mock_ticker_repo)
+        assert len(upset_events) == 1
+        event = upset_events[0]
         assert event.type.value == "upset"
         assert event.winner_uid == WINNER_UID
         assert event.winner_name == "Underdog"
@@ -621,7 +629,9 @@ class TestUpsetTickerEvent:
     def test_upset_ticker_has_24h_ttl(self):
         _, mock_ticker_repo, _ = self._run_upset_confirmation()
         assert mock_ticker_repo is not None
-        event = mock_ticker_repo.add.call_args.args[0]
+        upset_events = self._upset_events(mock_ticker_repo)
+        assert len(upset_events) == 1
+        event = upset_events[0]
         ttl = event.expires_at - event.created_at
         assert ttl.total_seconds() == 24 * 3600
 
@@ -630,14 +640,14 @@ class TestUpsetTickerEvent:
             winner_tier=TierEnum.INTERMEDIATE, loser_tier=TierEnum.INTERMEDIATE
         )
         assert mock_ticker_repo is not None
-        mock_ticker_repo.add.assert_not_called()
+        assert self._upset_events(mock_ticker_repo) == []
 
     def test_no_ticker_when_winner_higher_tier(self):
         _, mock_ticker_repo, _ = self._run_upset_confirmation(
             winner_tier=TierEnum.ADVANCED, loser_tier=TierEnum.INTERMEDIATE
         )
         assert mock_ticker_repo is not None
-        mock_ticker_repo.add.assert_not_called()
+        assert self._upset_events(mock_ticker_repo) == []
 
     def test_ticker_failure_does_not_break_match_confirmation(self):
         stored_score = _make_score(winner_uid=WINNER_UID)

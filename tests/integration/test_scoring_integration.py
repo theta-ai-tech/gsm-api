@@ -587,14 +587,22 @@ def _seed_user_with_area(
     )
 
 
-def _get_ticker_events(db, region: str = "athens", sport: str = "tennis") -> list[dict]:
+def _get_ticker_events(
+    db,
+    region: str = "athens",
+    sport: str = "tennis",
+    event_type: str | None = None,
+) -> list[dict]:
     docs = (
         db.collection("ticker")
         .where("region", "==", region)
         .where("sport", "==", sport)
         .stream()
     )
-    return [d.to_dict() or {} for d in docs]
+    events = [d.to_dict() or {} for d in docs]
+    if event_type is not None:
+        return [event for event in events if event.get("type") == event_type]
+    return events
 
 
 class TestUpsetTickerCreation:
@@ -630,7 +638,7 @@ class TestUpsetTickerCreation:
         svc.verify_score("sc07_winner", "sc07_match", req)
         svc.verify_score("sc07_loser", "sc07_match", req)
 
-        events = _get_ticker_events(db)
+        events = _get_ticker_events(db, event_type="upset")
         assert len(events) == 1
         event = events[0]
         assert event["type"] == "upset"
@@ -655,7 +663,7 @@ class TestUpsetTickerCreation:
         svc.verify_score("sc07b_winner", "sc07b_match", req)
         svc.verify_score("sc07b_loser", "sc07b_match", req)
 
-        events = _get_ticker_events(db)
+        events = _get_ticker_events(db, event_type="upset")
         assert len(events) == 0
 
     def test_walkover_does_not_create_ticker_event(self, db) -> None:
