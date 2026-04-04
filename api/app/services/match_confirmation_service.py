@@ -342,9 +342,11 @@ class MatchConfirmationService:
                 new_w_streak, new_w_best_streak = update_streak_on_win(
                     winner_current_streak, winner_best_streak
                 )
-                _, new_w_personal_best = check_personal_best(
+                is_new_best, new_w_personal_best = check_personal_best(
                     scoring.winner_new_pts, winner_personal_best
                 )
+                result_holder["is_new_best"] = is_new_best
+                result_holder["winner_personal_best_before"] = winner_personal_best
                 new_l_streak, new_l_best_streak = update_streak_on_loss(
                     loser_current_streak, loser_best_streak
                 )
@@ -471,6 +473,17 @@ class MatchConfirmationService:
                 sport=sport,
                 now=now,
                 feed_opt_out=result_holder.get("loser_feed_opt_out", False),
+            )
+            self._maybe_write_personal_best_ticker(
+                winner_uid=winner_uid,
+                winner_name=result_holder.get("winner_name", ""),
+                winner_area=result_holder.get("winner_area"),
+                new_pts=scoring.winner_new_pts,
+                previous_best=result_holder.get("winner_personal_best_before"),
+                is_new_best=result_holder.get("is_new_best", False),
+                sport=sport,
+                now=now,
+                feed_opt_out=result_holder.get("winner_feed_opt_out", False),
             )
         is_winner = uid == winner_uid
         your_delta = scoring.winner_delta if is_winner else scoring.loser_delta
@@ -599,3 +612,56 @@ class MatchConfirmationService:
             self.ticker_repo.add(event)
         except Exception:
             logger.exception("Failed to write tier_crossed ticker event (non-fatal)")
+
+    # -------------------------------------------------------------------------
+    # Personal-best ticker event (fire-and-forget)
+    # -------------------------------------------------------------------------
+
+    def _maybe_write_personal_best_ticker(
+        self,
+        *,
+        winner_uid: str,
+        winner_name: str,
+        winner_area: int | None,
+        new_pts: int,
+        previous_best: int | None,
+        is_new_best: bool,
+        sport: Any,
+        now: datetime,
+        feed_opt_out: bool = False,
+    ) -> None:
+        if not is_new_best:
+            return
+
+        if feed_opt_out:
+            return
+
+        if self.ticker_repo is None or self.region_config_repo is None:
+            return
+
+        try:
+            region_config = self.region_config_repo.get()
+            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            if not region:
+                logger.warning(
+                    "Skipping personal_best ticker: no region mapping for area %s",
+                    winner_area,
+                )
+                return
+
+            user_name = _format_short_name(winner_name)
+
+            event = TickerEvent(
+                type=TickerEventTypeEnum.PERSONAL_BEST,
+                sport=sport,
+                region=region,
+                created_at=now,
+                expires_at=now + timedelta(hours=_TICKER_TTL_HOURS),
+                user_uid=winner_uid,
+                user_name=user_name,
+                new_pts=new_pts,
+                previous_best=previous_best if previous_best is not None else 0,
+            )
+            self.ticker_repo.add(event)
+        except Exception:
+            logger.exception("Failed to write personal_best ticker event (non-fatal)")

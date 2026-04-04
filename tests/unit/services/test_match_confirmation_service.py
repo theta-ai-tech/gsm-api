@@ -1350,3 +1350,241 @@ class TestTierCrossedTickerEvent:
 
         assert mock_ticker_repo is not None
         mock_ticker_repo.add.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: personal_best ticker events (CH-12)
+# ---------------------------------------------------------------------------
+
+
+class TestPersonalBestTickerEvent:
+    """Tests for personal_best event write during match confirmation."""
+
+    def _run_pb_confirmation(
+        self,
+        winner_pts: int = 2100,
+        loser_pts: int = 2050,
+        winner_personal_best: int | None = None,
+        winner_name: str = "Winner Player",
+        winner_area: int = 101,
+        winner_feed_opt_out: bool = False,
+        with_ticker: bool = True,
+    ):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, mock_region_repo = _make_service(
+            match=match,
+            with_ticker=with_ticker,
+        )
+
+        winner_prefs: dict[str, object] = {"area": winner_area}
+        if winner_feed_opt_out:
+            winner_prefs["feedOptOut"] = True
+
+        winner_ranking: dict[str, object] = {
+            "pts": winner_pts,
+            "tier": TierEnum.INTERMEDIATE.value,
+            "registrationTier": TierEnum.INTERMEDIATE.value,
+            "currentStreak": 0,
+            "bestStreak": 0,
+        }
+        if winner_personal_best is not None:
+            winner_ranking["personalBest"] = winner_personal_best
+
+        winner_snap = Mock()
+        winner_snap.to_dict.return_value = {
+            "name": winner_name,
+            "preferences": winner_prefs,
+            "rankings": {SPORT.value: winner_ranking},
+        }
+        loser_snap = _make_user_snap(
+            loser_pts, TierEnum.INTERMEDIATE, name="Loser Player"
+        )
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+        return response, mock_ticker_repo, mock_region_repo
+
+    def _get_pb_events(self, mock_ticker_repo: Mock) -> list:
+        return [
+            c
+            for c in mock_ticker_repo.add.call_args_list
+            if c.args[0].type == TickerEventTypeEnum.PERSONAL_BEST
+        ]
+
+    def test_writes_personal_best_event_when_new_best(self):
+        """Winner with existing PB of 2100 scores 2200 — new PB triggers ticker event."""
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100, winner_personal_best=2100
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 1
+        event = pb_events[0].args[0]
+        assert event.type == TickerEventTypeEnum.PERSONAL_BEST
+        assert event.user_uid == WINNER_UID
+        assert event.user_name == "Winner P."
+        assert event.new_pts == 2200  # 2100 + 100 base win
+        assert event.previous_best == 2100
+        assert event.sport == SPORT
+        assert event.region == "athens"
+
+    def test_writes_personal_best_event_on_first_match(self):
+        """Winner with no previous PB (None) — treat as new PB with previous_best=0."""
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100, winner_personal_best=None
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 1
+        event = pb_events[0].args[0]
+        assert event.new_pts == 2200
+        assert event.previous_best == 0
+
+    def test_no_event_when_pts_not_exceeding_personal_best(self):
+        """Winner with PB of 2500 scores 2200 — no personal best event."""
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100, winner_personal_best=2500
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 0
+
+    def test_personal_best_event_has_24h_ttl(self):
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100, winner_personal_best=2100
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 1
+        event = pb_events[0].args[0]
+        ttl = event.expires_at - event.created_at
+        assert ttl.total_seconds() == 24 * 3600
+
+    def test_user_name_formatted_as_first_initial(self):
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100,
+            winner_personal_best=2100,
+            winner_name="Ignatios Charalampidis",
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 1
+        event = pb_events[0].args[0]
+        assert event.user_name == "Ignatios C."
+
+    def test_region_derived_from_user_area(self):
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100,
+            winner_personal_best=2100,
+            winner_area=202,
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 1
+        event = pb_events[0].args[0]
+        assert event.region == "thessaloniki"
+
+    def test_feed_opt_out_skips_personal_best_ticker(self):
+        """User with feedOptOut=true should not get a personal_best event."""
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100,
+            winner_personal_best=2100,
+            winner_feed_opt_out=True,
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        assert len(pb_events) == 0
+
+    def test_no_personal_best_event_for_losers(self):
+        """Losers never get personal_best events (their pts decrease)."""
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100, winner_personal_best=2500
+        )
+        assert mock_ticker_repo is not None
+        pb_events = self._get_pb_events(mock_ticker_repo)
+        # Winner didn't beat PB, and loser never gets a PB event
+        assert len(pb_events) == 0
+
+    def test_ticker_failure_does_not_break_confirmation(self):
+        """personal_best ticker failure should not affect match completion."""
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, _ = _make_service(match=match)
+        assert mock_ticker_repo is not None
+
+        def _failing_add(event):
+            if event.type == TickerEventTypeEnum.PERSONAL_BEST:
+                raise Exception("Firestore timeout")
+
+        mock_ticker_repo.add.side_effect = _failing_add
+
+        winner_snap = _make_user_snap(
+            2100,
+            TierEnum.INTERMEDIATE,
+            name="Winner Player",
+            area=101,
+            personal_best=2100,
+        )
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE, name="Loser Player")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+        assert response.status == MatchStatusEnum.COMPLETED
+
+    def test_no_personal_best_event_when_repos_not_configured(self):
+        _, mock_ticker_repo, _ = self._run_pb_confirmation(
+            winner_pts=2100,
+            winner_personal_best=2100,
+            with_ticker=False,
+        )
+        assert mock_ticker_repo is None
