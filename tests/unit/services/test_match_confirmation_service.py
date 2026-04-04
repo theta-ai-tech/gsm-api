@@ -1588,3 +1588,183 @@ class TestPersonalBestTickerEvent:
             with_ticker=False,
         )
         assert mock_ticker_repo is None
+
+
+class TestWinStreakTickerEvent:
+    """Tests for win_streak milestone event write during match confirmation."""
+
+    def _run_streak_confirmation(
+        self,
+        winner_current_streak: int = 2,
+        winner_best_streak: int = 2,
+        winner_name: str = "Winner Player",
+        winner_area: int = 101,
+        winner_feed_opt_out: bool = False,
+        with_ticker: bool = True,
+    ):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, mock_ticker_repo, mock_region_repo = _make_service(
+            match=match,
+            with_ticker=with_ticker,
+        )
+
+        winner_prefs: dict[str, object] = {"area": winner_area}
+        if winner_feed_opt_out:
+            winner_prefs["feedOptOut"] = True
+
+        winner_snap = Mock()
+        winner_snap.to_dict.return_value = {
+            "name": winner_name,
+            "preferences": winner_prefs,
+            "rankings": {
+                SPORT.value: {
+                    "pts": 2100,
+                    "tier": TierEnum.INTERMEDIATE.value,
+                    "registrationTier": TierEnum.INTERMEDIATE.value,
+                    "currentStreak": winner_current_streak,
+                    "bestStreak": winner_best_streak,
+                }
+            },
+        }
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE, name="Loser Player")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+        return response, mock_ticker_repo, mock_region_repo
+
+    def _get_streak_events(self, mock_ticker_repo: Mock) -> list:
+        return [
+            c
+            for c in mock_ticker_repo.add.call_args_list
+            if c.args[0].type == TickerEventTypeEnum.WIN_STREAK
+        ]
+
+    def test_writes_win_streak_event_at_milestone_3(self):
+        """Winner with currentStreak=2 wins => streak becomes 3, a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=2, winner_best_streak=2
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        event = events[0].args[0]
+        assert event.type == TickerEventTypeEnum.WIN_STREAK
+        assert event.user_uid == WINNER_UID
+        assert event.user_name == "Winner P."
+        assert event.streak == 3
+        assert event.sport == SPORT
+        assert event.region == "athens"
+
+    def test_writes_win_streak_event_at_milestone_5(self):
+        """Winner with currentStreak=4 wins => streak becomes 5, a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=4, winner_best_streak=4
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        assert events[0].args[0].streak == 5
+
+    def test_writes_win_streak_event_at_milestone_10(self):
+        """Winner with currentStreak=9 wins => streak becomes 10, a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=9, winner_best_streak=9
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        assert events[0].args[0].streak == 10
+
+    def test_writes_win_streak_event_at_milestone_20(self):
+        """Winner with currentStreak=19 wins => streak becomes 20, a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=19, winner_best_streak=19
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        assert events[0].args[0].streak == 20
+
+    def test_no_event_for_non_milestone_streak(self):
+        """Winner with currentStreak=3 wins => streak becomes 4, not a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=3, winner_best_streak=3
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 0
+
+    def test_no_event_for_streak_1(self):
+        """Winner with currentStreak=0 wins => streak becomes 1, not a milestone."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=0, winner_best_streak=0
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 0
+
+    def test_win_streak_event_has_24h_ttl(self):
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=2, winner_best_streak=2
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        event = events[0].args[0]
+        ttl = event.expires_at - event.created_at
+        assert ttl.total_seconds() == 24 * 3600
+
+    def test_user_name_formatted_as_first_initial(self):
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=2,
+            winner_best_streak=2,
+            winner_name="Ignatios Charalampidis",
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 1
+        assert events[0].args[0].user_name == "Ignatios C."
+
+    def test_feed_opt_out_skips_win_streak_ticker(self):
+        """User with feedOptOut=true should not get a win_streak event."""
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=2,
+            winner_best_streak=2,
+            winner_feed_opt_out=True,
+        )
+        assert mock_ticker_repo is not None
+        events = self._get_streak_events(mock_ticker_repo)
+        assert len(events) == 0
+
+    def test_no_win_streak_event_when_repos_not_configured(self):
+        _, mock_ticker_repo, _ = self._run_streak_confirmation(
+            winner_current_streak=2,
+            winner_best_streak=2,
+            with_ticker=False,
+        )
+        assert mock_ticker_repo is None

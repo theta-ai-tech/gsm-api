@@ -63,6 +63,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PTS = 1000
 _DEFAULT_TIER = TierEnum.AMATEUR
 _TICKER_TTL_HOURS = 24
+STREAK_MILESTONE_THRESHOLDS: frozenset[int] = frozenset({3, 5, 10, 20})
 
 
 def _format_short_name(full_name: str) -> str:
@@ -347,6 +348,7 @@ class MatchConfirmationService:
                 )
                 result_holder["is_new_best"] = is_new_best
                 result_holder["winner_personal_best_before"] = winner_personal_best
+                result_holder["winner_new_streak"] = new_w_streak
                 new_l_streak, new_l_best_streak = update_streak_on_loss(
                     loser_current_streak, loser_best_streak
                 )
@@ -481,6 +483,15 @@ class MatchConfirmationService:
                 new_pts=scoring.winner_new_pts,
                 previous_best=result_holder.get("winner_personal_best_before"),
                 is_new_best=result_holder.get("is_new_best", False),
+                sport=sport,
+                now=now,
+                feed_opt_out=result_holder.get("winner_feed_opt_out", False),
+            )
+            self._maybe_write_win_streak_ticker(
+                winner_uid=winner_uid,
+                winner_name=result_holder.get("winner_name", ""),
+                winner_area=result_holder.get("winner_area"),
+                streak=result_holder.get("winner_new_streak", 0),
                 sport=sport,
                 now=now,
                 feed_opt_out=result_holder.get("winner_feed_opt_out", False),
@@ -665,3 +676,53 @@ class MatchConfirmationService:
             self.ticker_repo.add(event)
         except Exception:
             logger.exception("Failed to write personal_best ticker event (non-fatal)")
+
+    # -------------------------------------------------------------------------
+    # Win-streak milestone ticker event (fire-and-forget)
+    # -------------------------------------------------------------------------
+
+    def _maybe_write_win_streak_ticker(
+        self,
+        *,
+        winner_uid: str,
+        winner_name: str,
+        winner_area: int | None,
+        streak: int,
+        sport: Any,
+        now: datetime,
+        feed_opt_out: bool = False,
+    ) -> None:
+        if streak not in STREAK_MILESTONE_THRESHOLDS:
+            return
+
+        if feed_opt_out:
+            return
+
+        if self.ticker_repo is None or self.region_config_repo is None:
+            return
+
+        try:
+            region_config = self.region_config_repo.get()
+            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            if not region:
+                logger.warning(
+                    "Skipping win_streak ticker: no region mapping for area %s",
+                    winner_area,
+                )
+                return
+
+            user_name = _format_short_name(winner_name)
+
+            event = TickerEvent(
+                type=TickerEventTypeEnum.WIN_STREAK,
+                sport=sport,
+                region=region,
+                created_at=now,
+                expires_at=now + timedelta(hours=_TICKER_TTL_HOURS),
+                user_uid=winner_uid,
+                user_name=user_name,
+                streak=streak,
+            )
+            self.ticker_repo.add(event)
+        except Exception:
+            logger.exception("Failed to write win_streak ticker event (non-fatal)")
