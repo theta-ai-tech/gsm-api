@@ -132,6 +132,7 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | preferences.levels.padel | string | optional | level | canonical | — | Enum value. |
 | preferences.levels.pickleball | string | optional | level | canonical | — | Enum value. |
 | preferences.sports | array<string> | optional | sport | canonical | — | Private; preferred sports. |
+| preferences.feedOptOut | boolean | optional | — | canonical | false | Whether the user has opted out of appearing in the Local Pulse feed. Defaults to false (users appear in feed by default). |
 | preferences.defaultGeo | map | optional | — | canonical | — | Home-base coordinates for "nearby me" discovery. |
 | preferences.defaultGeo.lat | number | required | — | canonical | — | Latitude (WGS84). |
 | preferences.defaultGeo.lng | number | required | — | canonical | — | Longitude (WGS84). |
@@ -230,7 +231,8 @@ Minimal examples (timestamps shown as ISO8601 UTC strings).
   "preferences": {
     "area": 101,
     "levels": {"padel": "advanced"},
-    "sports": ["padel", "tennis"]
+    "sports": ["padel", "tennis"],
+    "feedOptOut": false
   },
   "leaguesActive": [
     {"leagueId": "league_1", "name": "Local Ladder", "sport": "padel", "status": "active"}

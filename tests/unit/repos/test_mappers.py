@@ -507,3 +507,31 @@ class TestParseSportRankingStreaks:
 
         assert ranking.current_streak == 0
         assert ranking.best_streak == 0
+
+
+class TestParseUserPreferences:
+    def test_feed_opt_out_defaults_to_false_when_missing(self):
+        """A Firestore preferences doc without feedOptOut should default feed_opt_out to False."""
+        from app.repos.mappers import _parse_user_preferences
+
+        prefs = _parse_user_preferences({"area": 1, "levels": {}, "sports": ["padel"]})
+
+        assert prefs.feed_opt_out is False
+
+    def test_feed_opt_out_true_is_parsed(self):
+        """feedOptOut=true in Firestore maps to feed_opt_out=True on the model."""
+        from app.repos.mappers import _parse_user_preferences
+
+        prefs = _parse_user_preferences(
+            {"area": 1, "levels": {}, "sports": [], "feedOptOut": True}
+        )
+
+        assert prefs.feed_opt_out is True
+
+    def test_user_preferences_model_default(self):
+        """UserPreferences model defaults feed_opt_out to False."""
+        from app.models.common import PerSportLevels, UserPreferences
+
+        prefs = UserPreferences(area=1, levels=PerSportLevels(), sports=[])
+
+        assert prefs.feed_opt_out is False

@@ -41,6 +41,7 @@ class UserPreferences(GsmBaseModel):
     comment: str = "integer key referencing a separate region config; may evolve to ISO code later."
     levels: PerSportLevels
     sports: list[SportEnum]
+    feed_opt_out: bool = False
 
 
 class SetScore(GsmBaseModel):
