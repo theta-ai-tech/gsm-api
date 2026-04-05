@@ -38,6 +38,7 @@ from app.models.enums import (
     MatchResultEnum,
     PointHistoryReasonEnum,
     SportEnum,
+    TickerEventTypeEnum,
     TierEnum,
 )
 from app.models.point_history import PointHistoryEntry
@@ -1338,6 +1339,7 @@ class TestGetTicker:
             region="athens",
             sport="tennis",
             limit=10,
+            types=None,
         )
 
     def test_default_limit_applied(self, ticker_client):
@@ -1350,6 +1352,7 @@ class TestGetTicker:
             region="athens",
             sport="tennis",
             limit=20,
+            types=None,
         )
 
     def test_defaults_region_from_user_preferences(self, ticker_client):
@@ -1416,6 +1419,97 @@ class TestGetTicker:
         resp = client.get("/me/lab/ticker?sport=tennis")
 
         assert resp.status_code == 404
+
+
+class TestGetTickerTypesFilter:
+    def test_no_types_param_returns_all_events(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = [
+            _make_ticker_event("upset"),
+            _make_ticker_event("personal_best"),
+            _make_ticker_event("win_streak"),
+        ]
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens")
+
+        assert resp.status_code == 200
+        assert len(resp.json()["events"]) == 3
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=20,
+            types=None,
+        )
+
+    def test_single_type_filter_upset(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = [_make_ticker_event("upset")]
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens&types=upset")
+
+        assert resp.status_code == 200
+        events = resp.json()["events"]
+        assert len(events) == 1
+        assert events[0]["type"] == "upset"
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=20,
+            types=[TickerEventTypeEnum.UPSET],
+        )
+
+    def test_multiple_types_filter(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = [
+            _make_ticker_event("personal_best"),
+            _make_ticker_event("win_streak"),
+        ]
+
+        resp = client.get(
+            "/me/lab/ticker?sport=tennis&region=athens&types=personal_best,win_streak"
+        )
+
+        assert resp.status_code == 200
+        assert len(resp.json()["events"]) == 2
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=20,
+            types=[TickerEventTypeEnum.PERSONAL_BEST, TickerEventTypeEnum.WIN_STREAK],
+        )
+
+    def test_types_with_whitespace_is_stripped(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+        mock_ticker.list_by_region_sport.return_value = []
+
+        resp = client.get(
+            "/me/lab/ticker?sport=tennis&region=athens&types=upset%20,%20personal_best"
+        )
+
+        assert resp.status_code == 200
+        mock_ticker.list_by_region_sport.assert_called_once_with(
+            region="athens",
+            sport="tennis",
+            limit=20,
+            types=[TickerEventTypeEnum.UPSET, TickerEventTypeEnum.PERSONAL_BEST],
+        )
+
+    def test_invalid_type_returns_422(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens&types=not_a_type")
+
+        assert resp.status_code == 422
+        assert "not_a_type" in resp.json()["detail"]
+        mock_ticker.list_by_region_sport.assert_not_called()
+
+    def test_mixed_valid_invalid_type_returns_422(self, ticker_client):
+        client, mock_ticker, _, _ = ticker_client
+
+        resp = client.get("/me/lab/ticker?sport=tennis&region=athens&types=upset,bogus")
+
+        assert resp.status_code == 422
+        mock_ticker.list_by_region_sport.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

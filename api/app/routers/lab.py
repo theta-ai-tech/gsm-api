@@ -33,7 +33,7 @@ from app.dependencies.repos import (
 from app.deps import get_current_user
 from app.models.base import GsmBaseModel
 from app.models.common import PerSportRankings, SportRanking, UserCompletedMatchSummary
-from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.enums import MatchResultEnum, SportEnum, TickerEventTypeEnum, TierEnum
 from app.models.leaderboard import LeaderboardEntry, RisingStarEntry
 from app.models.match import Match, compute_participant_pair
 from app.models.point_history import PointHistoryEntry
@@ -745,6 +745,13 @@ def get_ticker(
         le=TICKER_LIST_MAX_LIMIT,
         description="Maximum number of events to return",
     ),
+    types: str | None = Query(
+        default=None,
+        description=(
+            "Comma-separated list of event types to filter by "
+            "(e.g. 'upset,personal_best'). Defaults to all types."
+        ),
+    ),
     current_user: CurrentUser = Depends(get_current_user),
     ticker_repo: TickerRepo = Depends(get_ticker_repo),
     users_repo: UsersRepo = Depends(get_users_repo),
@@ -756,13 +763,31 @@ def get_ticker(
 
     If `region` is omitted the endpoint defaults to the region mapped from the
     authenticated user's `preferences.area` via the `config/regions` document.
+
+    If `types` is omitted all event types are returned. Otherwise only events
+    whose `type` is in the comma-separated list are returned.
     """
     resolved_region = _resolve_region(region, current_user, users_repo, region_config_repo)
+
+    parsed_types: list[TickerEventTypeEnum] | None = None
+    if types is not None:
+        raw_values = [v.strip() for v in types.split(",") if v.strip()]
+        parsed_types = []
+        for raw in raw_values:
+            try:
+                parsed_types.append(TickerEventTypeEnum(raw))
+            except ValueError:
+                valid = ", ".join(t.value for t in TickerEventTypeEnum)
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"Invalid ticker event type '{raw}'. Valid values: {valid}",
+                ) from None
 
     events = ticker_repo.list_by_region_sport(
         region=resolved_region,
         sport=sport.value,
         limit=limit,
+        types=parsed_types,
     )
 
     return TickerResponse(

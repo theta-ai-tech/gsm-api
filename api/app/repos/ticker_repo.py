@@ -5,6 +5,7 @@ from typing import Any
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
+from app.models.enums import TickerEventTypeEnum
 from app.models.ticker import TickerEvent
 from app.repos.base import RepoBase
 from app.repos.mappers import to_ticker_event
@@ -58,6 +59,7 @@ class TickerRepo(RepoBase):
         region: str,
         sport: str,
         limit: int = 20,
+        types: list[TickerEventTypeEnum] | None = None,
     ) -> list[TickerEvent]:
         now = datetime.now(tz=timezone.utc)
         # Fetch ordered by createdAt DESC (the feed's true sort order).
@@ -69,8 +71,10 @@ class TickerRepo(RepoBase):
             self.client.collection(_COLLECTION)
             .where("region", "==", region)
             .where("sport", "==", sport)
-            .order_by("createdAt", direction=firestore.Query.DESCENDING)
         )
+        if types:
+            base_query = base_query.where("type", "in", [t.value for t in types])
+        base_query = base_query.order_by("createdAt", direction=firestore.Query.DESCENDING)
 
         results: list[TickerEvent] = []
         cursor: Any | None = None
