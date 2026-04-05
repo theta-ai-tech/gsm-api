@@ -47,6 +47,7 @@ from app.models.point_history import PointHistoryEntry
 from app.models.ticker import TickerEvent
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
+from app.models.region_config import RegionConfig
 from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
@@ -64,6 +65,17 @@ _DEFAULT_PTS = 1000
 _DEFAULT_TIER = TierEnum.AMATEUR
 _TICKER_TTL_HOURS = 24
 STREAK_MILESTONE_THRESHOLDS: frozenset[int] = frozenset({3, 5, 10, 20})
+
+
+def get_region_for_user(area_code: int | None, region_config: RegionConfig) -> str | None:
+    """Map a user's area code to a region string via the regions config.
+
+    Returns the region string (e.g. 'athens', 'south_london') if found,
+    or None if area_code is falsy (None or 0) or not in the mapping.
+    """
+    if not area_code:
+        return None
+    return region_config.mapping.get(str(area_code))
 
 
 def _format_short_name(full_name: str) -> str:
@@ -553,7 +565,7 @@ class MatchConfirmationService:
 
         try:
             region_config = self.region_config_repo.get()
-            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            region = get_region_for_user(winner_area, region_config)
             if not region:
                 logger.warning("Skipping upset ticker: no region mapping for area %s", winner_area)
                 return
@@ -600,7 +612,7 @@ class MatchConfirmationService:
 
         try:
             region_config = self.region_config_repo.get()
-            region = region_config.mapping.get(str(area)) if area else None
+            region = get_region_for_user(area, region_config)
             if not region:
                 logger.warning("Skipping tier_crossed ticker: no region mapping for area %s", area)
                 return
@@ -652,7 +664,7 @@ class MatchConfirmationService:
 
         try:
             region_config = self.region_config_repo.get()
-            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            region = get_region_for_user(winner_area, region_config)
             if not region:
                 logger.warning(
                     "Skipping personal_best ticker: no region mapping for area %s",
@@ -703,7 +715,7 @@ class MatchConfirmationService:
 
         try:
             region_config = self.region_config_repo.get()
-            region = region_config.mapping.get(str(winner_area)) if winner_area else None
+            region = get_region_for_user(winner_area, region_config)
             if not region:
                 logger.warning(
                     "Skipping win_streak ticker: no region mapping for area %s",
