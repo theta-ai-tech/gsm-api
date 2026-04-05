@@ -26,6 +26,7 @@ from app.models.enums import (
 )
 from app.models.match import Match, MatchParticipant, VerifyScoreRequest, ScoringPayload
 from app.models.region_config import RegionConfig
+from app.services.match_confirmation_service import get_region_for_user
 from app.models.tier import TierConfig, TierThreshold
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
@@ -1778,3 +1779,28 @@ class TestWinStreakTickerEvent:
             with_ticker=False,
         )
         assert mock_ticker_repo is None
+
+
+# ---------------------------------------------------------------------------
+# get_region_for_user helper
+# ---------------------------------------------------------------------------
+
+
+class TestGetRegionForUser:
+    """Tests for the module-level get_region_for_user helper."""
+
+    _REGION_CONFIG = RegionConfig(
+        mapping={"1": "athens", "2": "south_london", "99": "thessaloniki"},
+        version=1,
+    )
+
+    def test_known_area_code_returns_region(self):
+        assert get_region_for_user(1, self._REGION_CONFIG) == "athens"
+        assert get_region_for_user(2, self._REGION_CONFIG) == "south_london"
+        assert get_region_for_user(99, self._REGION_CONFIG) == "thessaloniki"
+
+    def test_unknown_area_code_returns_none(self):
+        assert get_region_for_user(999, self._REGION_CONFIG) is None
+
+    def test_none_area_code_returns_none(self):
+        assert get_region_for_user(None, self._REGION_CONFIG) is None
