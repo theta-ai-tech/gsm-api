@@ -1804,3 +1804,8 @@ class TestGetRegionForUser:
 
     def test_none_area_code_returns_none(self):
         assert get_region_for_user(None, self._REGION_CONFIG) is None
+
+    def test_zero_area_code_returns_none(self):
+        # area_code=0 is used as a sentinel for "missing area" in user preferences;
+        # it must not be treated as a valid area code even if "0" is in the mapping.
+        assert get_region_for_user(0, self._REGION_CONFIG) is None

@@ -71,9 +71,9 @@ def get_region_for_user(area_code: int | None, region_config: RegionConfig) -> s
     """Map a user's area code to a region string via the regions config.
 
     Returns the region string (e.g. 'athens', 'south_london') if found,
-    or None if area_code is None or not in the mapping.
+    or None if area_code is falsy (None or 0) or not in the mapping.
     """
-    if area_code is None:
+    if not area_code:
         return None
     return region_config.mapping.get(str(area_code))
 
