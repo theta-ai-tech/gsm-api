@@ -467,6 +467,7 @@ class MatchConfirmationService:
                 sport=sport,
                 winner_area=result_holder.get("winner_area"),
                 now=now,
+                feed_opt_out=result_holder.get("winner_feed_opt_out", False),
             )
             self._maybe_write_tier_crossed_ticker(
                 uid=winner_uid,
@@ -556,8 +557,12 @@ class MatchConfirmationService:
         sport: Any,
         winner_area: int | None,
         now: datetime,
+        feed_opt_out: bool = False,
     ) -> None:
         if TIER_ORDER[winner_tier] >= TIER_ORDER[loser_tier]:
+            return
+
+        if feed_opt_out:
             return
 
         if self.ticker_repo is None or self.region_config_repo is None:

@@ -564,6 +564,7 @@ class TestUpsetTickerEvent:
         loser_pts: int = 2100,
         winner_name: str = "Underdog",
         winner_area: int = 101,
+        winner_feed_opt_out: bool = False,
     ):
         stored_score = _make_score(winner_uid=WINNER_UID)
         match = _make_match(
@@ -573,10 +574,37 @@ class TestUpsetTickerEvent:
             match=match,
         )
 
-        winner_snap = _make_user_snap(
-            winner_pts, winner_tier, name=winner_name, area=winner_area
-        )
-        loser_snap = _make_user_snap(loser_pts, loser_tier, name="Favourite")
+        winner_prefs: dict[str, object] = {"area": winner_area}
+        if winner_feed_opt_out:
+            winner_prefs["feedOptOut"] = True
+
+        winner_ranking: dict[str, object] = {
+            "pts": winner_pts,
+            "tier": winner_tier.value,
+            "registrationTier": winner_tier.value,
+            "currentStreak": 0,
+            "bestStreak": 0,
+        }
+        loser_ranking: dict[str, object] = {
+            "pts": loser_pts,
+            "tier": loser_tier.value,
+            "registrationTier": loser_tier.value,
+            "currentStreak": 0,
+            "bestStreak": 0,
+        }
+
+        winner_snap = Mock()
+        winner_snap.to_dict.return_value = {
+            "name": winner_name,
+            "preferences": winner_prefs,
+            "rankings": {SPORT.value: winner_ranking},
+        }
+        loser_snap = Mock()
+        loser_snap.to_dict.return_value = {
+            "name": "Favourite",
+            "preferences": {"area": 101},
+            "rankings": {SPORT.value: loser_ranking},
+        }
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
@@ -731,6 +759,17 @@ class TestUpsetTickerEvent:
         # Match still completes without ticker repos
         assert response.status == MatchStatusEnum.COMPLETED
         assert mock_ticker_repo is None
+
+    def test_feed_opt_out_skips_upset_ticker(self):
+        """User with feedOptOut=true should not get an upset event."""
+        _, mock_ticker_repo, _ = self._run_upset_confirmation(
+            winner_tier=TierEnum.AMATEUR,
+            loser_tier=TierEnum.INTERMEDIATE,
+            winner_feed_opt_out=True,
+        )
+        assert mock_ticker_repo is not None
+        upset_events = self._upset_events(mock_ticker_repo)
+        assert upset_events == []
 
 
 class TestRetirementFromStoredScore:
