@@ -104,7 +104,12 @@ def _parse_per_sport_levels(data: dict[str, Any]) -> PerSportLevels:
 def _parse_user_preferences(data: dict[str, Any]) -> UserPreferences:
     levels = _parse_per_sport_levels(data.get("levels", {}) or {})
     sports = [SportEnum(s) for s in data.get("sports", [])]
-    return UserPreferences(area=data.get("area", 0), levels=levels, sports=sports)
+    return UserPreferences(
+        area=data.get("area", 0),
+        levels=levels,
+        sports=sports,
+        feed_opt_out=bool(data.get("feedOptOut", False)),
+    )
 
 
 def _parse_league_summary(data: dict[str, Any]) -> LeagueSummary:

@@ -157,6 +157,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
             "area": user.preferences.area,
             "levels": _per_sport_levels_to_dict(user.preferences.levels),
             "sports": [sport.value for sport in user.preferences.sports],
+            "feedOptOut": user.preferences.feed_opt_out,
         },
         "leaguesActive": [_league_summary_to_dict(l) for l in user.leagues_active],
         "leaguesCompleted": [_league_summary_to_dict(l) for l in user.leagues_completed],
