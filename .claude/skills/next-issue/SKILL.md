@@ -94,6 +94,23 @@ gh issue develop <number> --name <new-branch> --checkout
 
 ---
 
+## Step 6.5 — Run tests
+
+Check whether the Firestore emulator is up:
+
+```bash
+curl -s --connect-timeout 2 http://127.0.0.1:8082 > /dev/null 2>&1 && echo "up" || echo "down"
+```
+
+**If up:** run `make test` from the repo root (where `.venv` lives — this is the current directory for `/next-issue` since it does not use a worktree). All tests must pass before proceeding to commit. If any tests fail, fix them now — do not commit broken code.
+
+**If down:** stop and tell the user:
+> The Firestore emulator is not running. Start it with `make emu-all` and `make api-dev-emu-auth` in separate terminals, then re-run `/next-issue`. Alternatively, confirm you want to skip tests and proceed anyway.
+
+Only continue without tests if the user explicitly confirms.
+
+---
+
 ## Step 7 — Commit
 
 Stage and commit all changes:
@@ -119,6 +136,28 @@ gh pr create --title "<type>: <description> (#<issue-number>)" --body "..."
 PR body should include:
 - A short summary of what was implemented
 - `Closes #<issue-number>`
+
+---
+
+## Step 8.5 — Generate smoke test script
+
+Check whether the PR body contains a "How to test manually" section:
+
+```bash
+gh pr view <PR-number> --json body --jq '.body' | grep -i "how to test manually"
+```
+
+**If the section exists:** invoke the `/smoke-test` skill to generate `tests/smoke/pr-{N}.sh`. The skill parses the PR and translates every step (including Firestore UI edits) into runnable bash. Do NOT run it — just generate the file.
+
+Then commit and push it:
+
+```bash
+git add tests/smoke/pr-{N}.sh
+git commit -m "test: add smoke test script for PR #{N}"
+git push
+```
+
+**If no manual test section:** skip this step.
 
 ---
 

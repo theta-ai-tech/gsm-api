@@ -7,6 +7,32 @@ You are orchestrating a fully autonomous PR delivery cycle for the GSM project. 
 
 ---
 
+## Preflight — Verify reviewer token
+
+Before doing anything else, check that the reviewer token is available:
+
+```bash
+echo ${GSM_REVIEWER_TOKEN:0:4}
+```
+
+If the output is empty or blank, stop immediately and tell the user:
+
+> `GSM_REVIEWER_TOKEN` is not set. Export it in your shell (`~/.zshrc`) before running autopilot:
+> ```bash
+> export GSM_REVIEWER_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+> ```
+> The reviewer account is `iggy-theta-tech`. It must have Write access to `theta-gsm/gsm-api`.
+
+Also verify the token is valid and the account has repo access:
+
+```bash
+GH_TOKEN=$GSM_REVIEWER_TOKEN gh api user --jq '.login'
+```
+
+The output must be `iggy-theta-tech`. If it fails or returns a different username, stop and report the error.
+
+---
+
 ## Step 1 — Implement the next issue
 
 Invoke the `/next-issue` skill. Auto-accept all confirmation prompts without pausing.
@@ -46,13 +72,22 @@ Run: gh pr view {PR_NUMBER} --json state,reviews,comments,commits,headRefName
   Clean up the worktree: git worktree remove {WORKTREE_PATH} --force
   Call CronDelete with id=MY_CRON_ID. Stop.
 
-**If any review has state APPROVED, or the most recent review body contains "LGTM":**
-  Run: gh pr merge {PR_NUMBER} --squash --auto
+**If there is a formal APPROVED review from `iggy-theta-tech`:**
+  Check with:
+    gh pr view {PR_NUMBER} --json reviews --jq '.reviews[] | select(.author.login=="iggy-theta-tech" and .state=="APPROVED")'
+  If that returns a non-empty result, proceed to merge:
+    gh pr merge {PR_NUMBER} --squash
   Verify the merge succeeded: gh pr view {PR_NUMBER} --json state,mergedAt
   If state is MERGED:
-    Run /post-merge to update the sprint tracker.
+    Update the sprint tracker (inline — do not call /post-merge):
+      1. Read .agent/SPRINT.md
+      2. Find the row for this issue in the "In Sprint" table and set its Status to ✅ Done
+      3. Add a row to "Done This Sprint": | #ISSUE | title | #PR_NUMBER | YYYY-MM-DD (today) |
+         If the table only has a placeholder row, replace it.
     Clean up the worktree: git worktree remove {WORKTREE_PATH} --force
+    Pull latest main: git -C /Users/ignatioscharalampidis/Documents/theta/dev/gsm/gsm-api pull origin main
   Call CronDelete with id=MY_CRON_ID. Stop.
+  If the merge command fails (e.g. branch protection not met), log the error and wait for the next cycle — do not retry more than once per cycle.
 
 **Otherwise — check for unresolved review comments:**
   1. Get the timestamp of the most recent commit from the commits list.
@@ -61,6 +96,12 @@ Run: gh pr view {PR_NUMBER} --json state,reviews,comments,commits,headRefName
      - Work inside the worktree: cd {WORKTREE_PATH}
      - Read each comment and implement the requested fix in the codebase.
      - Run: make fmt format type (from {WORKTREE_PATH}) to ensure lint/types pass.
+     - Check if the Firestore emulator is up:
+         curl -s --connect-timeout 2 http://127.0.0.1:8082 > /dev/null 2>&1 && echo "up" || echo "down"
+       If up: run `make test` from the MAIN repo root (not the worktree) — `.venv` lives there:
+         make -C /Users/ignatioscharalampidis/Documents/theta/dev/gsm/gsm-api test
+       If tests fail, fix them in the worktree before pushing.
+       If down: log a warning ("emulator not running — skipping tests") and continue.
      - git add relevant files, then:
        git commit -m "fix: address review comments on PR #{PR_NUMBER}"
        git push
@@ -88,27 +129,68 @@ Call CronList. Find the entry whose prompt contains the text:
 Save that entry's id as MY_CRON_ID. You will use it to self-terminate.
 
 ## Check PR state
-Run: gh pr view {PR_NUMBER} --json state,reviews,url
+All gh commands in this agent run as iggy-theta-tech via GH_TOKEN=$GSM_REVIEWER_TOKEN.
+
+Run: GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr view {PR_NUMBER} --json state,reviews,url
 
 **If state is MERGED or CLOSED:**
   Call CronDelete with id=MY_CRON_ID. Stop.
 
-**If you have already posted an APPROVED review on this PR (check reviews list for your prior approval):**
-  Call CronDelete with id=MY_CRON_ID. Stop.
+**If `iggy-theta-tech` has already posted an APPROVED review on this PR:**
+  Check with:
+    GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr view {PR_NUMBER} --json reviews --jq '.reviews[] | select(.author.login=="iggy-theta-tech" and .state=="APPROVED")'
+  If non-empty, Call CronDelete with id=MY_CRON_ID. Stop.
 
-**Otherwise — review the current PR state using Codex:**
-  First get the base branch name:
-    gh pr view {PR_NUMBER} --json baseRefName --jq '.baseRefName'
+**Otherwise — run QA then code review:**
 
-  Then invoke the codex review skill:
-    /codex:review --base {BASE_BRANCH}
+  Both gates must pass before approving. Run them in order.
 
-  After the review completes, check whether a LGTM comment was posted:
-    gh pr view {PR_NUMBER} --json comments --jq '.comments[-1].body'
+  ## Gate 1: QA smoke tests (gsm-qa-tester)
 
-  - If the latest comment contains "LGTM":
-    Call CronDelete with id=MY_CRON_ID. Stop.
-  - If there are still issues, wait for the next cycle.
+  Delegate to the gsm-qa-tester agent with the PR number.
+  The agent will run tests/smoke/pr-{PR_NUMBER}.sh (or generate it from the PR),
+  post a QA comment to the PR as iggy-theta-tech, and return a verdict line:
+    QA_VERDICT: PASS | FAIL | SKIP | NO_TESTS
+
+  Parse the last line of the agent's output for the verdict.
+
+  **If QA_VERDICT is FAIL:**
+    The QA agent has already posted a comment with failure details.
+    Post a review requesting changes:
+      GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr review {PR_NUMBER} --request-changes \
+        --body "QA smoke tests failed — see QA comment above for details. Addressing these before code review."
+    Wait for the next cycle.
+
+  **If QA_VERDICT is PASS, SKIP, or NO_TESTS:**
+    Continue to Gate 2.
+
+  ## Gate 2: Code review (Codex)
+
+  Step 1: Fetch the diff and PR context (read-only, default gh auth):
+    gh pr diff {PR_NUMBER}
+    gh pr view {PR_NUMBER} --json body,title,comments,reviews
+
+  Step 2: Invoke Codex as a subagent to analyse the diff.
+    Pass it the diff and this instruction:
+      "Review this PR diff for correctness, style, test coverage, and GSM project conventions.
+       Do NOT post anything to GitHub. Return your findings as structured text:
+       - A verdict: APPROVE or REQUEST_CHANGES
+       - A list of specific issues (if any), each with file, line, and suggested fix
+       - A summary comment body suitable for posting as a GitHub review"
+
+  Step 3: Post Codex findings and take action. All gh commands use GH_TOKEN=$GSM_REVIEWER_TOKEN.
+
+  **If Codex verdict is APPROVE:**
+    GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr review {PR_NUMBER} --approve --body "<Codex summary>"
+    Verify:
+      GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr view {PR_NUMBER} --json reviews \
+        --jq '.reviews[] | select(.author.login=="iggy-theta-tech") | .state'
+    The output must be "APPROVED". If it is, call CronDelete with id=MY_CRON_ID. Stop.
+
+  **If Codex verdict is REQUEST_CHANGES:**
+    GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr review {PR_NUMBER} --request-changes \
+      --body "<Codex summary with issues>"
+    Wait for the next cycle — the developer cron will pick up the comments and push fixes.
 ```
 
 Use `recurring: true`.
@@ -131,7 +213,8 @@ Then exit. Do not wait. The crons run independently.
 ## Notes
 
 - Both crons are session-bound (they die if this Claude session ends). For persistence across restarts, set `durable: true` when creating them.
-- `gh pr merge --squash --auto` will queue the merge but may be blocked by branch protection rules requiring human approval. If it fails, the developer loop will report the error in its run but continue polling.
+- `gh pr merge --squash` requires a formal `APPROVED` review from `iggy-theta-tech` before it runs. If the merge fails, the developer loop logs the error and waits for the next cycle.
+- After a successful merge, `git pull origin main` is run in the main working directory to keep it in sync.
 - The two loops communicate only through GitHub — PR state, commits, and review comments are the shared message bus.
 - **Reviewer default:** `/codex:review --base <branch>` is used for all reviews. To override to `/review-pr` instead, the user can say so when invoking `/autopilot`.
 - **Worktrees:** Each issue is implemented in an isolated worktree at `.claude/worktrees/{branch_name}`. The main working directory stays on `main` throughout. The worktree is removed automatically after merge.

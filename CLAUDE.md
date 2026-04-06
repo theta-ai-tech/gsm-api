@@ -117,7 +117,7 @@ make docker-run                # Run locally (port 8080)
 
 ## Working Rules
 
-- Do not run tests unless explicitly instructed; the user will run them manually.
+- Do not run tests in ad-hoc sessions unless explicitly instructed. Exception: `/next-issue` and `/autopilot` workflows run `make test` automatically before committing — but first check the Firestore emulator is up at `127.0.0.1:8082`. If it's not running, stop and tell the user to run `make emu-all` and `make api-dev-emu-auth` in separate terminals before continuing.
 - After any code edits, run `make fmt format type` inside the active venv and ensure they pass.
 - Never point tests at production Firestore; always use the emulator.
 - Keep secrets out of code; use env vars for credentials.

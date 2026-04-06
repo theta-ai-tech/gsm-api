@@ -137,6 +137,26 @@ When asked to review PR comments, address PR feedback, or continue work on an in
 
 This avoids guessing or searching for the PR — the sprint tracker is the single source of truth for which PR belongs to which issue.
 
+## Smoke test script generation
+
+After the PR is created and you have the PR number:
+
+1. Check whether the PR body contains a "How to test manually" section (look for that heading or similar — "Manual testing", "Testing steps").
+2. If the section exists:
+   - Invoke the `/smoke-test` skill to generate `tests/smoke/pr-{N}.sh`. The skill will parse the PR, translate each step (including Firestore UI edits into emulator REST API calls), and write the script.
+   - Do NOT run the script at this point — just generate it.
+   - Commit the file and push:
+     ```bash
+     git add tests/smoke/pr-{N}.sh
+     git commit -m "test: add smoke test script for PR #{N}"
+     git push
+     ```
+3. If the PR has no manual test section, skip this step.
+
+The smoke script becomes the regression baseline for the feature. The `gsm-qa-tester` agent will run it during the review cycle.
+
+---
+
 ## Autonomy
 
 You are fully autonomous. **Do not** ask the user for confirmation between steps — proceed through the entire workflow (read → implement → test → lint → commit → push → PR) without stopping.
