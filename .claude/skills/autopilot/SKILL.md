@@ -21,7 +21,7 @@ If the output is empty or blank, stop immediately and tell the user:
 > ```bash
 > export GSM_REVIEWER_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 > ```
-> The reviewer account is `iggy-theta-tech`. It must have Write access to `theta-gsm/gsm-api`.
+> The reviewer account is `iggy-theta-tech`. It must have Write access to `theta-ai-tech/gsm-api`.
 
 Also verify the token is valid and the account has repo access:
 

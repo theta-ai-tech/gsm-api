@@ -22,8 +22,8 @@
 
 ## Team Operations
 
-- **Skills:** `/next-issue`, `/post-merge`, `/plan-sprint`, `/standup`, `/review-pr`, `/lookup-docs`
-- **Agents:** `gsm-backend-developer` (implementation), `gsm-tpm` (specs & planning)
+- **Skills:** `/next-issue`, `/post-merge`, `/plan-sprint`, `/standup`, `/review-pr`, `/lookup-docs`, `/smoke-test`, `/autopilot`
+- **Agents:** `gsm-backend-developer` (implementation), `gsm-tpm` (specs & planning), `gsm-qa-tester` (smoke tests + QA comments)
 - **Sprint tracking:** `.agent/SPRINT.md`, `.agent/ARCHIVE_SPRINT.md`
 
 ## Project Overview
@@ -136,5 +136,6 @@ Only handle simple/quick tasks directly (file reads, one-liner edits, answering 
 
 | Agent | Delegate when | Do NOT delegate |
 |-------|--------------|-----------------|
-| `gsm-backend-developer` | New features, bug fixes, issue implementation, PRs, tests | Quick file reads, one-liner edits, answering questions |
+| `gsm-backend-developer` | New features, bug fixes, issue implementation, PRs, tests, smoke script generation | Quick file reads, one-liner edits, answering questions |
 | `gsm-tpm` | New feature specs, gap analysis, issue decomposition, product decisions | Implementation work, code changes |
+| `gsm-qa-tester` | Running smoke tests against the emulator, posting QA results to a PR as `iggy-theta-tech` | Implementation, code review, approvals |

@@ -1,4 +1,4 @@
-[![CI (lint, type, tests)](https://github.com/theta-gsm/gsm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/theta-gsm/gsm-api/actions/workflows/ci.yml)
+[![CI (lint, type, tests)](https://github.com/theta-ai-tech/gsm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/theta-ai-tech/gsm-api/actions/workflows/ci.yml)
 
 # gsm-api
 FastAPI service for GameSetMatch (GSM). Containerized, deployed via Cloud Run, CI on PRs.
