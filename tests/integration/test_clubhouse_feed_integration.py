@@ -339,14 +339,54 @@ class TestTierCrossedEvent:
         _confirm_match(db, "tc_match", "tc_winner", "tc_loser")
 
         events = _get_ticker_events(db, "tier_crossed")
-        assert len(events) == 1
-        evt = events[0]
+        # Only the winner crosses a tier in this scenario
+        winner_events = [e for e in events if e.get("userUid") == "tc_winner"]
+        assert len(winner_events) == 1
+        evt = winner_events[0]
         assert evt["userUid"] == "tc_winner"
         assert evt["tierBefore"] == "amateur"
         assert evt["tierAfter"] == "intermediate"
         assert evt["direction"] == "up"
         assert evt["sport"] == "tennis"
         assert evt["region"] == "athens"
+        assert "createdAt" in evt
+        assert "expiresAt" in evt
+
+    def test_tier_crossed_ticker_on_demotion(self, db) -> None:
+        _seed_tier_config(db)
+        _seed_region_config(db)
+        # Loser at 2050 (intermediate, min 2000) — a loss gives -100 = 1950 → amateur
+        _seed_user(
+            db,
+            "dem_winner",
+            pts=1950,
+            tier="amateur",
+            personal_best=1950,
+            area=101,
+        )
+        _seed_user(
+            db,
+            "dem_loser",
+            pts=2050,
+            tier="intermediate",
+            area=101,
+        )
+        _seed_match(db, "dem_match", "dem_winner", "dem_loser")
+
+        _confirm_match(db, "dem_match", "dem_winner", "dem_loser")
+
+        events = _get_ticker_events(db, "tier_crossed")
+        loser_events = [e for e in events if e.get("userUid") == "dem_loser"]
+        assert len(loser_events) == 1
+        evt = loser_events[0]
+        assert evt["userUid"] == "dem_loser"
+        assert evt["tierBefore"] == "intermediate"
+        assert evt["tierAfter"] == "amateur"
+        assert evt["direction"] == "down"
+        assert evt["sport"] == "tennis"
+        assert evt["region"] == "athens"
+        assert "createdAt" in evt
+        assert "expiresAt" in evt
 
 
 # ---------------------------------------------------------------------------
@@ -480,13 +520,19 @@ class TestMultipleEventsInSingleMatch:
 
         _confirm_match(db, "multi_match", "multi_winner", "multi_loser")
 
-        all_events = _get_ticker_events(db)
-        types_found = {e["type"] for e in all_events}
+        # Assert each expected event type separately with scoped field checks
+        upset_events = _get_ticker_events(db, "upset")
+        assert len(upset_events) == 1
+        assert upset_events[0]["winnerUid"] == "multi_winner"
 
-        assert "upset" in types_found
-        assert "personal_best" in types_found
-        assert "win_streak" in types_found
-        assert len(all_events) >= 3
+        pb_events = _get_ticker_events(db, "personal_best")
+        assert len(pb_events) == 1
+        assert pb_events[0]["userUid"] == "multi_winner"
+
+        streak_events = _get_ticker_events(db, "win_streak")
+        assert len(streak_events) == 1
+        assert streak_events[0]["userUid"] == "multi_winner"
+        assert streak_events[0]["streak"] == 3
 
     def test_upset_event_has_correct_fields(self, db) -> None:
         _seed_tier_config(db)
