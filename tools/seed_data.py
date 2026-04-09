@@ -928,6 +928,17 @@ SAMPLE_TICKER_EVENTS = [
         user_name="Ignatios",
         streak=10,
     ),
+    TickerEvent(
+        event_id="ticker_streak_4",
+        type=TickerEventTypeEnum.WIN_STREAK,
+        sport=SportEnum.TENNIS,
+        region="thessaloniki",
+        created_at=utc(2026, 3, 1, 17, 30),
+        expires_at=utc(2027, 3, 1, 17, 30),
+        user_uid="user_alice",
+        user_name="Alice",
+        streak=20,
+    ),
     # --- tier_crossed events (2 total: one promotion, one relegation) ---
     TickerEvent(
         event_id="ticker_tier_1",
