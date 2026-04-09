@@ -489,6 +489,36 @@ class TestFeedOptOutRespected:
         ]
         assert len(winner_events) == 0
 
+    def test_no_tier_crossed_when_demoted_loser_has_feed_opt_out(self, db) -> None:
+        _seed_tier_config(db)
+        _seed_region_config(db)
+        # Loser at 2049 (intermediate, reg_tier=amateur) with feedOptOut=True —
+        # even though they cross a tier boundary on loss, no ticker should be written.
+        _seed_user(
+            db,
+            "optl_winner",
+            pts=1950,
+            tier="amateur",
+            personal_best=1950,
+            area=101,
+        )
+        _seed_user(
+            db,
+            "optl_loser",
+            pts=2049,
+            tier="intermediate",
+            registration_tier="amateur",
+            area=101,
+            feed_opt_out=True,
+        )
+        _seed_match(db, "optl_match", "optl_winner", "optl_loser")
+
+        _confirm_match(db, "optl_match", "optl_winner", "optl_loser")
+
+        tier_events = _get_ticker_events(db, "tier_crossed")
+        loser_events = [e for e in tier_events if e.get("userUid") == "optl_loser"]
+        assert len(loser_events) == 0
+
 
 # ---------------------------------------------------------------------------
 # 7. Multiple events in single match
