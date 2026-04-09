@@ -7,6 +7,11 @@ BASE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/docume
 PASS=0
 FAIL=0
 
+# Known seeded doc IDs from tools/seed_data.py SAMPLE_TICKER_EVENTS
+SEEDED_IDS="ticker_upset_1 ticker_pb_1 ticker_pb_2 ticker_pb_3 \
+ticker_streak_1 ticker_streak_2 ticker_streak_3 ticker_streak_4 \
+ticker_tier_1 ticker_tier_2"
+
 check() {
   local desc="$1" result="$2"
   if [ "$result" = "true" ]; then
@@ -28,13 +33,23 @@ fi
 echo "OK: Firestore emulator is running"
 echo ""
 
-# Fetch all ticker documents via emulator REST API
-TICKER_JSON=$(curl -sf "$BASE/ticker")
+# Fetch only the known seeded documents by ID (idempotent — ignores other ticker rows)
+DOCS_JSON="["
+FIRST=1
+for doc_id in $SEEDED_IDS; do
+  DOC=$(curl -sf "$BASE/ticker/$doc_id" 2>/dev/null || echo "null")
+  if [ "$DOC" != "null" ] && echo "$DOC" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if 'fields' in d else 1)" 2>/dev/null; then
+    [ "$FIRST" = "0" ] && DOCS_JSON="$DOCS_JSON,"
+    DOCS_JSON="$DOCS_JSON$DOC"
+    FIRST=0
+  fi
+done
+DOCS_JSON="$DOCS_JSON]"
 
-# Parse all facts with a single python call — streaks as a JSON array for exact matching
-eval "$(echo "$TICKER_JSON" | python3 -c "
+# Parse all facts scoped to the 10 known seeded IDs
+eval "$(echo "$DOCS_JSON" | python3 -c "
 import sys, json, shlex
-docs = json.load(sys.stdin).get('documents', [])
+docs = [d for d in json.load(sys.stdin) if d and 'fields' in d]
 types = [d['fields']['type']['stringValue'] for d in docs]
 regions = set(d['fields']['region']['stringValue'] for d in docs)
 sports = set(d['fields']['sport']['stringValue'] for d in docs)
@@ -68,13 +83,14 @@ print(f'SPORTS={shlex.quote(\" \".join(sorted(sports)))}')
 print(f'STREAKS={shlex.quote(\" \".join(str(s) for s in sorted(streaks)))}')
 ")"
 
-echo "1. Total ticker event count (found: $DOC_COUNT)"
-check "At least 8 ticker events" "$([ "$DOC_COUNT" -ge 8 ] && echo true || echo false)"
-check "Exactly 10 ticker events" "$([ "$DOC_COUNT" -eq 10 ] && echo true || echo false)"
+echo "1. Seeded document count (checking known IDs only)"
+check "All 10 seeded ticker events present" \
+  "$([ "$DOC_COUNT" -eq 10 ] && echo true || echo false)"
 
 echo ""
 echo "2. Event type coverage"
-check "1 upset event (found: $UPSET_COUNT)" "$([ "$UPSET_COUNT" -eq 1 ] && echo true || echo false)"
+check "1 upset event (found: $UPSET_COUNT)" \
+  "$([ "$UPSET_COUNT" -eq 1 ] && echo true || echo false)"
 check "3 personal_best events (found: $PB_COUNT)" \
   "$([ "$PB_COUNT" -eq 3 ] && echo true || echo false)"
 check "4 win_streak events (found: $STREAK_COUNT)" \
