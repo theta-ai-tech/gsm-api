@@ -21,14 +21,11 @@ echo "OK: Firestore emulator is running"
 
 echo ""
 echo "--- Running integration tests ---"
-pytest tests/integration/test_clubhouse_feed_integration.py -v
-RESULT=$?
-
-if [ $RESULT -eq 0 ]; then
+if pytest tests/integration/test_clubhouse_feed_integration.py -v; then
   echo ""
   echo "=== PASS: All CH-18 feed event integration tests passed ==="
 else
   echo ""
-  echo "=== FAIL: Some tests failed (exit code $RESULT) ==="
-  exit $RESULT
+  echo "=== FAIL: Some tests failed ==="
+  exit 1
 fi
