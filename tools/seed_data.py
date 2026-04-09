@@ -840,9 +840,11 @@ SCOUTING_BOB = ScoutingProfile(
 SAMPLE_SCOUTING_PROFILES = [SCOUTING_IGNATIOS, SCOUTING_ALICE, SCOUTING_BOB]
 
 # --- Ticker events (ticker/{auto-id}) ---
-# Sample ticker events for the Global Upsets feed.
+# Sample ticker events for all Tab 4 (Local Pulse) event types.
 # expiresAt is set far in the future so they remain visible in manual testing.
+# Events span multiple regions (athens, thessaloniki, london) and sports.
 SAMPLE_TICKER_EVENTS = [
+    # --- upset events ---
     TickerEvent(
         event_id="ticker_upset_1",
         type=TickerEventTypeEnum.UPSET,
@@ -855,6 +857,44 @@ SAMPLE_TICKER_EVENTS = [
         loser_tier=TierEnum.ADVANCED,
         delta=200,
     ),
+    # --- personal_best events (3 total, different users & sports) ---
+    TickerEvent(
+        event_id="ticker_pb_1",
+        type=TickerEventTypeEnum.PERSONAL_BEST,
+        sport=SportEnum.PADEL,
+        region="athens",
+        created_at=utc(2026, 3, 1, 9, 0),
+        expires_at=utc(2027, 3, 1, 9, 0),
+        user_uid="user_ignatios",
+        user_name="Ignatios",
+        new_pts=1050,
+        previous_best=980,
+    ),
+    TickerEvent(
+        event_id="ticker_pb_2",
+        type=TickerEventTypeEnum.PERSONAL_BEST,
+        sport=SportEnum.TENNIS,
+        region="thessaloniki",
+        created_at=utc(2026, 3, 1, 11, 15),
+        expires_at=utc(2027, 3, 1, 11, 15),
+        user_uid="user_alice",
+        user_name="Alice",
+        new_pts=870,
+        previous_best=820,
+    ),
+    TickerEvent(
+        event_id="ticker_pb_3",
+        type=TickerEventTypeEnum.PERSONAL_BEST,
+        sport=SportEnum.PICKLEBALL,
+        region="london",
+        created_at=utc(2026, 3, 1, 8, 45),
+        expires_at=utc(2027, 3, 1, 8, 45),
+        user_uid="user_bob",
+        user_name="Bob",
+        new_pts=350,
+        previous_best=300,
+    ),
+    # --- win_streak events (3 total, at milestone levels 3, 5, 10) ---
     TickerEvent(
         event_id="ticker_streak_1",
         type=TickerEventTypeEnum.WIN_STREAK,
@@ -867,15 +907,63 @@ SAMPLE_TICKER_EVENTS = [
         streak=5,
     ),
     TickerEvent(
-        event_id="ticker_pb_1",
-        type=TickerEventTypeEnum.PERSONAL_BEST,
+        event_id="ticker_streak_2",
+        type=TickerEventTypeEnum.WIN_STREAK,
+        sport=SportEnum.PADEL,
+        region="london",
+        created_at=utc(2026, 3, 1, 13, 20),
+        expires_at=utc(2027, 3, 1, 13, 20),
+        user_uid="user_bob",
+        user_name="Bob",
+        streak=3,
+    ),
+    TickerEvent(
+        event_id="ticker_streak_3",
+        type=TickerEventTypeEnum.WIN_STREAK,
         sport=SportEnum.PADEL,
         region="athens",
-        created_at=utc(2026, 3, 1, 9, 0),
-        expires_at=utc(2027, 3, 1, 9, 0),
+        created_at=utc(2026, 3, 1, 15, 0),
+        expires_at=utc(2027, 3, 1, 15, 0),
         user_uid="user_ignatios",
         user_name="Ignatios",
-        new_pts=1050,
-        previous_best=980,
+        streak=10,
+    ),
+    TickerEvent(
+        event_id="ticker_streak_4",
+        type=TickerEventTypeEnum.WIN_STREAK,
+        sport=SportEnum.TENNIS,
+        region="thessaloniki",
+        created_at=utc(2026, 3, 1, 17, 30),
+        expires_at=utc(2027, 3, 1, 17, 30),
+        user_uid="user_alice",
+        user_name="Alice",
+        streak=20,
+    ),
+    # --- tier_crossed events (2 total: one promotion, one relegation) ---
+    TickerEvent(
+        event_id="ticker_tier_1",
+        type=TickerEventTypeEnum.TIER_CROSSED,
+        sport=SportEnum.TENNIS,
+        region="thessaloniki",
+        created_at=utc(2026, 3, 1, 12, 0),
+        expires_at=utc(2027, 3, 1, 12, 0),
+        user_uid="user_alice",
+        user_name="Alice",
+        tier_before=TierEnum.AMATEUR,
+        tier_after=TierEnum.INTERMEDIATE,
+        direction="up",
+    ),
+    TickerEvent(
+        event_id="ticker_tier_2",
+        type=TickerEventTypeEnum.TIER_CROSSED,
+        sport=SportEnum.PADEL,
+        region="london",
+        created_at=utc(2026, 3, 1, 16, 30),
+        expires_at=utc(2027, 3, 1, 16, 30),
+        user_uid="user_bob",
+        user_name="Bob",
+        tier_before=TierEnum.INTERMEDIATE,
+        tier_after=TierEnum.AMATEUR,
+        direction="down",
     ),
 ]

@@ -128,7 +128,14 @@ _TICKER_DOC_IDS = [
     # Globally-seeded ticker events from tools/seed_data.py that leak across tests
     "ticker_upset_1",
     "ticker_streak_1",
+    "ticker_streak_2",
+    "ticker_streak_3",
+    "ticker_streak_4",
     "ticker_pb_1",
+    "ticker_pb_2",
+    "ticker_pb_3",
+    "ticker_tier_1",
+    "ticker_tier_2",
 ]
 
 
