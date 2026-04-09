@@ -121,12 +121,13 @@ def _seed_user(  # type: ignore[no-untyped-def]
     personal_best: int | None = None,
     area: int = 101,
     feed_opt_out: bool = False,
+    registration_tier: str | None = None,
 ) -> None:
     ranking: dict[str, Any] = {
         "sport": sport,
         "pts": pts,
         "tier": tier,
-        "registrationTier": tier,
+        "registrationTier": registration_tier if registration_tier is not None else tier,
         "globalRanking": None,
         "lastUpdated": None,
         "currentStreak": current_streak,
@@ -355,7 +356,9 @@ class TestTierCrossedEvent:
     def test_tier_crossed_ticker_on_demotion(self, db) -> None:
         _seed_tier_config(db)
         _seed_region_config(db)
-        # Loser at 2050 (intermediate, min 2000) — a loss gives -100 = 1950 → amateur
+        # Loser at 2049 (intermediate) loses to an amateur — penalty is -50 →
+        # new pts = 1999 (< 2000 threshold) → demoted to amateur.
+        # registration_tier="amateur" prevents the floor from clamping at 2000.
         _seed_user(
             db,
             "dem_winner",
@@ -367,8 +370,9 @@ class TestTierCrossedEvent:
         _seed_user(
             db,
             "dem_loser",
-            pts=2050,
+            pts=2049,
             tier="intermediate",
+            registration_tier="amateur",
             area=101,
         )
         _seed_match(db, "dem_match", "dem_winner", "dem_loser")
