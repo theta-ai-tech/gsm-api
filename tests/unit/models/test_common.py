@@ -19,6 +19,27 @@ class TestGeoCoordinates:
         assert geo.lat == 0.0
         assert geo.lng == 0.0
 
+    def test_rejects_lat_above_90(self) -> None:
+        with pytest.raises(ValidationError):
+            GeoCoordinates(lat=91.0, lng=0.0)
+
+    def test_rejects_lat_below_minus_90(self) -> None:
+        with pytest.raises(ValidationError):
+            GeoCoordinates(lat=-91.0, lng=0.0)
+
+    def test_rejects_lng_above_180(self) -> None:
+        with pytest.raises(ValidationError):
+            GeoCoordinates(lat=0.0, lng=181.0)
+
+    def test_rejects_lng_below_minus_180(self) -> None:
+        with pytest.raises(ValidationError):
+            GeoCoordinates(lat=0.0, lng=-181.0)
+
+    def test_accepts_boundary_values(self) -> None:
+        geo = GeoCoordinates(lat=90.0, lng=180.0)
+        assert geo.lat == 90.0
+        assert geo.lng == 180.0
+
 
 class TestVenueRef:
     def _coords(self) -> GeoCoordinates:

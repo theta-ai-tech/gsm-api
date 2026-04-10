@@ -18,8 +18,8 @@ from app.models.enums import (
 class GeoCoordinates(GsmBaseModel):
     """Latitude/longitude pair used by VenueRef and other geo-tagged models."""
 
-    lat: float
-    lng: float
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
 
 
 class VenueRef(GsmBaseModel):
@@ -51,6 +51,7 @@ class VenueRef(GsmBaseModel):
         """Treat empty-string identifiers as ``None`` so Firestore round-trips
         behave the same as explicit nulls."""
         if isinstance(data, dict):
+            data = dict(data)
             for snake, camel in (("venue_id", "venueId"), ("place_id", "placeId")):
                 if data.get(snake) == "":
                     data[snake] = None
