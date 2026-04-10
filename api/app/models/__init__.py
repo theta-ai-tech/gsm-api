@@ -1,6 +1,7 @@
 from app.models.base import GsmBaseModel, EmailStr, HttpUrl
 from app.models.common import (
     CursorBundle,
+    GeoCoordinates,
     JournalEntrySummary,
     LeagueSummary,
     MatchOpponentSummary,
@@ -12,6 +13,7 @@ from app.models.common import (
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
+    VenueRef,
 )
 from app.models.enums import (
     AvailabilityEnum,
@@ -94,6 +96,8 @@ __all__ = [
     "UserCompletedMatchSummary",
     "JournalEntrySummary",
     "CursorBundle",
+    "GeoCoordinates",
+    "VenueRef",
     # journal
     "JournalEntry",
     "MatchReflection",

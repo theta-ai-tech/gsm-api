@@ -1,4 +1,7 @@
 from datetime import datetime
+from typing import Any
+
+from pydantic import Field, model_validator
 
 from app.models.base import GsmBaseModel
 from app.models.enums import (
@@ -10,6 +13,50 @@ from app.models.enums import (
     SportEnum,
     TierEnum,
 )
+
+
+class GeoCoordinates(GsmBaseModel):
+    """Latitude/longitude pair used by VenueRef and other geo-tagged models."""
+
+    lat: float
+    lng: float
+
+
+class VenueRef(GsmBaseModel):
+    """Reference to a venue.
+
+    A venue can be either a curated Firestore document (``venue_id``) or a
+    Google Places-resolved location (``place_id``). At least one of the two
+    identifier fields must be non-null; both may be set when a curated venue
+    has been cross-referenced with a Google Place. ``name`` and
+    ``coordinates`` are always populated so that clients can render the
+    venue without making additional lookups.
+    """
+
+    venue_id: str | None = Field(default=None, alias="venueId")
+    place_id: str | None = Field(default=None, alias="placeId")
+    name: str
+    coordinates: GeoCoordinates
+
+    @model_validator(mode="after")
+    def _ensure_identifier(self) -> "VenueRef":
+        if self.venue_id is None and self.place_id is None:
+            msg = "VenueRef requires at least one of venue_id or place_id"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_empty_strings(cls, data: Any) -> Any:
+        """Treat empty-string identifiers as ``None`` so Firestore round-trips
+        behave the same as explicit nulls."""
+        if isinstance(data, dict):
+            for snake, camel in (("venue_id", "venueId"), ("place_id", "placeId")):
+                if data.get(snake) == "":
+                    data[snake] = None
+                if data.get(camel) == "":
+                    data[camel] = None
+        return data
 
 
 class SportRanking(GsmBaseModel):
