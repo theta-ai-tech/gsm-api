@@ -127,7 +127,9 @@ def _seed_user(  # type: ignore[no-untyped-def]
         "sport": sport,
         "pts": pts,
         "tier": tier,
-        "registrationTier": registration_tier if registration_tier is not None else tier,
+        "registrationTier": registration_tier
+        if registration_tier is not None
+        else tier,
         "globalRanking": None,
         "lastUpdated": None,
         "currentStreak": current_streak,
