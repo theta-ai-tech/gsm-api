@@ -550,10 +550,13 @@ def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
     if isinstance(value, dict):
         if "lat" not in value or "lng" not in value:
             raise ValueError(f"Missing 'lat' or 'lng' in coordinates dict: {value!r}")
-        return GeoCoordinates(
-            lat=float(value["lat"]),
-            lng=float(value["lng"]),
-        )
+        try:
+            return GeoCoordinates(
+                lat=float(value["lat"]),
+                lng=float(value["lng"]),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid coordinate value in dict: {value!r}") from exc
     raise ValueError(f"Unsupported coordinates value: {type(value)!r}")
 
 

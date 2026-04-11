@@ -43,6 +43,14 @@ class TestParseGeoCoordinates:
         with pytest.raises(ValueError, match="Missing 'lat' or 'lng'"):
             _parse_geo_coordinates({})
 
+    def test_raises_for_dict_with_none_lat(self) -> None:
+        with pytest.raises(ValueError, match="Invalid coordinate value"):
+            _parse_geo_coordinates({"lat": None, "lng": 23.68})
+
+    def test_raises_for_dict_with_non_numeric_value(self) -> None:
+        with pytest.raises(ValueError, match="Invalid coordinate value"):
+            _parse_geo_coordinates({"lat": object(), "lng": 23.68})
+
 
 class TestToVenueSummary:
     def test_maps_all_fields_from_firestore_doc(self) -> None:
