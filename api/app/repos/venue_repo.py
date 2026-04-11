@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from app.models import VenueSummary
 from app.repos.base import RepoBase
 from app.repos.mappers import to_venue_summary
@@ -18,7 +16,7 @@ class VenueRepo(RepoBase):
 
     COLLECTION = "venues"
 
-    def get_by_id(self, venue_id: str) -> Optional[VenueSummary]:
+    def get_by_id(self, venue_id: str) -> VenueSummary | None:
         """Fetch a single curated venue by its Firestore document ID."""
         doc = self.client.collection(self.COLLECTION).document(venue_id).get()
         data = self._doc_to_dict(doc)
@@ -26,7 +24,7 @@ class VenueRepo(RepoBase):
             return None
         return to_venue_summary(data, venue_id=venue_id)
 
-    def list_by_sport_and_area(self, sport: str, area: str | None = None) -> List[VenueSummary]:
+    def list_by_sport_and_area(self, sport: str, area: str | None = None) -> list[VenueSummary]:
         """List curated venues that support ``sport``, optionally filtered by ``area``.
 
         ``sport`` is matched via ``array_contains`` against the venue's
