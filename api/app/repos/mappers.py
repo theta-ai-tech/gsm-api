@@ -548,9 +548,11 @@ def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
     if latitude is not None and longitude is not None:
         return GeoCoordinates(lat=float(latitude), lng=float(longitude))
     if isinstance(value, dict):
+        if "lat" not in value or "lng" not in value:
+            raise ValueError(f"Missing 'lat' or 'lng' in coordinates dict: {value!r}")
         return GeoCoordinates(
-            lat=float(value.get("lat", 0.0)),
-            lng=float(value.get("lng", 0.0)),
+            lat=float(value["lat"]),
+            lng=float(value["lng"]),
         )
     raise ValueError(f"Unsupported coordinates value: {type(value)!r}")
 

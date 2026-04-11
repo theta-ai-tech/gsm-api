@@ -31,6 +31,18 @@ class TestParseGeoCoordinates:
         with pytest.raises(ValueError, match="Unsupported"):
             _parse_geo_coordinates("37.93,23.68")
 
+    def test_raises_for_dict_missing_lng(self) -> None:
+        with pytest.raises(ValueError, match="Missing 'lat' or 'lng'"):
+            _parse_geo_coordinates({"lat": 37.93})
+
+    def test_raises_for_dict_missing_lat(self) -> None:
+        with pytest.raises(ValueError, match="Missing 'lat' or 'lng'"):
+            _parse_geo_coordinates({"lng": 23.68})
+
+    def test_raises_for_empty_dict(self) -> None:
+        with pytest.raises(ValueError, match="Missing 'lat' or 'lng'"):
+            _parse_geo_coordinates({})
+
 
 class TestToVenueSummary:
     def test_maps_all_fields_from_firestore_doc(self) -> None:
