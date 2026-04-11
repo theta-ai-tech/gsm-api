@@ -9,6 +9,7 @@ from app.models import (
     BroadcastStatusEnum,
     CourtStatusEnum,
     CursorBundle,
+    GeoCoordinates,
     GeoLocation,
     JournalEntry,
     JournalEntryTypeEnum,
@@ -52,6 +53,7 @@ from app.models import (
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
+    VenueSummary,
 )
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 from app.models.ticker import TickerEvent
@@ -528,6 +530,43 @@ def to_leaderboard_snapshot(doc: dict[str, Any]) -> LeaderboardSnapshot:
         entries=[_parse_leaderboard_entry(e) for e in entries_raw],
         rising_stars=[_parse_rising_star_entry(r) for r in rising_raw],
         last_updated=doc.get("lastUpdated"),
+    )
+
+
+def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
+    """Parse a Firestore GeoPoint or a plain ``{lat, lng}`` dict into
+    :class:`GeoCoordinates`.
+
+    Firestore returns native ``GeoPoint`` instances (with ``latitude`` and
+    ``longitude`` attributes) for fields declared as GeoPoint in the schema.
+    Tests and seed tooling tend to pass plain dicts, so we accept both.
+    """
+    if value is None:
+        raise ValueError("Missing required field: coordinates")
+    latitude = getattr(value, "latitude", None)
+    longitude = getattr(value, "longitude", None)
+    if latitude is not None and longitude is not None:
+        return GeoCoordinates(lat=float(latitude), lng=float(longitude))
+    if isinstance(value, dict):
+        return GeoCoordinates(
+            lat=float(value.get("lat", 0.0)),
+            lng=float(value.get("lng", 0.0)),
+        )
+    raise ValueError(f"Unsupported coordinates value: {type(value)!r}")
+
+
+def to_venue_summary(doc: dict[str, Any], venue_id: str | None = None) -> VenueSummary:
+    sports_raw = doc.get("sports") or []
+    sports = [SportEnum(s) for s in sports_raw]
+    return VenueSummary(
+        venue_id=venue_id or doc.get("id") or "",
+        name=doc.get("name", ""),
+        coordinates=_parse_geo_coordinates(doc.get("coordinates")),
+        area=doc.get("area", ""),
+        sports=sports,
+        court_count=doc.get("courtCount"),
+        indoor=doc.get("indoor"),
+        place_id=doc.get("placeId"),
     )
 
 
