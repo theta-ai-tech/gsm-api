@@ -546,7 +546,10 @@ def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
     latitude = getattr(value, "latitude", None)
     longitude = getattr(value, "longitude", None)
     if latitude is not None and longitude is not None:
-        return GeoCoordinates(lat=float(latitude), lng=float(longitude))
+        try:
+            return GeoCoordinates(lat=float(latitude), lng=float(longitude))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid coordinate value in GeoPoint: {value!r}") from exc
     if isinstance(value, dict):
         if "lat" not in value or "lng" not in value:
             raise ValueError(f"Missing 'lat' or 'lng' in coordinates dict: {value!r}")

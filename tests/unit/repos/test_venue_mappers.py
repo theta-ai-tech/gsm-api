@@ -43,6 +43,12 @@ class TestParseGeoCoordinates:
         with pytest.raises(ValueError, match="Missing 'lat' or 'lng'"):
             _parse_geo_coordinates({})
 
+    def test_raises_for_geopoint_with_invalid_latitude(self) -> None:
+        # non-None but non-numeric latitude enters the GeoPoint branch and must
+        # raise ValueError (not TypeError) after the try/except guard
+        with pytest.raises(ValueError, match="Invalid coordinate value"):
+            _parse_geo_coordinates(SimpleNamespace(latitude=object(), longitude=23.68))
+
     def test_raises_for_dict_with_none_lat(self) -> None:
         with pytest.raises(ValueError, match="Invalid coordinate value"):
             _parse_geo_coordinates({"lat": None, "lng": 23.68})
