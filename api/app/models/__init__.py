@@ -57,6 +57,7 @@ from app.models.ticker import TickerEvent
 from app.models.tier import TierConfig, TierThreshold
 from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile, PublicUserProfile
+from app.models.venue import VenueSummary
 
 __all__ = [
     # base
@@ -147,4 +148,6 @@ __all__ = [
     # user
     "PublicUserProfile",
     "PrivateUserProfile",
+    # venue
+    "VenueSummary",
 ]

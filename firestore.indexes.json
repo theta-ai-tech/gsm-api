@@ -98,6 +98,23 @@
         { "fieldPath": "participantPair", "mode": "ASCENDING" },
         { "fieldPath": "finishedAt", "mode": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "venues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sports", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "name", "mode": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "venues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sports", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "area", "mode": "ASCENDING" },
+        { "fieldPath": "name", "mode": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
+from pydantic import ValidationError
+
 from app.models import (
     AvailabilityEnum,
     Broadcast,
@@ -9,6 +11,7 @@ from app.models import (
     BroadcastStatusEnum,
     CourtStatusEnum,
     CursorBundle,
+    GeoCoordinates,
     GeoLocation,
     JournalEntry,
     JournalEntryTypeEnum,
@@ -52,6 +55,7 @@ from app.models import (
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
+    VenueSummary,
 )
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 from app.models.ticker import TickerEvent
@@ -528,6 +532,54 @@ def to_leaderboard_snapshot(doc: dict[str, Any]) -> LeaderboardSnapshot:
         entries=[_parse_leaderboard_entry(e) for e in entries_raw],
         rising_stars=[_parse_rising_star_entry(r) for r in rising_raw],
         last_updated=doc.get("lastUpdated"),
+    )
+
+
+def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
+    """Parse a Firestore GeoPoint or a plain ``{lat, lng}`` dict into
+    :class:`GeoCoordinates`.
+
+    Firestore returns native ``GeoPoint`` instances (with ``latitude`` and
+    ``longitude`` attributes) for fields declared as GeoPoint in the schema.
+    Tests and seed tooling tend to pass plain dicts, so we accept both.
+    """
+    if value is None:
+        raise ValueError("Missing required field: coordinates")
+    latitude = getattr(value, "latitude", None)
+    longitude = getattr(value, "longitude", None)
+    if latitude is not None and longitude is not None:
+        try:
+            return GeoCoordinates(lat=float(latitude), lng=float(longitude))
+        except (TypeError, ValueError, ValidationError) as exc:
+            raise ValueError(f"Invalid coordinate value in GeoPoint: {value!r}") from exc
+    if isinstance(value, dict):
+        if "lat" not in value or "lng" not in value:
+            raise ValueError(f"Missing 'lat' or 'lng' in coordinates dict: {value!r}")
+        try:
+            return GeoCoordinates(
+                lat=float(value["lat"]),
+                lng=float(value["lng"]),
+            )
+        except (TypeError, ValueError, ValidationError) as exc:
+            raise ValueError(f"Invalid coordinate value in dict: {value!r}") from exc
+    raise ValueError(f"Unsupported coordinates value: {type(value)!r}")
+
+
+def to_venue_summary(doc: dict[str, Any], venue_id: str | None = None) -> VenueSummary:
+    resolved_id = venue_id or doc.get("id")
+    if not resolved_id:
+        raise ValueError("Missing required field: venue_id")
+    sports_raw = _require(doc, "sports")
+    sports = [SportEnum(s) for s in sports_raw]
+    return VenueSummary(
+        venue_id=resolved_id,
+        name=_require(doc, "name"),
+        coordinates=_parse_geo_coordinates(doc.get("coordinates")),
+        area=_require(doc, "area"),
+        sports=sports,
+        court_count=doc.get("courtCount"),
+        indoor=doc.get("indoor"),
+        place_id=doc.get("placeId"),
     )
 
 
