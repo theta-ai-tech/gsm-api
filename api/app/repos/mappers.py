@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
+from pydantic import ValidationError
+
 from app.models import (
     AvailabilityEnum,
     Broadcast,
@@ -548,7 +550,7 @@ def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
     if latitude is not None and longitude is not None:
         try:
             return GeoCoordinates(lat=float(latitude), lng=float(longitude))
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, ValidationError) as exc:
             raise ValueError(f"Invalid coordinate value in GeoPoint: {value!r}") from exc
     if isinstance(value, dict):
         if "lat" not in value or "lng" not in value:
@@ -558,19 +560,22 @@ def _parse_geo_coordinates(value: Any) -> GeoCoordinates:
                 lat=float(value["lat"]),
                 lng=float(value["lng"]),
             )
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, ValidationError) as exc:
             raise ValueError(f"Invalid coordinate value in dict: {value!r}") from exc
     raise ValueError(f"Unsupported coordinates value: {type(value)!r}")
 
 
 def to_venue_summary(doc: dict[str, Any], venue_id: str | None = None) -> VenueSummary:
-    sports_raw = doc.get("sports") or []
+    resolved_id = venue_id or doc.get("id")
+    if not resolved_id:
+        raise ValueError("Missing required field: venue_id")
+    sports_raw = _require(doc, "sports")
     sports = [SportEnum(s) for s in sports_raw]
     return VenueSummary(
-        venue_id=venue_id or doc.get("id") or "",
-        name=doc.get("name", ""),
+        venue_id=resolved_id,
+        name=_require(doc, "name"),
         coordinates=_parse_geo_coordinates(doc.get("coordinates")),
-        area=doc.get("area", ""),
+        area=_require(doc, "area"),
         sports=sports,
         court_count=doc.get("courtCount"),
         indoor=doc.get("indoor"),

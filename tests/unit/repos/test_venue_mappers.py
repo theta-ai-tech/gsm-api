@@ -57,6 +57,16 @@ class TestParseGeoCoordinates:
         with pytest.raises(ValueError, match="Invalid coordinate value"):
             _parse_geo_coordinates({"lat": object(), "lng": 23.68})
 
+    def test_raises_for_geopoint_with_out_of_range_latitude(self) -> None:
+        # float() succeeds but GeoCoordinates(lat=91.0) raises ValidationError
+        # which must be caught and re-raised as ValueError
+        with pytest.raises(ValueError, match="Invalid coordinate value"):
+            _parse_geo_coordinates(SimpleNamespace(latitude=91.0, longitude=23.68))
+
+    def test_raises_for_dict_with_out_of_range_longitude(self) -> None:
+        with pytest.raises(ValueError, match="Invalid coordinate value"):
+            _parse_geo_coordinates({"lat": 37.93, "lng": 200.0})
+
 
 class TestToVenueSummary:
     def test_maps_all_fields_from_firestore_doc(self) -> None:
@@ -111,3 +121,44 @@ class TestToVenueSummary:
 
         assert venue.venue_id == "venue_fallback"
         assert venue.sports == [SportEnum.PICKLEBALL]
+
+    def test_raises_when_venue_id_missing_from_both_arg_and_doc(self) -> None:
+        doc = {
+            "name": "No ID Venue",
+            "coordinates": {"lat": 37.93, "lng": 23.68},
+            "area": "Athens",
+            "sports": ["padel"],
+        }
+
+        with pytest.raises(ValueError, match="venue_id"):
+            to_venue_summary(doc)
+
+    def test_raises_when_name_missing(self) -> None:
+        doc = {
+            "coordinates": {"lat": 37.93, "lng": 23.68},
+            "area": "Athens",
+            "sports": ["padel"],
+        }
+
+        with pytest.raises(ValueError, match="name"):
+            to_venue_summary(doc, venue_id="venue_x")
+
+    def test_raises_when_area_missing(self) -> None:
+        doc = {
+            "name": "No Area Venue",
+            "coordinates": {"lat": 37.93, "lng": 23.68},
+            "sports": ["padel"],
+        }
+
+        with pytest.raises(ValueError, match="area"):
+            to_venue_summary(doc, venue_id="venue_x")
+
+    def test_raises_when_sports_missing(self) -> None:
+        doc = {
+            "name": "No Sports Venue",
+            "coordinates": {"lat": 37.93, "lng": 23.68},
+            "area": "Athens",
+        }
+
+        with pytest.raises(ValueError, match="sports"):
+            to_venue_summary(doc, venue_id="venue_x")
