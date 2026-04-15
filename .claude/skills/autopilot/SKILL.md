@@ -75,8 +75,12 @@ Run: gh pr view {PR_NUMBER} --json state,reviews,comments,commits,headRefName
 **If there is a formal APPROVED review from `iggy-theta-tech`:**
   Check with:
     gh pr view {PR_NUMBER} --json reviews --jq '.reviews[] | select(.author.login=="iggy-theta-tech" and .state=="APPROVED")'
-  If that returns a non-empty result, proceed to merge:
-    gh pr merge {PR_NUMBER} --squash
+  If that returns a non-empty result, run pre-merge checks BEFORE merging:
+    Invoke the /pre-merge-checks skill with PR_NUMBER={PR_NUMBER} and WORKTREE_PATH={WORKTREE_PATH}.
+    Read the last line of the skill's output for the verdict.
+    If PRE_MERGE_VERDICT: FAIL — log the reason, do NOT merge, wait for the next cycle.
+    If PRE_MERGE_VERDICT: PASS — proceed:
+      gh pr merge {PR_NUMBER} --squash
   Verify the merge succeeded: gh pr view {PR_NUMBER} --json state,mergedAt
   If state is MERGED:
     Update the sprint tracker (inline — do not call /post-merge):

@@ -65,9 +65,37 @@ If the issue is not found in the "In Sprint" table, tell the user and ask how to
 
 ---
 
-## Step 5 — Report
+## Step 5 — Worktree cleanup and main sync
+
+After updating the sprint tracker, check if a worktree exists for the merged branch and clean it up:
+
+1. Get the branch name from the PR:
+   ```bash
+   gh pr view <PR-number> --json headRefName --jq '.headRefName'
+   ```
+
+2. Check if a worktree exists for that branch:
+   ```bash
+   git worktree list | grep <branch-name>
+   ```
+
+3. If a worktree exists, remove it:
+   ```bash
+   git worktree remove .claude/worktrees/<branch-name> --force
+   ```
+   If it doesn't exist, skip silently.
+
+4. Pull latest main to keep the working directory in sync:
+   ```bash
+   git -C /Users/ignatioscharalampidis/Documents/theta/dev/gsm/gsm-api pull origin main
+   ```
+
+---
+
+## Step 6 — Report
 
 Tell the user what was updated:
 - Which issue was moved (#N — title)
 - Which PR closed it (#PR)
 - Merge date
+- Whether a worktree was cleaned up

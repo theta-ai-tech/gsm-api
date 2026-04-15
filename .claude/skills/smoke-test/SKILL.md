@@ -148,6 +148,20 @@ Look in the PR body for the user referenced in `get_emu_token.sh` calls (e.g. `u
 
 ---
 
+## Step 4.5 — Commit the generated script
+
+After writing the script, commit it to the current branch so it lands in the PR and eventually in `main`:
+
+```bash
+git add tests/smoke/pr-{N}.sh
+git commit -m "test: add smoke test script for PR #{N}"
+git push
+```
+
+If the working tree is inside a worktree (`git worktree list` shows a path other than the main repo), run the commit from that worktree path. If there is nothing to commit (file already tracked and unchanged), skip silently.
+
+---
+
 ## Step 5 — Run the script
 
 ```bash
@@ -184,5 +198,5 @@ If any failed: show the failure details and suggest whether the issue is in the 
 
 - Run from the repo root — the script uses relative paths to `scripts/get_emu_token.sh`
 - If the emulator stack isn't running, connection errors will appear immediately — tell the user to run `make emu-all` + `make api-dev-emu-auth` first (or `/start-emulators` once that skill exists)
-- The saved script at `tests/smoke/pr-{N}.sh` should be committed alongside the feature — it becomes the regression test for that endpoint
+- The saved script at `tests/smoke/pr-{N}.sh` is always committed in Step 4.5 — it becomes the regression test for that endpoint and must land in `main` alongside the feature
 - Scripts are idempotent by design (teardown resets Firestore state) so they can be run repeatedly
