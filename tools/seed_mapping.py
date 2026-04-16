@@ -32,6 +32,7 @@ from app.models import (
     UserCompletedMatchSummary,
     UserMatchSummary,
 )
+from app.models.venue import VenueSummary
 
 
 def _sport_ranking_to_dict(ranking: SportRanking) -> Dict[str, Any]:
@@ -422,4 +423,24 @@ def scouting_profile_to_firestore_doc(profile: ScoutingProfile) -> Dict[str, Any
         doc["padel"] = _scouting_sport_data_to_dict(profile.padel)
     if profile.pickleball is not None:
         doc["pickleball"] = _scouting_sport_data_to_dict(profile.pickleball)
+    return doc
+
+
+def venue_summary_to_firestore_doc(venue: VenueSummary) -> Dict[str, Any]:
+    """Serialize a VenueSummary to a Firestore ``venues/{venueId}`` document."""
+    doc: Dict[str, Any] = {
+        "name": venue.name,
+        "coordinates": {
+            "lat": venue.coordinates.lat,
+            "lng": venue.coordinates.lng,
+        },
+        "area": venue.area,
+        "sports": [s.value for s in venue.sports],
+    }
+    if venue.court_count is not None:
+        doc["courtCount"] = venue.court_count
+    if venue.indoor is not None:
+        doc["indoor"] = venue.indoor
+    if venue.place_id is not None:
+        doc["placeId"] = venue.place_id
     return doc

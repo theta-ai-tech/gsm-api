@@ -40,7 +40,9 @@ from tools.seed_mapping import (
     tier_averages_to_firestore_doc,
     tier_config_to_firestore_doc,
     user_to_firestore_doc,
+    venue_summary_to_firestore_doc,
 )
+from tools.seed_venues import SAMPLE_VENUES
 
 
 def _parse_args() -> argparse.Namespace:
@@ -117,6 +119,11 @@ def seed_all(client: firestore.Client) -> None:
         doc_ref = client.collection("ticker").document(event.event_id)
         doc_ref.set(ticker_event_to_firestore_doc(event))
 
+    # Venues
+    for venue in SAMPLE_VENUES:
+        doc_ref = client.collection("venues").document(venue.venue_id)
+        doc_ref.set(venue_summary_to_firestore_doc(venue))
+
 
 def main() -> None:
     args = _parse_args()
@@ -156,6 +163,7 @@ def main() -> None:
         f"{len(SAMPLE_LEADERBOARDS)} leaderboard snapshots, "
         f"{len(SAMPLE_SCOUTING_PROFILES)} scouting profiles, "
         f"{len(SAMPLE_TICKER_EVENTS)} ticker events, "
+        f"{len(SAMPLE_VENUES)} venues, "
         f"1 tier config, "
         f"1 skill taxonomy, "
         f"1 tier averages, "
