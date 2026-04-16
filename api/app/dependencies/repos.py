@@ -15,6 +15,7 @@ from app.repos.scouting_repo import ScoutingRepo
 from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
+from app.repos.venue_repo import VenueRepo
 
 
 @lru_cache
@@ -69,3 +70,7 @@ def get_ticker_repo() -> TickerRepo:
 
 def get_tier_config_repo() -> TierConfigRepo:
     return TierConfigRepo(get_firestore_client())
+
+
+def get_venue_repo() -> VenueRepo:
+    return VenueRepo(get_firestore_client())
