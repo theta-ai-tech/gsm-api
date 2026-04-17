@@ -31,3 +31,9 @@ TICKER_LIST_MAX_LIMIT = 50
 
 # Streak milestone thresholds (used for badges / notifications)
 STREAK_MILESTONES: frozenset[int] = frozenset({3, 5, 10, 20})
+
+# Venue search
+VENUE_SEARCH_MAX_RESULTS = 5
+VENUE_SEARCH_LOCATION_BIAS_RADIUS_M = 5000
+VENUE_SEARCH_CACHE_MAX_SIZE = 256
+VENUE_SEARCH_RATE_LIMIT_PER_MINUTE = 10

@@ -12,6 +12,7 @@ class Settings(BaseModel):
     credentials_file: str | None = None
     firestore_emulator_host: str | None = None
     auth_emulator_host: str | None = None
+    google_places_api_key: str | None = None
 
     @property
     def issuer(self) -> str:
@@ -37,4 +38,5 @@ def get_settings() -> Settings:
         credentials_file=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
         firestore_emulator_host=os.getenv("FIRESTORE_EMULATOR_HOST"),
         auth_emulator_host=os.getenv("FIREBASE_AUTH_EMULATOR_HOST"),
+        google_places_api_key=os.getenv("GOOGLE_PLACES_API_KEY"),
     )

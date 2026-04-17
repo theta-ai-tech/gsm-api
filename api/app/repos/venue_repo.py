@@ -37,3 +37,19 @@ class VenueRepo(RepoBase):
             query = query.where("area", "==", area)
         query = query.order_by("name")
         return [to_venue_summary(doc.to_dict() or {}, venue_id=doc.id) for doc in query.stream()]
+
+    def search_by_name_prefix(self, prefix: str, limit: int = 10) -> list[VenueSummary]:
+        """Return curated venues whose ``name`` starts with ``prefix`` (case-sensitive).
+
+        Uses the Firestore ``>=`` / ``<`` range trick on the ``name`` field
+        to approximate a prefix search. Limited to ``limit`` results.
+        """
+        upper = prefix[:-1] + chr(ord(prefix[-1]) + 1) if prefix else ""
+        query = (
+            self.client.collection(self.COLLECTION)
+            .where("name", ">=", prefix)
+            .where("name", "<", upper)
+            .order_by("name")
+            .limit(limit)
+        )
+        return [to_venue_summary(doc.to_dict() or {}, venue_id=doc.id) for doc in query.stream()]
