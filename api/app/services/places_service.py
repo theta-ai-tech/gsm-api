@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections import OrderedDict
 from typing import Any
 
@@ -54,6 +55,7 @@ class PlacesService:
 
         predictions = self._fetch_autocomplete(query, lat, lng)
         results: list[VenueRef] = []
+        detail_failures = 0
         for pred in predictions[:VENUE_SEARCH_MAX_RESULTS]:
             place_id: str = pred["place_id"]
             name: str = pred.get("structured_formatting", {}).get(
@@ -61,6 +63,7 @@ class PlacesService:
             )
             coords = self._fetch_place_coordinates(place_id)
             if coords is None:
+                detail_failures += 1
                 continue
             results.append(
                 VenueRef.model_validate(
@@ -71,6 +74,12 @@ class PlacesService:
                     }
                 )
             )
+
+        # If autocomplete returned predictions but ALL detail lookups failed,
+        # the upstream is broken — surface it rather than returning empty 200.
+        if predictions and detail_failures == len(predictions[:VENUE_SEARCH_MAX_RESULTS]):
+            raise PlacesUpstreamError("Google Places Details API failed for all predictions")
+
         _result_cache_put(cache_key, results)
         return results
 
@@ -140,6 +149,7 @@ class PlacesService:
 # ------------------------------------------------------------------
 
 _cache: OrderedDict[str, list[VenueRef]] = OrderedDict()
+_cache_lock = threading.Lock()
 
 
 def _cache_key(query: str, lat: float | None, lng: float | None) -> str:
@@ -149,21 +159,24 @@ def _cache_key(query: str, lat: float | None, lng: float | None) -> str:
 
 
 def _result_cache_get(key: str) -> list[VenueRef] | None:
-    if key in _cache:
-        _cache.move_to_end(key)
-        return _cache[key]
-    return None
+    with _cache_lock:
+        if key in _cache:
+            _cache.move_to_end(key)
+            return _cache[key]
+        return None
 
 
 def _result_cache_put(key: str, results: list[VenueRef]) -> None:
-    if key in _cache:
-        _cache.move_to_end(key)
-        return
-    if len(_cache) >= VENUE_SEARCH_CACHE_MAX_SIZE:
-        _cache.popitem(last=False)
-    _cache[key] = results
+    with _cache_lock:
+        if key in _cache:
+            _cache.move_to_end(key)
+            return
+        if len(_cache) >= VENUE_SEARCH_CACHE_MAX_SIZE:
+            _cache.popitem(last=False)
+        _cache[key] = results
 
 
 def clear_cache() -> None:
     """Reset the in-memory cache (useful for tests)."""
-    _cache.clear()
+    with _cache_lock:
+        _cache.clear()

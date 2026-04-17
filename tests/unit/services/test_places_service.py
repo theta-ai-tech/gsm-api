@@ -128,7 +128,7 @@ class TestAutocomplete:
         # autocomplete called once, details called once = 2 total calls
         assert http.get.call_count == 2
 
-    def test_skips_prediction_when_details_fail(self):
+    def test_all_details_fail_raises_upstream_error(self):
         http = _mock_http(
             autocomplete_json={
                 "status": "OK",
@@ -142,8 +142,46 @@ class TestAutocomplete:
             details_json={"status": "NOT_FOUND"},
         )
         svc = PlacesService(api_key="test-key", http_client=http)
-        results = svc.autocomplete("padel")
-        assert len(results) == 0
+        with pytest.raises(PlacesUpstreamError, match="all predictions"):
+            svc.autocomplete("padel")
+
+    def test_partial_details_failure_returns_successful_results(self):
+        """When some detail lookups fail, return the ones that succeeded."""
+        client = Mock()
+        ac_resp = Mock()
+        ac_resp.json.return_value = {
+            "status": "OK",
+            "predictions": [
+                {"place_id": "ChIJ_ok", "structured_formatting": {"main_text": "Good"}},
+                {"place_id": "ChIJ_bad", "structured_formatting": {"main_text": "Bad"}},
+            ],
+        }
+        ac_resp.raise_for_status = Mock()
+
+        ok_det = Mock()
+        ok_det.json.return_value = {
+            "status": "OK",
+            "result": {"geometry": {"location": {"lat": 37.93, "lng": 23.68}}},
+        }
+        ok_det.raise_for_status = Mock()
+
+        bad_det = Mock()
+        bad_det.json.return_value = {"status": "NOT_FOUND"}
+        bad_det.raise_for_status = Mock()
+
+        call_count = {"n": 0}
+
+        def _route(url: str, **kwargs):
+            if "autocomplete" in url:
+                return ac_resp
+            call_count["n"] += 1
+            return ok_det if call_count["n"] == 1 else bad_det
+
+        client.get = Mock(side_effect=_route)
+        svc = PlacesService(api_key="test-key", http_client=client)
+        results = svc.autocomplete("test")
+        assert len(results) == 1
+        assert results[0].place_id == "ChIJ_ok"
 
     def test_uses_description_when_main_text_missing(self):
         http = _mock_http(
