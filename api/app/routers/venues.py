@@ -9,7 +9,7 @@ from app.models.base import GsmBaseModel
 from app.models.common import VenueRef
 from app.repos.venue_repo import VenueRepo
 from app.security import CurrentUser
-from app.services.places_service import PlacesService
+from app.services.places_service import PlacesService, PlacesUpstreamError
 from app.settings import get_settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
@@ -63,7 +63,13 @@ def search_venues(
     places_service = get_places_service()
 
     # 1. Google Places results
-    google_results = places_service.autocomplete(query=q, lat=lat, lng=lng)
+    try:
+        google_results = places_service.autocomplete(query=q, lat=lat, lng=lng)
+    except PlacesUpstreamError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=exc.detail,
+        ) from exc
 
     # 2. Curated venue prefix search
     curated = venue_repo.search_by_name_prefix(q, limit=VENUE_SEARCH_MAX_RESULTS)

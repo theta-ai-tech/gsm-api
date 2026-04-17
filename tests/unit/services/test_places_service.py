@@ -7,9 +7,16 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
+import httpx
 import pytest
 
-from app.services.places_service import PlacesService, clear_cache
+from app.services.places_service import (
+    PlacesService,
+    PlacesUpstreamError,
+    _result_cache_get,
+    _result_cache_put,
+    clear_cache,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -75,11 +82,18 @@ class TestAutocomplete:
         results = svc.autocomplete("nonexistent")
         assert results == []
 
-    def test_error_status_returns_empty(self):
+    def test_error_status_raises_upstream_error(self):
         http = _mock_http(autocomplete_json={"status": "REQUEST_DENIED"})
         svc = PlacesService(api_key="test-key", http_client=http)
-        results = svc.autocomplete("padel")
-        assert results == []
+        with pytest.raises(PlacesUpstreamError, match="REQUEST_DENIED"):
+            svc.autocomplete("padel")
+
+    def test_http_error_raises_upstream_error(self):
+        http = Mock()
+        http.get = Mock(side_effect=httpx.ConnectError("connection refused"))
+        svc = PlacesService(api_key="test-key", http_client=http)
+        with pytest.raises(PlacesUpstreamError, match="unreachable"):
+            svc.autocomplete("padel")
 
     def test_max_five_results_returned(self):
         predictions = [
@@ -147,3 +161,36 @@ class TestAutocomplete:
         results = svc.autocomplete("padel")
         assert len(results) == 1
         assert results[0].name == "Full Description Here"
+
+
+class TestLRUCache:
+    def test_cache_hit_refreshes_recency(self):
+        """Accessing a cached key should move it to the end (most recent)."""
+        _result_cache_put("a", [])
+        _result_cache_put("b", [])
+        # Access "a" to refresh its recency
+        _result_cache_get("a")
+        _result_cache_put("c", [])
+        # If cache size were 3, all three should still be present
+        assert _result_cache_get("a") is not None
+        assert _result_cache_get("b") is not None
+        assert _result_cache_get("c") is not None
+
+    def test_lru_eviction_order(self):
+        """Least recently used key should be evicted first."""
+
+        # Fill cache to max size
+        from app.constants import VENUE_SEARCH_CACHE_MAX_SIZE
+
+        for i in range(VENUE_SEARCH_CACHE_MAX_SIZE):
+            _result_cache_put(f"key_{i}", [])
+
+        # Access key_0 to make it most recently used
+        _result_cache_get("key_0")
+
+        # Insert one more — should evict key_1 (least recently used), not key_0
+        _result_cache_put("new_key", [])
+
+        assert _result_cache_get("key_0") is not None  # refreshed, still present
+        assert _result_cache_get("key_1") is None  # evicted (was LRU)
+        assert _result_cache_get("new_key") is not None  # just inserted

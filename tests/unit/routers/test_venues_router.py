@@ -17,7 +17,7 @@ from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import SportEnum
 from app.models.venue import VenueSummary
 from app.security import CurrentUser
-from app.services.places_service import PlacesService
+from app.services.places_service import PlacesService, PlacesUpstreamError
 
 _UID = "user_test"
 
@@ -185,6 +185,43 @@ class TestSearchVenuesValidation:
             "/venues/search", params={"q": "padel", "lat": 37.9, "lng": 200}
         )
         assert resp.status_code == 422
+
+
+class TestSearchVenuesApiKeyOrdering:
+    """Verify that param validation (422) fires before the API key check (503)."""
+
+    def test_valid_params_missing_key_returns_503(
+        self, _override_auth, mock_venue_repo
+    ):
+        """Valid query params but no GOOGLE_PLACES_API_KEY => 503."""
+        with patch("app.routers.venues.get_settings") as mock_settings:
+            mock_settings.return_value.google_places_api_key = None
+            c = TestClient(app, raise_server_exceptions=False)
+            resp = c.get("/venues/search", params={"q": "padel"})
+            assert resp.status_code == 503
+
+    def test_invalid_params_missing_key_returns_422(
+        self, _override_auth, mock_venue_repo
+    ):
+        """Invalid query params + no API key => 422 (not 503)."""
+        with patch("app.routers.venues.get_settings") as mock_settings:
+            mock_settings.return_value.google_places_api_key = None
+            c = TestClient(app, raise_server_exceptions=False)
+            resp = c.get("/venues/search", params={"q": "padel", "lat": 100})
+            assert resp.status_code == 422
+
+
+class TestSearchVenuesUpstreamError:
+    def test_upstream_error_returns_502(
+        self, _override_auth, mock_venue_repo, mock_places_service
+    ):
+        mock_places_service.autocomplete.side_effect = PlacesUpstreamError(
+            "Google Places API error: REQUEST_DENIED"
+        )
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/venues/search", params={"q": "padel"})
+        assert resp.status_code == 502
+        assert "REQUEST_DENIED" in resp.json()["detail"]
 
 
 class TestSearchVenuesAuth:

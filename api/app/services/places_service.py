@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -16,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 PLACES_AUTOCOMPLETE_URL = "https://maps.googleapis.com/maps/api/place/autocomplete/json"
 PLACES_DETAILS_URL = "https://maps.googleapis.com/maps/api/place/details/json"
+
+
+class PlacesUpstreamError(Exception):
+    """Raised when the Google Places API returns an error or is unreachable."""
+
+    def __init__(self, detail: str) -> None:
+        self.detail = detail
+        super().__init__(detail)
 
 
 class PlacesService:
@@ -88,13 +97,16 @@ class PlacesService:
             resp = self._http.get(PLACES_AUTOCOMPLETE_URL, params=params)
             resp.raise_for_status()
             data = resp.json()
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
             logger.exception("Google Places Autocomplete request failed")
-            return []
+            raise PlacesUpstreamError("Google Places API unreachable") from exc
 
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            logger.warning("Places Autocomplete status=%s", data.get("status"))
+        api_status = data.get("status")
+        if api_status == "ZERO_RESULTS":
             return []
+        if api_status != "OK":
+            logger.warning("Places Autocomplete status=%s", api_status)
+            raise PlacesUpstreamError(f"Google Places API error: {api_status}")
 
         return data.get("predictions", [])
 
@@ -127,8 +139,7 @@ class PlacesService:
 # Module-level LRU cache (lightweight, no Redis dependency for MVP)
 # ------------------------------------------------------------------
 
-_cache: dict[str, list[VenueRef]] = {}
-_cache_order: list[str] = []
+_cache: OrderedDict[str, list[VenueRef]] = OrderedDict()
 
 
 def _cache_key(query: str, lat: float | None, lng: float | None) -> str:
@@ -138,20 +149,21 @@ def _cache_key(query: str, lat: float | None, lng: float | None) -> str:
 
 
 def _result_cache_get(key: str) -> list[VenueRef] | None:
-    return _cache.get(key)
+    if key in _cache:
+        _cache.move_to_end(key)
+        return _cache[key]
+    return None
 
 
 def _result_cache_put(key: str, results: list[VenueRef]) -> None:
     if key in _cache:
+        _cache.move_to_end(key)
         return
     if len(_cache) >= VENUE_SEARCH_CACHE_MAX_SIZE:
-        evict = _cache_order.pop(0)
-        _cache.pop(evict, None)
+        _cache.popitem(last=False)
     _cache[key] = results
-    _cache_order.append(key)
 
 
 def clear_cache() -> None:
     """Reset the in-memory cache (useful for tests)."""
     _cache.clear()
-    _cache_order.clear()
