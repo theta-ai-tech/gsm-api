@@ -49,7 +49,6 @@ def search_venues(
     q: str = Query(..., min_length=1, max_length=200),
     lat: float | None = Query(default=None, ge=-90, le=90),
     lng: float | None = Query(default=None, ge=-180, le=180),
-    sport: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
     venue_repo: VenueRepo = Depends(get_venue_repo),
 ) -> VenueSearchResponse:
