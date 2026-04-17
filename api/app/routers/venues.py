@@ -51,7 +51,6 @@ def search_venues(
     lng: float | None = Query(default=None, ge=-180, le=180),
     sport: str | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
-    places_service: PlacesService = Depends(get_places_service),
     venue_repo: VenueRepo = Depends(get_venue_repo),
 ) -> VenueSearchResponse:
     """Proxy Google Places Autocomplete and merge with curated venues.
@@ -59,6 +58,10 @@ def search_venues(
     Returns up to 5 results combining Google Places results with any matching
     curated venues from the ``venues`` Firestore collection.
     """
+    # Resolve PlacesService after param validation so invalid params
+    # return 422 instead of 503 when the API key is missing.
+    places_service = get_places_service()
+
     # 1. Google Places results
     google_results = places_service.autocomplete(query=q, lat=lat, lng=lng)
 

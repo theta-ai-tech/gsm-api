@@ -5,7 +5,7 @@ Repos and PlacesService are mocked -- no emulator or Google API needed.
 
 from __future__ import annotations
 
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +16,6 @@ from app.main import app
 from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import SportEnum
 from app.models.venue import VenueSummary
-from app.routers.venues import get_places_service
 from app.security import CurrentUser
 from app.services.places_service import PlacesService
 
@@ -45,9 +44,8 @@ def mock_venue_repo():
 def mock_places_service():
     svc = Mock(spec=PlacesService)
     svc.autocomplete.return_value = []
-    app.dependency_overrides[get_places_service] = lambda: svc
-    yield svc
-    app.dependency_overrides.pop(get_places_service, None)
+    with patch("app.routers.venues.get_places_service", return_value=svc):
+        yield svc
 
 
 @pytest.fixture()
