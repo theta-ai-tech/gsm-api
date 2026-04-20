@@ -23,7 +23,7 @@
 ## Team Operations
 
 - **Skills:** `/next-issue`, `/post-merge`, `/plan-sprint`, `/standup`, `/review-pr`, `/lookup-docs`, `/smoke-test`, `/autopilot`
-- **Agents:** `gsm-backend-developer` (implementation), `gsm-tpm` (specs & planning), `gsm-qa-tester` (smoke tests + QA comments)
+- **Agents:** `gsm-backend-developer` (implementation), `gsm-tpm` (backend architect — gap analysis, data-model design, spec stewardship), `gsm-qa-tester` (smoke tests + QA comments), `gsm-code-reviewer` (Claude-backed PR review, posts as `iggy-theta-tech` tagged `[Claude review]`), `gsm-codex-reviewer` (Codex-backed PR review, same persona/contract but different brain, posts tagged `[Codex review]`)
 - **Sprint tracking:** `.agent/SPRINT.md`, `.agent/ARCHIVE_SPRINT.md`
 
 ## Project Overview
@@ -137,5 +137,7 @@ Only handle simple/quick tasks directly (file reads, one-liner edits, answering 
 | Agent | Delegate when | Do NOT delegate |
 |-------|--------------|-----------------|
 | `gsm-backend-developer` | New features, bug fixes, issue implementation, PRs, tests, smoke script generation | Quick file reads, one-liner edits, answering questions |
-| `gsm-tpm` | New feature specs, gap analysis, issue decomposition, product decisions | Implementation work, code changes |
+| `gsm-tpm` | Backend architectural review, data-model design, gap analysis vs existing models/triggers/collections, stewarding `spec/` + `wiki/` docs | Implementation, cross-stream planning, sprint scheduling, product decisions, issue decomposition — those belong to `gsm-backend-developer`, `gsm-planner`, `gsm-scheduler`, `gsm-ceo`, and `gsm-stream-planner` respectively |
 | `gsm-qa-tester` | Running smoke tests against the emulator, posting QA results to a PR as `iggy-theta-tech` | Implementation, code review, approvals |
+| `gsm-code-reviewer` | Claude-backed adversarial PR review — correctness, regressions, edge cases, security, Firestore cost, test coverage — inline + summary comments as `iggy-theta-tech` tagged `[Claude review]` | Implementation, fixing code, running tests, approving/requesting changes |
+| `gsm-codex-reviewer` | Codex-backed PR review — same contract as `gsm-code-reviewer` but reasons via Codex/GPT — inline + summary comments tagged `[Codex review]` | Same exclusions as `gsm-code-reviewer`; additionally, don't reason about the diff natively — delegate to Codex |

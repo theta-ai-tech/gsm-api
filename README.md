@@ -14,6 +14,129 @@ make api-dev
 # docs: http://localhost:8000/docs
 ```
 
+## Working with agents
+
+Development in this repo is driven by Claude Code **skills** (slash commands that define the *workflow*) and **agents** (personas that define the *perspective*). A skill is what you type; an agent is who does the work. The same agent can be dispatched from a slash command or from an autonomous cron — the persona stays consistent; only the trigger changes.
+
+### Roster
+
+| Skill | Delegates to agent | What the agent does | Posts as |
+|-------|--------------------|---------------------|----------|
+| `/next-issue` | `gsm-backend-developer` | Reads the next sprint issue, implements it end-to-end, opens a PR | `ignacioch` |
+| `/smoke-test <pr>` | `gsm-qa-tester` | Runs `tests/smoke/pr-{N}.sh` against the emulator, posts verdict | `iggy-theta-tech` |
+| `/review-pr <pr> claude` | `gsm-code-reviewer` | Adversarial diff review backed by Claude/Opus, posts inline + summary comments tagged `[Claude review]` | `iggy-theta-tech` |
+| `/review-pr <pr> codex` | `gsm-codex-reviewer` | Same contract as the Claude reviewer, but reasons via Codex; comments tagged `[Codex review]` | `iggy-theta-tech` |
+| `/autopilot` | orchestrator (spawns `gsm-backend-developer`, then two cron loops) | Fully hands-off implement → review → merge cycle | `ignacioch` + `iggy-theta-tech` |
+| `/plan-sprint`, `/post-merge`, `/standup`, `/lookup-docs`, `/pre-merge-checks` | (run inline) | Sprint tracking utilities, no dedicated persona needed | — |
+
+Consult-only specialist (not behind a slash command):
+
+| Agent | When to invoke |
+|-------|----------------|
+| `gsm-tpm` | Backend architectural review, gap analysis vs existing models/triggers/collections, data-model design for new features |
+
+### Two modes — pick based on how much you want to babysit
+
+```mermaid
+flowchart TB
+    subgraph Manual["👤 Manual mode — parallel sessions, human-in-the-loop"]
+        direction LR
+        I([GitHub issue]) --> SA["Session A<br/>/next-issue"]
+        SA --> DEV[gsm-backend-developer]
+        DEV --> PR([PR opened])
+        PR --> SB["Session B<br/>/smoke-test N"]
+        PR --> SC["Session C<br/>/review-pr N claude"]
+        PR --> SD["Session D<br/>/review-pr N codex"]
+        SB --> QA[gsm-qa-tester]
+        SC --> CR[gsm-code-reviewer]
+        SD --> CX[gsm-codex-reviewer]
+        QA --> CMT([PR comments + verdicts])
+        CR --> CMT
+        CX --> CMT
+        CMT --> H{{human merges}}
+    end
+
+    subgraph Auto["🤖 Autopilot mode — one session, two crons run unattended"]
+        direction LR
+        AP["/autopilot"] --> NI[next-issue → PR]
+        NI --> CA[Cron A — dev loop every 10m]
+        NI --> CB[Cron B — reviewer loop every 10m]
+        CB --> AQA[gsm-qa-tester<br/>QA comment]
+        AQA -->|PASS/SKIP| ACR[Codex inline<br/>code review]
+        ACR -->|APPROVE| MRG[gh pr merge]
+        ACR -->|REQUEST_CHANGES| CA
+        CA --> FIX[pick up comments,<br/>push fixes]
+        FIX --> CB
+        MRG --> DONE([done — crons self-terminate])
+    end
+```
+
+**Manual mode.** You open one Claude session per lane and watch each one run. Best when you're iterating on a tricky change, want to see reviewer output live, or you want two independent reads (one Claude, one Codex) on the same PR. The two reviewers run in separate sessions and their comments show up distinctly tagged in the PR thread so you can reconcile them yourself.
+
+**Autopilot mode.** You invoke `/autopilot` once, it kicks off `/next-issue` to open the PR, then registers two recurring cron jobs — a developer loop that addresses new review comments, and a reviewer loop that runs QA (`gsm-qa-tester`) followed by Codex code review. Best when you're walking away from the laptop and want the issue to land without supervision. Autopilot currently uses Codex inline (not `gsm-codex-reviewer`) and does not invoke the new Claude reviewer agent — it predates them and is intentionally left alone as the known-good unassisted path.
+
+### Example prompts
+
+**Manual mode — four parallel sessions for one issue:**
+
+```text
+# Session A — implement the next sprint issue
+/next-issue
+
+# Session B — once the PR is open, QA it
+/smoke-test 247
+
+# Session C — Claude review, same PR
+/review-pr 247 claude
+
+# Session D — Codex review, same PR
+/review-pr 247 codex
+```
+
+Natural-language phrasings also trigger the skills:
+
+```text
+pick up the next sprint issue and open a PR
+run smoke tests on PR #247
+review PR 247 with Claude
+review PR 247 with Codex — want a second opinion
+```
+
+**Autopilot — one invocation, walk away:**
+
+```text
+# Start the full autonomous cycle — single session
+/autopilot
+
+# Or in natural language
+run autopilot — pick the next issue, implement it, review it, merge when clean
+```
+
+After autopilot fires, monitor progress via `gh pr view <N>` or `CronList`. When both crons self-terminate, the issue has shipped.
+
+**Consult the backend architect before planning a big change:**
+
+```text
+# Delegate to gsm-tpm for an architectural read before any code changes
+ask gsm-tpm whether adding a global "player_ranking" collection fits our existing model,
+or whether we should extend me-state instead
+```
+
+### When to use which mode
+
+| Situation | Mode |
+|-----------|------|
+| Iterating fast, want live visibility | Manual — one session per lane |
+| Want two independent reviewer reads (Claude + Codex) | Manual — two `/review-pr` sessions, different reviewers |
+| Walking away from the laptop | Autopilot |
+| Issue is risky or touches core schema | Manual — run `gsm-tpm` consult first, then implement with live reviewers |
+| Issue is routine (bug fix, small extension) | Autopilot is fine |
+| You want the PR to pause for human judgement mid-review | Manual — autopilot will merge once APPROVE lands |
+
+The two modes are not exclusive — you can start one manually, abandon the PR, and let autopilot take over by invoking `/autopilot` next time (it picks up the next open issue).
+
+---
+
 ## Make targets
 - `make venv`: create virtual env
 - `make install`: install API deps

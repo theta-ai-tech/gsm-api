@@ -1,20 +1,30 @@
 ---
 name: review-pr
-description: Review GitHub pull requests and post feedback comments without implementing fixes. Use when the user asks to review a PR, including `/review-pr` or `/review-pr <number>`. If multiple open PRs exist and no number is provided, ask the user which PR to review. Before reviewing, ask for business or domain context (for example specific docs or folders) that should guide the review. Prioritize fast functional validation over overly strict style policing.
+description: Review GitHub pull requests and post feedback comments without implementing fixes. Use when the user asks to review a PR, including `/review-pr`, `/review-pr <number>`, or `/review-pr <number> <reviewer>` where reviewer is `claude` (default) or `codex`. If multiple open PRs exist and no number is provided, ask the user which PR to review. Before reviewing, ask for business or domain context (for example specific docs or folders) that should guide the review. Delegates the actual review to either `gsm-code-reviewer` (Claude/Opus) or `gsm-codex-reviewer` (Codex/GPT-side) — the skill picks the agent; the agent does the thinking. Running different reviewers from different sessions lets you collect two independent reads on the same PR, one per model.
 disable-model-invocation: true
 ---
 
-You are helping the user review pull requests and leave feedback comments only.
+This skill resolves the PR, the business context, and which reviewer to use, then hands off to the chosen agent. Keeping reviewer separate from author matters: an author running `/review-pr` on their own diff will rubber-stamp things a fresh reviewer catches. Keeping *two* reviewer agents — one Claude, one Codex — matters for a different reason: different models have different blind spots, and a second independent read is cheap insurance against either model's characteristic misses.
 
-Run required `gh` commands directly. Do not ask the user for permission before executing `gh` CLI commands or posting review comments. Only ask the user for business/domain context or to choose the target PR when the PR number is not already known and cannot be inferred safely.
-
-Follow these steps in order, stopping if a required decision is missing.
+Run required `gh` commands directly. Do not ask for permission before executing `gh` CLI commands. Only ask the user to pick the PR (when ambiguous), the reviewer (when ambiguous), or to supply business context.
 
 ---
 
-## Step 1 — Determine the target PR
+## Step 1 — Parse arguments
 
-1. If the user called `/review-pr <number>`, use that PR number directly.
+Arguments are positional: `/review-pr [<number>] [<reviewer>]` where `<reviewer>` is `claude` (default) or `codex`.
+
+- `/review-pr` — resolve PR interactively, use `claude`.
+- `/review-pr 123` — PR #123, use `claude`.
+- `/review-pr 123 codex` — PR #123, use `codex`.
+- `/review-pr codex` — resolve PR interactively, use `codex`. (If the single token looks like a reviewer name, treat it as the reviewer; otherwise treat it as the PR number.)
+- `/review-pr 123 claude` — explicit Claude for PR #123.
+
+Anything else for the reviewer slot → stop and ask which of `claude` or `codex` the user wants. Don't guess.
+
+## Step 2 — Determine the target PR
+
+1. If a PR number was given, use it directly.
 2. Otherwise, list open PRs:
 
 ```bash
@@ -23,75 +33,77 @@ gh pr list --state open --limit 30 --json number,title,author,updatedAt,url
 
 3. If there are no open PRs, inform the user and stop.
 4. If there is one open PR, show it and ask for confirmation.
-5. If there are multiple open PRs, ask the user to choose the PR number. Do not auto-select one.
+5. If there are multiple open PRs, ask the user to choose the PR number. Do not auto-select.
 
 ---
 
-## Step 2 — Ask for business context before reviewing
+## Step 3 — Ask for business context
 
-Ask this before reading the diff:
+Before dispatching the reviewer, ask:
 
-"Is there any business knowledge, product rule, or specific folder/doc I should read first (for example `wiki/`, `spec/`, `arch/`, `plans/`, or app folders)?"
+"Is there any business knowledge, product rule, or specific folder/doc I should point the reviewer at first (for example `wiki/`, `spec/`, `arch/`, `plans/`, or app folders)?"
 
-If the user provides context paths, read them first and summarize the review assumptions.
+Capture whatever the user gives you verbatim. You'll pass it into the agent brief — the agent shouldn't have to guess what the user thinks is important.
+
+If the user says "no, just review it", note that and proceed with defaults (the reviewer will consult `wiki/` on its own based on what the diff touches).
 
 ---
 
-## Step 3 — Review the PR changes
+## Step 4 — Verify reviewer token
 
-1. Read PR metadata:
+Whichever reviewer agent you dispatch posts comments as `iggy-theta-tech` via `$GSM_REVIEWER_TOKEN`. Check it's exported before delegating:
 
 ```bash
-gh pr view <number> --json number,title,body,baseRefName,headRefName,files,url
+test -n "$GSM_REVIEWER_TOKEN" && echo "ok" || echo "missing"
 ```
 
-2. Read the code diff:
-
-```bash
-gh pr diff <number>
-```
-
-3. If needed for deeper inspection, check out the PR branch with `gh pr checkout <number>`, but do not edit files.
-4. Evaluate for correctness, regressions, edge cases, security, performance, tests, readability, and alignment with provided business context.
-5. If acceptance criteria exist (in PR body, linked issue, spec, or user instructions), run the relevant checks/tests for those criteria.
-6. If acceptance-criteria checks pass, treat the PR as generally healthy and focus comments on obvious functional bugs or clearly missed cases.
+If missing, stop and tell the user to export it. Posting review comments as `ignacioch` (the author) defeats the purpose — downstream (autopilot, human eyeballs) distinguishes review vs author by GitHub account.
 
 ---
 
-## Step 4 — Add comments to the PR
+## Step 5 — Delegate to the chosen reviewer
 
-1. Turn findings into concrete, actionable review comments.
-2. Do not add comments for the sake of commenting; only post meaningful findings.
-3. Prefer inline file/line review comments when a finding is local enough to attach precisely to a changed hunk. Use broader PR comments only for cross-cutting or non-local findings.
-4. Post a review comment summary:
+Map the reviewer argument to the agent:
 
-```bash
-gh pr review <number> --comment --body "<review summary>"
-```
+| Reviewer | Agent | Backing model |
+|----------|-------|---------------|
+| `claude` (default) | `gsm-code-reviewer` | Claude / Opus |
+| `codex` | `gsm-codex-reviewer` | Codex / GPT-side |
 
-5. Post additional comments for specific findings as needed:
+Dispatch the chosen agent with a focused brief:
 
-```bash
-gh pr comment <number> --body "<specific finding>"
-```
+> Review PR #`<N>` on `theta-ai-tech/gsm-api`. Business context the user called out: `<whatever they said, or "none — use defaults">`. Check correctness, regressions, edge cases, security, Firestore cost, and test coverage for the diff. Post inline comments where precise and one summary comment tagged `[Claude review]` or `[Codex review]` as appropriate. Use `$GSM_REVIEWER_TOKEN` so comments post as `iggy-theta-tech`. Do not approve or request changes. End your response with the `REVIEW_VERDICT: <CLEAN|NITS|CONCERNS|BLOCKING>` line.
 
-6. Do not approve or request changes unless the user explicitly asks.
+Only one agent runs per invocation. The user running two sessions (one `claude`, one `codex`) is how the two independent reads are collected — the skill does not fan out by itself.
+
+The agent does the work. This skill does not read the diff itself — that would defeat the "fresh eyes" point of separating the persona.
 
 ---
 
-## Step 5 — Strict boundaries
+## Step 6 — Report back
 
-- Do not fix code.
-- Do not commit, push, or open follow-up PRs.
-- Do not resolve comments.
-- Suggest fixes in comments only.
-- Avoid hyper-strict or nitpicky reviewing; optimize for fast, functionally correct deliverables.
-
----
-
-## Step 6 — Report back to the user
-
-Summarize:
+Surface to the user:
 - PR reviewed (number + link)
-- How many comments were added
-- Top findings by severity
+- Reviewer used (`claude` or `codex`)
+- Verdict line from the agent (CLEAN / NITS / CONCERNS / BLOCKING)
+- Count of comments posted
+- Top findings, one line each, lifted from the agent's summary
+
+Keep the report short — the GitHub PR itself is the durable artefact. This is just a pointer. If the user also ran the other reviewer in a parallel session, that review shows up in the PR thread tagged distinctly — they'll see both independently.
+
+---
+
+## What this skill does not do
+
+- Does not fix code. The reviewer agent comments; the author fixes.
+- Does not approve or request changes on GitHub. The autopilot or a human makes that call.
+- Does not run smoke tests. `/smoke-test` (via `gsm-qa-tester`) is the parallel lane.
+
+## How this fits with `/autopilot`
+
+This skill works in two modes and both are fine:
+
+- **Manual / parallel sessions** — human runs `/next-issue` in session A, `/smoke-test` in session B, `/review-pr` in session C. Each session holds one persona.
+- **`/autopilot`** — one outer session dispatches `gsm-backend-developer`, then `gsm-qa-tester`, then `gsm-code-reviewer` via the Agent tool. Each agent still gets its own isolated context, so the reviewer still reads the diff with fresh eyes — the persona separation is preserved by agent dispatch, not by session boundary.
+
+The invariant that matters is **persona isolation, not session isolation**. Never have the developer agent run `/review-pr` on its own diff (inline or as itself), because that collapses the two personas and the review loses its point.
