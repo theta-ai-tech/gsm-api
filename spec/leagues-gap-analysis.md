@@ -126,7 +126,7 @@ The PRD filters by `status=open` but the existing enum has `active`, `completed`
 
 - **Option A**: Add a new `OPEN` status to `LeagueStatusEnum`. Leagues transition: `upcoming` -> `open` (registration opens) -> `active` (play begins) -> `completed`. **Tradeoff**: adds a state transition to manage; cleaner semantic separation.
 - **Option B**: Treat `upcoming` as equivalent to "open for registration." Filter by `status=upcoming` on the API. **Tradeoff**: simpler, no enum change; but conflates "announced but not yet open" with "accepting registrations."
-- **Recommendation**: Option A for clarity. The founding league playbook (`spec/padel-launch-playbook-v1.md`) distinguishes between "announced" and "registration open" phases, which maps to `upcoming` vs `open`.
+- **Recommendation**: Option A for clarity. The founding league playbook (`docs/strategy/padel-launch-playbook-v1.md`) distinguishes between "announced" and "registration open" phases, which maps to `upcoming` vs `open`.
 
 ### PD-2: Region source for leagues
 
@@ -142,7 +142,7 @@ The PRD defines browse and join but not creation. Who creates leagues?
 
 - **Option A**: Admin-only (via Firebase console or seed scripts). Leagues are created operationally for the founding league and future seasons. **Tradeoff**: no `POST /leagues` endpoint needed for MVP; limits self-serve.
 - **Option B**: Self-serve `POST /leagues` endpoint where any user can create a league. **Tradeoff**: significant additional scope (validation, moderation, capacity management).
-- **Recommendation**: Option A for MVP. The founding league (`spec/padel-launch-playbook-v1.md` section 3) is operationally managed. Defer self-serve creation to follow-up.
+- **Recommendation**: Option A for MVP. The founding league (`docs/strategy/padel-launch-playbook-v1.md` section 3) is operationally managed. Defer self-serve creation to follow-up.
 
 ### PD-4: Capacity tracking — denormalized or computed?
 
@@ -279,7 +279,7 @@ Tracked for follow-up:
 | Item | Reason | Tracked In |
 |------|--------|------------|
 | `POST /leagues` (self-serve creation) | Founding league is operationally managed (PD-3) | Follow-up |
-| League win events in feed (F2) | Depends on league completion flow being stable | `spec/tab4-followup-features.md` F2 |
+| League win events in feed (F2) | Depends on league completion flow being stable | `docs/product/tab4-clubhouse-followup.md` F2 |
 | Knockout/tournament bracket mode | PRD v2 scope is round-robin only | Follow-up |
 | League entry fees / payments | Monetization phase (Month 4-5 per strategic review) | Follow-up |
 | Player self-leave endpoint | Admin-managed for founding league | Follow-up |

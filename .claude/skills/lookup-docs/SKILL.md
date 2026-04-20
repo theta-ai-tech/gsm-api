@@ -50,21 +50,24 @@ This skill is a fast lookup index for the GSM project's documentation. Instead o
 | Tab 1 state machine (DISCOVERY → POST_MATCH) | `arch/me_state_machine.md` |
 
 ### Product Specs — by Tab
+
+Product specs live in the top-level `docs/product/` folder, shared across all streams. Paths below are repo-root-relative.
+
 | Tab | File |
 |-----|------|
-| Tab 1 PLAY — PRD, vision, core goal | `spec/tab1-play-description.md` |
-| Tab 2 IMPROVE — journal, analytics, Skill DNA | `spec/tab2-improve-description.md` |
-| Tab 3 LAB — scouting, rankings, intelligence | `spec/tab3-lab-description.md` |
-| Tab 4 CLUBHOUSE — social, athlete card, feed | `spec/tab4-clubhouse-description.md` |
-| Tab 4 follow-up features (post-MVP) | `spec/tab4-followup-features.md` |
-| Master functional spec (all tabs, triggers, doubles) | `spec/functional-tab-spec-v1.4.md` |
+| Tab 1 PLAY — PRD, vision, core goal | `docs/product/tab1-play-description.md` |
+| Tab 2 IMPROVE — journal, analytics, Skill DNA | `docs/product/tab2-improve-description.md` |
+| Tab 3 LAB — scouting, rankings, intelligence | `docs/product/tab3-lab-description.md` |
+| Tab 4 CLUBHOUSE — social, athlete card, feed | `docs/product/tab4-clubhouse-description.md` |
+| Tab 4 follow-up features (post-MVP) | `docs/product/tab4-clubhouse-followup.md` |
+| Master functional spec (all tabs, triggers, doubles) | `docs/product/functional-tab-spec-v1.4.md` |
 
 ### Strategy & Planning
 | Topic | File |
 |-------|------|
-| Product vision, problem statement | `spec/prd-idea.md` |
-| CEO-level review, MVP scope, timeline | `spec/strategic-product-review-v1.md` |
-| Padel-first launch strategy, Athens beachhead | `spec/padel-launch-playbook-v1.md` |
+| Product vision, problem statement | `docs/strategy/prd-idea.md` |
+| CEO-level review, MVP scope, timeline | `docs/strategy/strategic-product-review-v1.md` |
+| Padel-first launch strategy, Athens beachhead | `docs/strategy/padel-launch-playbook-v1.md` |
 | Tab 1 implementation plan (Epic E) | `plans/plan-tab1.md` |
 
 ### Ops & Observability
@@ -80,9 +83,9 @@ When working on issues, use this mapping to find the relevant spec:
 
 | Prefix | Area | Start with |
 |--------|------|------------|
-| LAB-* | Tab 3 Lab | `spec/tab3-lab-description.md` → `spec/functional-tab-spec-v1.4.md` |
-| SE-* | Tab 2 Improve | `spec/tab2-improve-description.md` → `wiki/tab2-firestore-schema.md` |
-| DBL-* | Doubles support | `spec/functional-tab-spec-v1.4.md` (doubles section) |
-| Play/broadcast/offer | Tab 1 Play | `spec/tab1-play-description.md` → `arch/me_state_machine.md` |
+| LAB-* | Tab 3 Lab | `docs/product/tab3-lab-description.md` → `docs/product/functional-tab-spec-v1.4.md` |
+| SE-* | Tab 2 Improve | `docs/product/tab2-improve-description.md` → `wiki/tab2-firestore-schema.md` |
+| DBL-* | Doubles support | `docs/product/functional-tab-spec-v1.4.md` (doubles section) |
+| Play/broadcast/offer | Tab 1 Play | `docs/product/tab1-play-description.md` → `arch/me_state_machine.md` |
 | D-series triggers | Cloud Functions | `wiki/functions.md` → relevant `arch/*.md` |
 | Schema/model changes | Data model | `wiki/DATA_DICTIONARY.md` → `wiki/dbschema.md` |

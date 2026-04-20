@@ -431,8 +431,8 @@ See `wiki/functions.md` for:
 
 ### D. Related Documentation
 
-- **Product Vision**: `spec/prd-idea.md` (original product concept)
-- **Tab 1 PRD**: `spec/tab1-play-description.md` (strategic product requirements)
+- **Product Vision**: `docs/strategy/prd-idea.md` (original product concept — repo-root path)
+- **Tab 1 PRD**: `docs/product/tab1-play-description.md` (strategic product requirements — repo-root path)
 - **Firestore Schema**: `wiki/DATA_DICTIONARY.md` (complete field definitions)
 - **Database Sketch**: `wiki/dbschema.md` (collection overview)
 - **State Machine**: `arch/me_state_machine.md` (mermaid diagram + transition rules)
