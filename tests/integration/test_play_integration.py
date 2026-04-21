@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import (
     AvailabilityEnum,
     CourtStatusEnum,
@@ -77,13 +78,16 @@ def make_broadcast_request(hours_from_now: float = 2.0) -> CreateBroadcastReques
     )
 
 
-def make_offer_request(to_uid: str) -> SendOfferRequest:
+def make_offer_request(
+    to_uid: str, venue_ref: VenueRef | None = None
+) -> SendOfferRequest:
     """Return a standard SendOfferRequest."""
     return SendOfferRequest(
         to_uid=to_uid,
         sport=SportEnum.TENNIS,
         proposed_time=datetime.now(timezone.utc) + timedelta(hours=2),
         court_location="Central Park",
+        venue_ref=venue_ref,
         message="Let's play!",
     )
 
@@ -241,18 +245,18 @@ class TestDirectChallengeFlow:
         assert match_data["participantUids"] == [alice_uid, bob_uid]
         assert match_data["venueRef"] is None
 
-    def test_accept_offer_propagates_broadcast_venue_ref_to_match(self, db):
+    def test_accept_offer_propagates_offer_venue_ref_to_match(self, db):
         alice_uid = "alice_broadcast_venue"
         bob_uid = "bob_broadcast_venue"
         seed_discovery_user(db, alice_uid, "Alice")
         seed_discovery_user(db, bob_uid, "Bob")
 
-        venue_ref = {
-            "venueId": "ten_twenty_club",
-            "placeId": None,
-            "name": "Ten Twenty Club",
-            "coordinates": {"lat": 37.8362, "lng": 23.7627},
-        }
+        venue_ref = VenueRef(
+            venue_id="ten_twenty_club",
+            place_id=None,
+            name="Ten Twenty Club",
+            coordinates=GeoCoordinates(lat=37.8362, lng=23.7627),
+        )
         broadcast_id = "broadcast_alice_venue"
         now = datetime.now(timezone.utc)
         db.collection("broadcasts").document(broadcast_id).set(
@@ -263,7 +267,7 @@ class TestDirectChallengeFlow:
                 "availability": "today",
                 "courtStatus": "have_court",
                 "courtLocation": "Ten Twenty Club",
-                "venueRef": venue_ref,
+                "venueRef": venue_ref.model_dump(by_alias=True),
                 "status": "active",
                 "expiresAt": now + timedelta(hours=2),
                 "createdAt": now,
@@ -279,7 +283,10 @@ class TestDirectChallengeFlow:
         )
 
         service = make_play_service(db)
-        offer_resp = service.send_offer(bob_uid, make_offer_request(alice_uid))
+        offer_resp = service.send_offer(
+            bob_uid,
+            make_offer_request(alice_uid, venue_ref=venue_ref),
+        )
         accept_resp = service.accept_offer(alice_uid, offer_resp.offer_id)
 
         match_doc = db.collection("matches").document(accept_resp.match_id).get()
@@ -290,6 +297,62 @@ class TestDirectChallengeFlow:
         alice_state = service.get_me_state(alice_uid)
         assert alice_state.mode == PlayTabStateEnum.MATCH_SCHEDULED
         assert alice_state.payload["venue_ref"]["venueId"] == "ten_twenty_club"
+
+    def test_accept_offer_uses_offer_venue_ref_not_unrelated_broadcast(self, db):
+        alice_uid = "alice_direct_offer_venue"
+        bob_uid = "bob_direct_offer_venue"
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, bob_uid, "Bob")
+
+        broadcast_venue = {
+            "venueId": "ten_twenty_club",
+            "placeId": None,
+            "name": "Ten Twenty Club",
+            "coordinates": {"lat": 37.8362, "lng": 23.7627},
+        }
+        direct_offer_venue = VenueRef(
+            venue_id="byron_clay",
+            place_id=None,
+            name="Byron Clay Courts",
+            coordinates=GeoCoordinates(lat=37.9838, lng=23.7275),
+        )
+
+        broadcast_id = "broadcast_alice_direct_offer"
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document(broadcast_id).set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "tennis",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "courtLocation": "Ten Twenty Club",
+                "venueRef": broadcast_venue,
+                "status": "active",
+                "expiresAt": now + timedelta(hours=2),
+                "createdAt": now,
+                "location": {"area": 10001, "geo": None, "radiusKm": None},
+            }
+        )
+        db.collection("users").document(alice_uid).update(
+            {
+                "playTab.state": "BROADCAST_ACTIVE",
+                "playTab.activeBroadcastId": broadcast_id,
+                "playTab.pendingIncomingOfferIds": [],
+            }
+        )
+
+        service = make_play_service(db)
+        offer_resp = service.send_offer(
+            bob_uid,
+            make_offer_request(alice_uid, venue_ref=direct_offer_venue),
+        )
+        accept_resp = service.accept_offer(alice_uid, offer_resp.offer_id)
+
+        match_doc = db.collection("matches").document(accept_resp.match_id).get()
+        match_data = match_doc.to_dict() or {}
+        assert match_data["venueRef"]["venueId"] == "byron_clay"
+        assert match_data["venueRef"]["name"] == "Byron Clay Courts"
 
     def test_direct_challenge_decline_flow(self, db):
         """Alice sends offer → Bob declines → Alice back to DISCOVERY."""

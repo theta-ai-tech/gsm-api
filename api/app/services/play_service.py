@@ -472,6 +472,7 @@ class PlayService:
             "sport": request.sport.value,
             "proposedTime": request.proposed_time,
             "courtLocation": request.court_location,
+            "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
             "message": request.message,
             "status": "pending",
             "expiresAt": expires_at,
@@ -564,12 +565,7 @@ class PlayService:
 
         recipient_broadcast_id = recipient_play_tab.get("activeBroadcastId")
         all_pending_offers = recipient_play_tab.get("pendingIncomingOfferIds", [])
-        broadcast = (
-            self.broadcasts_repo.get_by_id(recipient_broadcast_id)
-            if recipient_broadcast_id
-            else None
-        )
-        venue_ref = broadcast.venue_ref if broadcast and broadcast.venue_ref else offer.venue_ref
+        venue_ref = offer.venue_ref
 
         match_id = f"match_{offer_id}"  # Placeholder
         match_data = {

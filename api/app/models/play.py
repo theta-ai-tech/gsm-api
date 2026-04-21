@@ -85,6 +85,7 @@ class SendOfferRequest(GsmBaseModel):
     sport: SportEnum
     proposed_time: datetime
     court_location: str | None = None
+    venue_ref: VenueRef | None = None
     message: str | None = None
 
 
