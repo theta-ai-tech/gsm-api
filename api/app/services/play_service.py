@@ -15,16 +15,21 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.models.enums import (
     BroadcastStatusEnum,
+    MatchStatusEnum,
     OfferStatusEnum,
+    ParticipantRoleEnum,
     PlayTabStateEnum,
 )
+from app.models import compute_participant_pair
 from app.models.play import (
     BroadcastActivePayload,
     CreateBroadcastRequest,
     CreateBroadcastResponse,
     IncomingOfferPayload,
+    MatchScheduledPayload,
     MeStatePrimary,
     MeStateResponse,
+    OpponentSummary,
     OfferActionResponse,
     OutgoingOfferPayload,
     PendingOfferSummary,
@@ -32,6 +37,7 @@ from app.models.play import (
     SendOfferResponse,
 )
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
 
@@ -43,11 +49,13 @@ class PlayService:
         self,
         users_repo: UsersRepo,
         broadcasts_repo: BroadcastsRepo,
+        matches_repo: MatchesRepo,
         offers_repo: OffersRepo,
         firestore_client: firestore.Client,
     ):
         self.users_repo = users_repo
         self.broadcasts_repo = broadcasts_repo
+        self.matches_repo = matches_repo
         self.offers_repo = offers_repo
         self.client = firestore_client
 
@@ -229,7 +237,36 @@ class PlayService:
                         created_at=offer.created_at,
                     ).model_dump(by_alias=True)
 
-        # TODO: Handle MATCH_SCHEDULED and post-match states (future epic)
+        elif mode == PlayTabStateEnum.MATCH_SCHEDULED:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.scheduled_at:
+                    opponent = next(
+                        (
+                            participant
+                            for participant in match.participants
+                            if participant.uid != uid
+                        ),
+                        None,
+                    )
+                    opponent_doc = (
+                        self.users_repo.get_user_doc(opponent.uid) if opponent else None
+                    ) or {}
+                    opponent_rankings = opponent_doc.get("rankings", {}) or {}
+                    payload = MatchScheduledPayload(
+                        match_id=match.match_id,
+                        sport=match.sport,
+                        scheduled_at=match.scheduled_at,
+                        court_id=match.court_id,
+                        venue_ref=match.venue_ref,
+                        opponent=OpponentSummary(
+                            uid=opponent.uid if opponent else "",
+                            name=opponent_doc.get("name", ""),
+                            profile_url=opponent_doc.get("profileUrl"),
+                            ranking=opponent_rankings.get(match.sport.value),
+                        ),
+                    ).model_dump(by_alias=True)
 
         return MeStateResponse(
             mode=mode,
@@ -527,9 +564,28 @@ class PlayService:
 
         recipient_broadcast_id = recipient_play_tab.get("activeBroadcastId")
         all_pending_offers = recipient_play_tab.get("pendingIncomingOfferIds", [])
+        broadcast = (
+            self.broadcasts_repo.get_by_id(recipient_broadcast_id)
+            if recipient_broadcast_id
+            else None
+        )
+        venue_ref = broadcast.venue_ref if broadcast and broadcast.venue_ref else offer.venue_ref
 
-        # TODO: Create match doc (future epic - for now just update offer + users)
         match_id = f"match_{offer_id}"  # Placeholder
+        match_data = {
+            "sport": offer.sport.value,
+            "status": MatchStatusEnum.SCHEDULED.value,
+            "scheduledAt": offer.proposed_time,
+            "participants": [
+                {"uid": offer.from_uid, "team": None, "role": ParticipantRoleEnum.PLAYER.value},
+                {"uid": offer.to_uid, "team": None, "role": ParticipantRoleEnum.PLAYER.value},
+            ],
+            "participantUids": [offer.from_uid, offer.to_uid],
+            "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
+            "leagueId": None,
+            "courtId": None,
+            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+        }
 
         # Transactional write
         transaction = self.client.transaction()
@@ -540,9 +596,8 @@ class PlayService:
             offer_ref = self.client.collection("offers").document(offer_id)
             txn.update(offer_ref, {"status": "accepted", "matchId": match_id})
 
-            # TODO: Create match doc
-            # match_ref = self.client.collection("matches").document()
-            # txn.set(match_ref, {...})
+            match_ref = self.client.collection("matches").document(match_id)
+            txn.set(match_ref, match_data)
 
             # Cancel recipient's broadcast if active
             if recipient_broadcast_id:

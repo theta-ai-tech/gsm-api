@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from app.models.base import GsmBaseModel
-from app.models.common import MatchScore
+from app.models.common import MatchScore, VenueRef
 from app.models.enums import (
     MatchResultEnum,
     MatchStatusEnum,
@@ -75,6 +75,7 @@ class Match(GsmBaseModel):
     finished_at: datetime | None = None
     league_id: str | None = None
     court_id: str | None = None
+    venue_ref: VenueRef | None = None
     score: MatchScore | None = None
     result_by_user: dict[str, MatchResultEnum] | None = None
     participants: list[MatchParticipant] = []

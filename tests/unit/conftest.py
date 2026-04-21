@@ -1,7 +1,17 @@
+# ruff: noqa: E402
+
 import os
+import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+ROOT = Path(__file__).resolve().parents[2]
+for path in (ROOT / "api", ROOT):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
 
 # Ensure required env is present before app import (app.main calls get_settings at import time)
 os.environ.setdefault("FIREBASE_PROJECT_ID", "gsm-dev-f70d0")

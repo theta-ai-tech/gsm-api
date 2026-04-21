@@ -8,6 +8,7 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from app.dependencies.repos import (
     get_broadcasts_repo,
     get_firestore_client,
+    get_matches_repo,
     get_offers_repo,
     get_users_repo,
 )
@@ -21,6 +22,7 @@ from app.models.play import (
 )
 from app.deps import get_current_user
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
@@ -32,11 +34,12 @@ router = APIRouter(prefix="/me", tags=["play"])
 def get_play_service(
     users_repo: UsersRepo = Depends(get_users_repo),
     broadcasts_repo: BroadcastsRepo = Depends(get_broadcasts_repo),
+    matches_repo: MatchesRepo = Depends(get_matches_repo),
     offers_repo: OffersRepo = Depends(get_offers_repo),
     firestore_client: firestore.Client = Depends(get_firestore_client),
 ) -> PlayService:
     """Dependency to get PlayService instance."""
-    return PlayService(users_repo, broadcasts_repo, offers_repo, firestore_client)
+    return PlayService(users_repo, broadcasts_repo, matches_repo, offers_repo, firestore_client)
 
 
 # ===== GET /me/state =====

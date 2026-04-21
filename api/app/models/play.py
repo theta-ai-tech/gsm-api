@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import HttpUrl
 
 from app.models.base import GsmBaseModel
-from app.models.common import MatchScore, SportRanking
+from app.models.common import MatchScore, SportRanking, VenueRef
 from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
@@ -34,6 +34,7 @@ class Broadcast(GsmBaseModel):
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
+    venue_ref: VenueRef | None = None
     status: BroadcastStatusEnum
     expires_at: datetime
     created_at: datetime
@@ -51,6 +52,7 @@ class Offer(GsmBaseModel):
     sport: SportEnum
     proposed_time: datetime
     court_location: str | None = None
+    venue_ref: VenueRef | None = None
     message: str | None = None
     status: OfferStatusEnum
     expires_at: datetime
@@ -172,6 +174,7 @@ class MatchScheduledPayload(GsmBaseModel):
     court_id: str | None = None
     court_name: str | None = None
     court_geo: GeoLocation | None = None
+    venue_ref: VenueRef | None = None
     opponent: OpponentSummary
 
 
