@@ -66,20 +66,26 @@ def seed_discovery_user(db, uid: str, name: str = "Test User") -> None:
     )
 
 
-def make_broadcast_request(hours_from_now: float = 2.0) -> CreateBroadcastRequest:
+def make_broadcast_request(
+    hours_from_now: float = 2.0,
+    venue_ref: VenueRef | None = None,
+) -> CreateBroadcastRequest:
     """Return a standard CreateBroadcastRequest with future expiresAt."""
     return CreateBroadcastRequest(
         sport=SportEnum.TENNIS,
         availability=AvailabilityEnum.TODAY,
         court_status=CourtStatusEnum.HAVE_COURT,
         court_location="Central Park",
+        venue_ref=venue_ref,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=hours_from_now),
         location=BroadcastLocation(area=10001),
     )
 
 
 def make_offer_request(
-    to_uid: str, venue_ref: VenueRef | None = None
+    to_uid: str,
+    venue_ref: VenueRef | None = None,
+    source_broadcast_id: str | None = None,
 ) -> SendOfferRequest:
     """Return a standard SendOfferRequest."""
     return SendOfferRequest(
@@ -88,6 +94,7 @@ def make_offer_request(
         proposed_time=datetime.now(timezone.utc) + timedelta(hours=2),
         court_location="Central Park",
         venue_ref=venue_ref,
+        source_broadcast_id=source_broadcast_id,
         message="Let's play!",
     )
 
@@ -245,7 +252,7 @@ class TestDirectChallengeFlow:
         assert match_data["participantUids"] == [alice_uid, bob_uid]
         assert match_data["venueRef"] is None
 
-    def test_accept_offer_propagates_offer_venue_ref_to_match(self, db):
+    def test_accept_offer_propagates_source_broadcast_venue_ref_to_match(self, db):
         alice_uid = "alice_broadcast_venue"
         bob_uid = "bob_broadcast_venue"
         seed_discovery_user(db, alice_uid, "Alice")
@@ -257,35 +264,17 @@ class TestDirectChallengeFlow:
             name="Ten Twenty Club",
             coordinates=GeoCoordinates(lat=37.8362, lng=23.7627),
         )
-        broadcast_id = "broadcast_alice_venue"
-        now = datetime.now(timezone.utc)
-        db.collection("broadcasts").document(broadcast_id).set(
-            {
-                "ownerUid": alice_uid,
-                "ownerName": "Alice",
-                "sport": "tennis",
-                "availability": "today",
-                "courtStatus": "have_court",
-                "courtLocation": "Ten Twenty Club",
-                "venueRef": venue_ref.model_dump(by_alias=True),
-                "status": "active",
-                "expiresAt": now + timedelta(hours=2),
-                "createdAt": now,
-                "location": {"area": 10001, "geo": None, "radiusKm": None},
-            }
-        )
-        db.collection("users").document(alice_uid).update(
-            {
-                "playTab.state": "BROADCAST_ACTIVE",
-                "playTab.activeBroadcastId": broadcast_id,
-                "playTab.pendingIncomingOfferIds": [],
-            }
-        )
-
         service = make_play_service(db)
+        broadcast_resp = service.create_broadcast(
+            alice_uid,
+            make_broadcast_request(venue_ref=venue_ref),
+        )
         offer_resp = service.send_offer(
             bob_uid,
-            make_offer_request(alice_uid, venue_ref=venue_ref),
+            make_offer_request(
+                alice_uid,
+                source_broadcast_id=broadcast_resp.broadcast_id,
+            ),
         )
         accept_resp = service.accept_offer(alice_uid, offer_resp.offer_id)
 

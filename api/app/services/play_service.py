@@ -37,6 +37,7 @@ from app.models.play import (
     SendOfferResponse,
 )
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.mappers import _parse_sport_ranking
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
@@ -254,6 +255,9 @@ class PlayService:
                         self.users_repo.get_user_doc(opponent.uid) if opponent else None
                     ) or {}
                     opponent_rankings = opponent_doc.get("rankings", {}) or {}
+                    opponent_ranking = _parse_sport_ranking(
+                        opponent_rankings.get(match.sport.value)
+                    )
                     payload = MatchScheduledPayload(
                         match_id=match.match_id,
                         sport=match.sport,
@@ -264,7 +268,7 @@ class PlayService:
                             uid=opponent.uid if opponent else "",
                             name=opponent_doc.get("name", ""),
                             profile_url=opponent_doc.get("profileUrl"),
-                            ranking=opponent_rankings.get(match.sport.value),
+                            ranking=opponent_ranking,
                         ),
                     ).model_dump(by_alias=True)
 
@@ -317,6 +321,7 @@ class PlayService:
             "availability": request.availability.value,
             "courtStatus": request.court_status.value,
             "courtLocation": request.court_location,
+            "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
             "status": "active",
             "expiresAt": request.expires_at,
             "createdAt": now,
@@ -449,6 +454,10 @@ class PlayService:
 
         recipient_play_tab = recipient_doc.get("playTab", {}) or {}
         recipient_state = recipient_play_tab.get("state", "DISCOVERY")
+        recipient_broadcast_id = recipient_play_tab.get("activeBroadcastId")
+
+        if request.source_broadcast_id and request.source_broadcast_id != recipient_broadcast_id:
+            raise ValueError("sourceBroadcastId is not the recipient's active broadcast")
 
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=5)  # 5 minute TTL
@@ -473,6 +482,7 @@ class PlayService:
             "proposedTime": request.proposed_time,
             "courtLocation": request.court_location,
             "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
+            "sourceBroadcastId": request.source_broadcast_id,
             "message": request.message,
             "status": "pending",
             "expiresAt": expires_at,
@@ -565,7 +575,16 @@ class PlayService:
 
         recipient_broadcast_id = recipient_play_tab.get("activeBroadcastId")
         all_pending_offers = recipient_play_tab.get("pendingIncomingOfferIds", [])
-        venue_ref = offer.venue_ref
+        source_broadcast = (
+            self.broadcasts_repo.get_by_id(offer.source_broadcast_id)
+            if offer.source_broadcast_id
+            else None
+        )
+        venue_ref = (
+            source_broadcast.venue_ref
+            if source_broadcast and source_broadcast.venue_ref
+            else offer.venue_ref
+        )
 
         match_id = f"match_{offer_id}"  # Placeholder
         match_data = {

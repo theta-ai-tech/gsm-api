@@ -53,6 +53,7 @@ class Offer(GsmBaseModel):
     proposed_time: datetime
     court_location: str | None = None
     venue_ref: VenueRef | None = None
+    source_broadcast_id: str | None = None
     message: str | None = None
     status: OfferStatusEnum
     expires_at: datetime
@@ -65,6 +66,7 @@ class CreateBroadcastRequest(GsmBaseModel):
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
+    venue_ref: VenueRef | None = None
     expires_at: datetime
     location: BroadcastLocation
 
@@ -86,6 +88,7 @@ class SendOfferRequest(GsmBaseModel):
     proposed_time: datetime
     court_location: str | None = None
     venue_ref: VenueRef | None = None
+    source_broadcast_id: str | None = None
     message: str | None = None
 
 
