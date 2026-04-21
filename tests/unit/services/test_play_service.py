@@ -3,22 +3,25 @@ from unittest.mock import Mock
 
 import pytest
 
+from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import (
+    AvailabilityEnum,
     BroadcastStatusEnum,
+    CourtStatusEnum,
     OfferStatusEnum,
     PlayTabStateEnum,
     SportEnum,
-    AvailabilityEnum,
-    CourtStatusEnum,
 )
+from app.models.match import Match, MatchParticipant
 from app.models.play import (
     Broadcast,
-    CreateBroadcastRequest,
     BroadcastLocation,
+    CreateBroadcastRequest,
     Offer,
     SendOfferRequest,
 )
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
 from app.services.play_service import PlayService
@@ -40,16 +43,38 @@ def mock_offers_repo():
 
 
 @pytest.fixture
+def mock_matches_repo():
+    return Mock(spec=MatchesRepo)
+
+
+@pytest.fixture
 def mock_firestore_client():
     return Mock()
 
 
 @pytest.fixture
 def play_service(
-    mock_users_repo, mock_broadcasts_repo, mock_offers_repo, mock_firestore_client
+    mock_users_repo,
+    mock_broadcasts_repo,
+    mock_matches_repo,
+    mock_offers_repo,
+    mock_firestore_client,
 ):
     return PlayService(
-        mock_users_repo, mock_broadcasts_repo, mock_offers_repo, mock_firestore_client
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_matches_repo,
+        mock_offers_repo,
+        mock_firestore_client,
+    )
+
+
+def _curated_venue_ref() -> VenueRef:
+    return VenueRef(
+        venue_id="ten_twenty_club",
+        place_id=None,
+        name="Ten Twenty Club",
+        coordinates=GeoCoordinates(lat=37.8362, lng=23.7627),
     )
 
 
@@ -259,6 +284,48 @@ class TestGetMeState:
         assert response.mode == PlayTabStateEnum.INCOMING_OFFER_PENDING
         assert "offer_id" in response.payload
         assert response.payload["from_uid"] == "alice"
+
+    def test_get_me_state_match_scheduled(
+        self, play_service, mock_users_repo, mock_matches_repo
+    ):
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "MATCH_SCHEDULED",
+                    "activeMatchId": "match_offer123",
+                },
+            },
+            {
+                "name": "Bob",
+                "profileUrl": "https://example.com/bob.png",
+                "rankings": {
+                    "tennis": {"sport": "tennis", "pts": 1200, "globalRanking": 42}
+                },
+            },
+        ]
+        mock_matches_repo.get_by_id.return_value = Match(
+            match_id="match_offer123",
+            sport=SportEnum.TENNIS,
+            status="scheduled",
+            scheduled_at=now + timedelta(hours=2),
+            venue_ref=_curated_venue_ref(),
+            participants=[
+                MatchParticipant(uid="alice", role="player"),
+                MatchParticipant(uid="bob", role="player"),
+            ],
+            participant_uids=["alice", "bob"],
+            participant_pair="alice_bob",
+        )
+
+        response = play_service.get_me_state("alice")
+
+        assert response.mode == PlayTabStateEnum.MATCH_SCHEDULED
+        assert response.payload["match_id"] == "match_offer123"
+        assert response.payload["venue_ref"]["venueId"] == "ten_twenty_club"
+        assert response.payload["opponent"]["uid"] == "bob"
+        assert response.payload["opponent"]["ranking"]["global_ranking"] == 42
 
 
 class TestFreshnessReconciliation:
@@ -639,6 +706,7 @@ class TestCreateBroadcast:
                 availability=AvailabilityEnum.TODAY,
                 court_status=CourtStatusEnum.NEED_COURT,
                 court_location=None,
+                venue_ref=_curated_venue_ref(),
                 expires_at=now + timedelta(hours=2),
                 location=BroadcastLocation(area=10001),
             )
@@ -646,8 +714,11 @@ class TestCreateBroadcast:
             response = play_service.create_broadcast("alice", request)
 
             assert response.broadcast_id == "broadcast123"
-            # Verify that transaction was called with user's denormalized data
-            assert mock_doc_ref.set.called or mock_firestore_client.collection.called
+            mock_transaction = mock_firestore_client.transaction.return_value
+            broadcast_data = mock_transaction.set.call_args.args[1]
+            assert broadcast_data["ownerName"] == "Alice"
+            assert broadcast_data["ownerRanking"]["pts"] == 1200
+            assert broadcast_data["venueRef"]["venueId"] == "ten_twenty_club"
         finally:
             play_service_module.firestore.transactional = original_transactional
 
@@ -692,6 +763,96 @@ class TestSendOffer:
             assert response.offer_id == "offer123"
             assert response.to_uid == "bob"
             assert response.status == OfferStatusEnum.PENDING
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_send_offer_persists_venue_ref(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """Offer docs persist the requested venueRef for deterministic acceptance."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {"name": "Bob", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+        ]
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "offer123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.TENNIS,
+                proposed_time=now + timedelta(hours=2),
+                venue_ref=_curated_venue_ref(),
+            )
+
+            play_service.send_offer("alice", request)
+
+            mock_transaction = mock_firestore_client.transaction.return_value
+            offer_data = mock_transaction.set.call_args.args[1]
+            assert offer_data["venueRef"]["venueId"] == "ten_twenty_club"
+            assert offer_data["venueRef"]["name"] == "Ten Twenty Club"
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_send_offer_persists_source_broadcast_id(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast123",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+        ]
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "offer123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.TENNIS,
+                proposed_time=now + timedelta(hours=2),
+                source_broadcast_id="broadcast123",
+            )
+
+            play_service.send_offer("alice", request)
+
+            mock_transaction = mock_firestore_client.transaction.return_value
+            offer_data = mock_transaction.set.call_args.args[1]
+            assert offer_data["sourceBroadcastId"] == "broadcast123"
         finally:
             play_service_module.firestore.transactional = original_transactional
 
@@ -757,7 +918,12 @@ class TestSendOffer:
 
 class TestAcceptOffer:
     def test_accept_offer_success(
-        self, play_service, mock_offers_repo, mock_users_repo, mock_firestore_client
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
     ):
         """Accept pending offer - creates match"""
         now = datetime.now(timezone.utc)
@@ -773,6 +939,8 @@ class TestAcceptOffer:
             sport=SportEnum.TENNIS,
             proposed_time=now + timedelta(hours=1),
             court_location=None,
+            venue_ref=_curated_venue_ref(),
+            source_broadcast_id=None,
             message=None,
             status=OfferStatusEnum.PENDING,
             expires_at=now + timedelta(minutes=5),
@@ -786,6 +954,7 @@ class TestAcceptOffer:
                 "name": "Bob",
                 "playTab": {
                     "state": "INCOMING_OFFER_PENDING",
+                    "activeBroadcastId": "broadcast123",
                     "pendingIncomingOfferIds": ["offer123"],
                 },
             },
@@ -808,11 +977,175 @@ class TestAcceptOffer:
         play_service_module.firestore.transactional = mock_transactional
 
         try:
+            mock_transaction = mock_firestore_client.transaction.return_value
             response = play_service.accept_offer("bob", "offer123")
 
             assert response.offer_id == "offer123"
             assert response.status == OfferStatusEnum.ACCEPTED
             assert response.match_id is not None
+            assert mock_transaction.set.call_count == 1
+            match_data = mock_transaction.set.call_args.args[1]
+            assert match_data["venueRef"]["venueId"] == "ten_twenty_club"
+            mock_broadcasts_repo.get_by_id.assert_not_called()
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_accept_offer_uses_source_broadcast_venue(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer123",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=None,
+            source_broadcast_id="broadcast123",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_broadcasts_repo.get_by_id.return_value = Broadcast(
+            broadcast_id="broadcast123",
+            owner_uid="bob",
+            owner_name="Bob",
+            owner_ranking=None,
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            court_location="Ten Twenty Club",
+            venue_ref=_curated_venue_ref(),
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=now + timedelta(hours=2),
+            created_at=now - timedelta(minutes=5),
+            location=BroadcastLocation(area=10001),
+        )
+
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "activeBroadcastId": "broadcast123",
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            mock_transaction = mock_firestore_client.transaction.return_value
+            play_service.accept_offer("bob", "offer123")
+
+            match_data = mock_transaction.set.call_args.args[1]
+            assert match_data["venueRef"]["venueId"] == "ten_twenty_club"
+            mock_broadcasts_repo.get_by_id.assert_called_once_with("broadcast123")
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_accept_offer_ignores_unrelated_active_broadcast_venue(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """Accepting a direct offer must use the offer venue, not any ambient broadcast."""
+        now = datetime.now(timezone.utc)
+
+        direct_offer_venue = VenueRef(
+            venue_id="byron_clay",
+            place_id=None,
+            name="Byron Clay Courts",
+            coordinates=GeoCoordinates(lat=37.9838, lng=23.7275),
+        )
+        mock_offer = Offer(
+            offer_id="offer123",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=direct_offer_venue,
+            source_broadcast_id=None,
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "activeBroadcastId": "broadcast123",
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            mock_transaction = mock_firestore_client.transaction.return_value
+            play_service.accept_offer("bob", "offer123")
+
+            match_data = mock_transaction.set.call_args.args[1]
+            assert match_data["venueRef"]["venueId"] == "byron_clay"
+            assert match_data["venueRef"]["name"] == "Byron Clay Courts"
+            mock_broadcasts_repo.get_by_id.assert_not_called()
         finally:
             play_service_module.firestore.transactional = original_transactional
 

@@ -55,6 +55,7 @@ from app.models import (
     UserCompletedMatchSummary,
     UserMatchSummary,
     UserPreferences,
+    VenueRef,
     VenueSummary,
 )
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
@@ -322,6 +323,7 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         finished_at=doc.get("finishedAt"),
         league_id=doc.get("leagueId"),
         court_id=doc.get("courtId"),
+        venue_ref=_parse_venue_ref(doc.get("venueRef")),
         score=_parse_score(doc.get("score", {})),
         result_by_user=result_by_user,
         participants=participants,
@@ -399,6 +401,15 @@ def _parse_broadcast_location(data: dict[str, Any]) -> BroadcastLocation:
     )
 
 
+def _parse_venue_ref(data: dict[str, Any] | None) -> VenueRef | None:
+    if not data:
+        return None
+    try:
+        return VenueRef.model_validate(data)
+    except ValidationError:
+        return None
+
+
 def to_broadcast(doc: dict[str, Any], broadcast_id: str | None = None) -> Broadcast:
     sport_val = _require(doc, "sport")
     availability_val = _require(doc, "availability")
@@ -415,6 +426,7 @@ def to_broadcast(doc: dict[str, Any], broadcast_id: str | None = None) -> Broadc
         availability=AvailabilityEnum(availability_val),
         court_status=CourtStatusEnum(court_status_val),
         court_location=doc.get("courtLocation"),
+        venue_ref=_parse_venue_ref(doc.get("venueRef")),
         status=BroadcastStatusEnum(status_val),
         expires_at=_require(doc, "expiresAt"),
         created_at=_require(doc, "createdAt"),
@@ -458,6 +470,8 @@ def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
         sport=SportEnum(sport_val),
         proposed_time=_require(doc, "proposedTime"),
         court_location=doc.get("courtLocation"),
+        venue_ref=_parse_venue_ref(doc.get("venueRef")),
+        source_broadcast_id=doc.get("sourceBroadcastId"),
         message=doc.get("message"),
         status=OfferStatusEnum(status_val),
         expires_at=_require(doc, "expiresAt"),

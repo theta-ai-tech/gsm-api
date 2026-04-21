@@ -106,6 +106,13 @@ class TestToOffer:
             "sport": "tennis",
             "proposedTime": now + timedelta(hours=2),
             "courtLocation": "Central Park",
+            "venueRef": {
+                "venueId": "ten_twenty_club",
+                "placeId": None,
+                "name": "Ten Twenty Club",
+                "coordinates": {"lat": 37.8362, "lng": 23.7627},
+            },
+            "sourceBroadcastId": "broadcast123",
             "message": "Let's play!",
             "status": "pending",
             "expiresAt": now + timedelta(minutes=5),
@@ -126,6 +133,8 @@ class TestToOffer:
         assert offer.to_ranking.pts == 1100
         assert offer.sport == SportEnum.TENNIS
         assert offer.court_location == "Central Park"
+        assert offer.venue_ref.venue_id == "ten_twenty_club"
+        assert offer.source_broadcast_id == "broadcast123"
         assert offer.message == "Let's play!"
         assert offer.status == OfferStatusEnum.PENDING
         assert offer.match_id is None
