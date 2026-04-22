@@ -1091,6 +1091,56 @@ class TestOfferQueueEdgeCases:
 
 
 class TestDataValidationEdgeCases:
+    def test_broadcast_active_state_includes_venue_ref(self, db):
+        alice_uid = "alice_broadcast_state_venue_ref"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+        venue_ref = VenueRef(
+            venue_id="ten_twenty_club",
+            place_id=None,
+            name="Ten Twenty Club",
+            coordinates=GeoCoordinates(lat=37.8362, lng=23.7627),
+        )
+
+        service.create_broadcast(alice_uid, make_broadcast_request(venue_ref=venue_ref))
+
+        response = service.get_me_state(alice_uid)
+
+        assert response.mode == PlayTabStateEnum.BROADCAST_ACTIVE
+        assert response.payload["venue_ref"]["venueId"] == "ten_twenty_club"
+        assert response.payload["venue_ref"]["name"] == "Ten Twenty Club"
+
+    def test_need_court_broadcast_ignores_venue_ref(self, db):
+        alice_uid = "alice_need_court_venue_ignored"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+        venue_ref = VenueRef(
+            venue_id="ten_twenty_club",
+            place_id=None,
+            name="Ten Twenty Club",
+            coordinates=GeoCoordinates(lat=37.8362, lng=23.7627),
+        )
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.TENNIS,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            court_location=None,
+            venue_ref=venue_ref,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(area=10001),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        broadcast_doc = (
+            db.collection("broadcasts").document(response.broadcast_id).get()
+        )
+
+        assert broadcast_doc.to_dict()["venueRef"] is None
+
+        state = service.get_me_state(alice_uid)
+        assert state.payload["venue_ref"] is None
+
     def test_broadcast_location_area_only(self, db):
         """Broadcast with only area set (no geo) is valid."""
         alice_uid = "alice_area_only"
