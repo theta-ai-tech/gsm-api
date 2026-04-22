@@ -9,12 +9,14 @@ Handles:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.models.enums import (
     BroadcastStatusEnum,
+    CourtStatusEnum,
     MatchStatusEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
@@ -41,6 +43,8 @@ from app.repos.mappers import _parse_sport_ranking
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
+
+logger = logging.getLogger(__name__)
 
 
 class PlayService:
@@ -185,6 +189,7 @@ class PlayService:
                         availability=broadcast.availability,
                         court_status=broadcast.court_status,
                         court_location=broadcast.court_location,
+                        venue_ref=broadcast.venue_ref,
                         expires_at=broadcast.expires_at,
                         created_at=broadcast.created_at,
                         pending_offers=[
@@ -307,6 +312,15 @@ class PlayService:
         if request.expires_at <= now:
             raise ValueError("expiresAt must be in the future")
 
+        venue_ref = request.venue_ref
+        if request.court_status == CourtStatusEnum.NEED_COURT:
+            venue_ref = None
+        elif venue_ref is None:
+            logger.warning(
+                "Broadcast created without venueRef despite court_status=have_court uid=%s",
+                uid,
+            )
+
         # Get user profile for denormalized fields
         user_name = user_doc.get("name", "")
         rankings = user_doc.get("rankings", {}) or {}
@@ -321,7 +335,7 @@ class PlayService:
             "availability": request.availability.value,
             "courtStatus": request.court_status.value,
             "courtLocation": request.court_location,
-            "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
+            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
             "status": "active",
             "expiresAt": request.expires_at,
             "createdAt": now,

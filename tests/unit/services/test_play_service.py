@@ -123,6 +123,7 @@ class TestGetMeState:
             availability=AvailabilityEnum.TODAY,
             court_status=CourtStatusEnum.HAVE_COURT,
             court_location="Central Park",
+            venue_ref=_curated_venue_ref(),
             status=BroadcastStatusEnum.ACTIVE,
             expires_at=now + timedelta(hours=2),
             created_at=now,
@@ -170,6 +171,7 @@ class TestGetMeState:
 
         assert response.mode == PlayTabStateEnum.BROADCAST_ACTIVE
         assert "broadcast_id" in response.payload
+        assert response.payload["venue_ref"]["venueId"] == "ten_twenty_club"
         assert "pending_offers" in response.payload
         assert len(response.payload["pending_offers"]) == 2
 
@@ -704,8 +706,8 @@ class TestCreateBroadcast:
             request = CreateBroadcastRequest(
                 sport=SportEnum.TENNIS,
                 availability=AvailabilityEnum.TODAY,
-                court_status=CourtStatusEnum.NEED_COURT,
-                court_location=None,
+                court_status=CourtStatusEnum.HAVE_COURT,
+                court_location="Central Park",
                 venue_ref=_curated_venue_ref(),
                 expires_at=now + timedelta(hours=2),
                 location=BroadcastLocation(area=10001),
@@ -719,6 +721,93 @@ class TestCreateBroadcast:
             assert broadcast_data["ownerName"] == "Alice"
             assert broadcast_data["ownerRanking"]["pts"] == 1200
             assert broadcast_data["venueRef"]["venueId"] == "ten_twenty_club"
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_create_broadcast_need_court_ignores_venue_ref(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                court_location=None,
+                venue_ref=_curated_venue_ref(),
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+
+            play_service.create_broadcast("alice", request)
+
+            mock_transaction = mock_firestore_client.transaction.return_value
+            broadcast_data = mock_transaction.set.call_args.args[1]
+            assert broadcast_data["venueRef"] is None
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_create_broadcast_have_court_without_venue_ref_logs_warning(
+        self, play_service, mock_users_repo, mock_firestore_client, caplog
+    ):
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.HAVE_COURT,
+                court_location="Central Park",
+                venue_ref=None,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+
+            with caplog.at_level("WARNING", logger="app.services.play_service"):
+                play_service.create_broadcast("alice", request)
+
+            assert "Broadcast created without venueRef" in caplog.text
         finally:
             play_service_module.firestore.transactional = original_transactional
 

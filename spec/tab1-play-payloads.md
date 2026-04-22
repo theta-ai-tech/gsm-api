@@ -45,6 +45,12 @@ User has an active availability broadcast. Offers queue up and are included in t
     "availability": "today",
     "courtStatus": "have_court",
     "courtLocation": "Central Court, Athens",
+    "venueRef": {
+      "venueId": "ten_twenty_club",
+      "placeId": null,
+      "name": "Ten Twenty Club",
+      "coordinates": {"lat": 37.8362, "lng": 23.7627}
+    },
     "expiresAt": "2026-02-03T16:00:00Z",
     "createdAt": "2026-02-03T08:00:00Z",
     "pendingOffers": [

@@ -259,6 +259,12 @@ Required.
   "availability": "today",
   "courtStatus": "have_court",
   "courtLocation": "Central Court, Athens",
+  "venueRef": {
+    "venueId": "ten_twenty_club",
+    "placeId": null,
+    "name": "Ten Twenty Club",
+    "coordinates": {"lat": 37.8362, "lng": 23.7627}
+  },
   "expiresAt": "2026-02-03T16:00:00Z",
   "location": {
     "area": 101,
@@ -270,6 +276,9 @@ Required.
 
 ### Behavior
 - Validates `expiresAt` is in the future.
+- Persists `venueRef` for `have_court` broadcasts when supplied.
+- Allows `have_court` broadcasts without `venueRef` for backwards compatibility.
+- Ignores `venueRef` for `need_court` broadcasts.
 - Creates `broadcasts/{id}` doc (status=active, denormalized owner fields).
 - Updates `users/{uid}.playTab`: state → `BROADCAST_ACTIVE`, activeBroadcastId → new ID.
 - Both writes in a single Firestore transaction.

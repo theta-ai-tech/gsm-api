@@ -140,6 +140,7 @@ class BroadcastActivePayload(GsmBaseModel):
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
+    venue_ref: VenueRef | None = None
     expires_at: datetime
     created_at: datetime
     pending_offers: list[PendingOfferSummary] = []
