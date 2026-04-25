@@ -307,6 +307,12 @@ class TestSuggestVenueValidation:
         resp = suggest_client.post("/venues/suggest", json=payload)
         assert resp.status_code == 422
 
+    def test_whitespace_only_name_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["name"] = "   "
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
     def test_name_too_long_returns_422(self, suggest_client: TestClient):
         payload = _valid_suggestion_payload()
         payload["name"] = "x" * 201
