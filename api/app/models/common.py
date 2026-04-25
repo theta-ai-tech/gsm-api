@@ -70,7 +70,7 @@ class ParticipantEntry(GsmBaseModel):
 
     uid: str = Field(min_length=1)
     team: str | None = Field(default=None)
-    display_name: str = Field(min_length=1)
+    display_name: str = Field(min_length=1, alias="displayName")
 
     @model_validator(mode="after")
     def _validate_team(self) -> "ParticipantEntry":

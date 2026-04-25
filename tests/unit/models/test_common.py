@@ -258,3 +258,59 @@ class TestParticipantEntry:
         assert rehydrated.uid == original.uid
         assert rehydrated.team == "A"
         assert rehydrated.display_name == original.display_name
+
+    def test_camel_case_alias_serialization_singles(self) -> None:
+        participant = ParticipantEntry(uid="user_ignatios", display_name="Ignatios C.")
+        dumped = participant.model_dump(by_alias=True)
+        assert dumped["uid"] == "user_ignatios"
+        assert dumped["team"] is None
+        assert "displayName" in dumped
+        assert dumped["displayName"] == "Ignatios C."
+        assert "display_name" not in dumped
+
+    def test_camel_case_alias_serialization_doubles(self) -> None:
+        participant = ParticipantEntry(
+            uid="user_ignatios", team="A", display_name="Ignatios C."
+        )
+        dumped = participant.model_dump(by_alias=True)
+        assert dumped["uid"] == "user_ignatios"
+        assert dumped["team"] == "A"
+        assert "displayName" in dumped
+        assert dumped["displayName"] == "Ignatios C."
+        assert "display_name" not in dumped
+
+    def test_snake_case_serialization_default(self) -> None:
+        participant = ParticipantEntry(
+            uid="user_ignatios", team="A", display_name="Ignatios C."
+        )
+        dumped = participant.model_dump()
+        assert "display_name" in dumped
+        assert dumped["display_name"] == "Ignatios C."
+        assert "displayName" not in dumped
+
+    def test_camel_case_alias_deserialization(self) -> None:
+        participant = ParticipantEntry.model_validate(
+            {"uid": "user_ignatios", "team": "A", "displayName": "Ignatios C."}
+        )
+        assert participant.uid == "user_ignatios"
+        assert participant.team == "A"
+        assert participant.display_name == "Ignatios C."
+
+    def test_snake_case_deserialization_still_works(self) -> None:
+        # populate_by_name=True means snake_case input must continue to hydrate.
+        participant = ParticipantEntry.model_validate(
+            {"uid": "user_ignatios", "team": "A", "display_name": "Ignatios C."}
+        )
+        assert participant.uid == "user_ignatios"
+        assert participant.team == "A"
+        assert participant.display_name == "Ignatios C."
+
+    def test_camel_case_round_trip(self) -> None:
+        original = ParticipantEntry(
+            uid="user_ignatios", team="B", display_name="Ignatios C."
+        )
+        dumped = original.model_dump(by_alias=True)
+        rehydrated = ParticipantEntry.model_validate(dumped)
+        assert rehydrated.uid == original.uid
+        assert rehydrated.team == original.team
+        assert rehydrated.display_name == original.display_name
