@@ -491,6 +491,53 @@ Required (must be the offer sender).
 ---
 
 
+## `POST /venues/suggest`
+
+### Purpose
+Submit a user-suggested venue to a moderation queue. Suggestions are stored
+in the `venueSuggestions/{autoId}` collection with `status="pending"` and are
+NOT promoted to the live `venues` collection until reviewed.
+
+### Auth
+Required (Firebase Bearer ID token).
+
+### Request body
+```json
+{
+  "name": "My Local Club",
+  "coordinates": {"lat": 37.95, "lng": 23.72},
+  "sport": "padel",
+  "notes": "2 outdoor courts, open until 11pm"
+}
+```
+
+Validation:
+- `name`: required, trimmed, non-blank, 1–200 chars after trimming
+- `coordinates.lat`: required, -90 to 90
+- `coordinates.lng`: required, -180 to 180
+- `sport`: required, one of `tennis | padel | pickleball`
+- `notes`: optional, max 500 chars
+
+### Example response (`201`)
+```json
+{"suggestionId": "abc123"}
+```
+
+### Behavior
+- Writes a new document to `venueSuggestions/{autoId}` with:
+  - `name`, `coordinates`, `sport`, `notes` from the request
+  - `suggestedBy` = authenticated UID
+  - `createdAt` = server-side UTC timestamp
+  - `status` = `"pending"`
+- Returns the auto-generated Firestore document ID.
+
+### Common error responses
+- `401` missing/invalid token
+- `422` validation error (missing/invalid fields)
+
+---
+
+
 ## Cross-cutting behavior
 
 ### Headers

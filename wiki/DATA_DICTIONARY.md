@@ -1026,3 +1026,37 @@ Purpose: notable events feed for a region (upsets, personal bests, win streaks, 
   "expiresAt": "2026-03-02T14:30:00Z"
 }
 ```
+
+---
+
+## Collection: venueSuggestions
+
+User-submitted venue suggestions awaiting human moderation. Documents are
+written by the `POST /venues/suggest` endpoint and are NOT promoted to the
+live `venues` collection until a moderator reviews and approves them.
+
+### Fields: venueSuggestions/{autoId}
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `name` | string | Trimmed venue name as entered by the user (non-blank, 1–200 chars) |
+| `coordinates` | map `{lat, lng}` | Lat/lng pair (lat: -90..90, lng: -180..180) |
+| `sport` | string (enum) | One of `tennis`, `padel`, `pickleball` |
+| `notes` | string \| null | Optional free-text notes (max 500 chars) |
+| `suggestedBy` | string | UID of the user who submitted the suggestion |
+| `createdAt` | timestamp | UTC submission time |
+| `status` | string | Moderation state. Always `"pending"` on creation |
+
+### Example
+
+```json
+{
+  "name": "My Local Club",
+  "coordinates": {"lat": 37.95, "lng": 23.72},
+  "sport": "padel",
+  "notes": "2 outdoor courts, open until 11pm",
+  "suggestedBy": "user_ignatios",
+  "createdAt": "2026-04-25T10:15:00Z",
+  "status": "pending"
+}
+```
