@@ -64,6 +64,26 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 API="http://localhost:8000"
 FIRESTORE="http://127.0.0.1:8080/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 
+# ── Venv resolution ─────────────────────────────────────────────────────────
+# `.venv` only lives in the main checkout, never in git worktrees. When the
+# script runs from a worktree, fall back to the main worktree's path via
+# `git worktree list`. Then export PYTHONPATH so `import app` resolves to the
+# *current* tree's source rather than the editable install's target inside
+# the main checkout — otherwise the script would silently exercise main's code.
+if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
+  VENV_DIR="$REPO_ROOT/.venv"
+else
+  MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
+    | awk '/^worktree / {print $2; exit}')
+  VENV_DIR="$MAIN_WT/.venv"
+fi
+if [ ! -f "$VENV_DIR/bin/activate" ]; then
+  echo "ABORT: no venv found at $VENV_DIR (or $REPO_ROOT/.venv). Run 'make venv && make install' in the main checkout."
+  exit 1
+fi
+export PYTHONPATH="$REPO_ROOT/api${PYTHONPATH:+:$PYTHONPATH}"
+# Use this in every shell-out: `. "$VENV_DIR/bin/activate" && python3 -c '...'`
+
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 assert_eq() {

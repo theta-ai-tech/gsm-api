@@ -32,21 +32,45 @@ check() {
 echo "=== PR #281 Smoke Tests: DBL-1 doubles enums + ParticipantEntry ==="
 echo ""
 
-# --- Pre-flight: venv exists ---
+# --- Pre-flight: resolve venv (worktree-friendly) ---
+# `.venv` lives in the main checkout, never in git worktrees. If REPO_ROOT
+# has no .venv, fall back to the main worktree's path. Then export PYTHONPATH
+# so `import app` loads from the *current* tree's source, not the editable
+# install's target inside the main checkout.
 echo "--- Pre-flight ---"
-VENV_OK=$([ -f "$REPO_ROOT/.venv/bin/activate" ] && echo true || echo false)
-check "Virtualenv exists at $REPO_ROOT/.venv" "$VENV_OK"
+if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
+  VENV_DIR="$REPO_ROOT/.venv"
+else
+  MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
+    | awk '/^worktree / {print $2; exit}')
+  VENV_DIR="$MAIN_WT/.venv"
+fi
+VENV_OK=$([ -f "$VENV_DIR/bin/activate" ] && echo true || echo false)
+check "Virtualenv resolved at $VENV_DIR" "$VENV_OK"
 
 if [ "$VENV_OK" != "true" ]; then
   echo ""
-  echo "ABORT: venv not found. Run: make venv && make install"
+  echo "ABORT: venv not found at $VENV_DIR. Run 'make venv && make install' in the main checkout."
   exit 1
 fi
+export PYTHONPATH="$REPO_ROOT/api${PYTHONPATH:+:$PYTHONPATH}"
+
+# Sanity: confirm `app` loads from THIS tree (worktree if applicable), not main.
+APP_PATH=$(. "$VENV_DIR/bin/activate" && python3 -c 'import app, os; print(os.path.dirname(app.__file__))' 2>/dev/null)
+case "$APP_PATH" in
+  "$REPO_ROOT"/api/app)
+    check "import app resolves to $REPO_ROOT/api/app" "true" ;;
+  *)
+    check "import app resolves to $REPO_ROOT/api/app (got: $APP_PATH)" "false"
+    echo ""
+    echo "ABORT: app loaded from the wrong tree. PYTHONPATH=$PYTHONPATH"
+    exit 1 ;;
+esac
 
 # --- Test 1: Imports succeed ---
 echo ""
 echo "--- Import tests ---"
-IMPORT_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+IMPORT_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import BroadcastTypeEnum, MatchTypeEnum, ParticipantEntry
 print('true')
 " 2>/dev/null || echo false)
@@ -61,7 +85,7 @@ fi
 # --- Test 2: MatchTypeEnum values ---
 echo ""
 echo "--- MatchTypeEnum tests ---"
-MT_VALUES_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+MT_VALUES_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import MatchTypeEnum
 ok = (
     MatchTypeEnum.SINGLES == 'singles'
@@ -72,13 +96,13 @@ print('true' if ok else 'false')
 " 2>/dev/null || echo false)
 check "MatchTypeEnum has SINGLES='singles', DOUBLES='doubles', len==2" "$MT_VALUES_OK"
 
-MT_STR_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+MT_STR_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import MatchTypeEnum
 print('true' if isinstance(MatchTypeEnum.SINGLES, str) and isinstance(MatchTypeEnum.DOUBLES, str) else 'false')
 " 2>/dev/null || echo false)
 check "MatchTypeEnum members are str instances (StrEnum)" "$MT_STR_OK"
 
-MT_ROUND_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+MT_ROUND_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import MatchTypeEnum
 ok = (
     MatchTypeEnum('singles') is MatchTypeEnum.SINGLES
@@ -91,7 +115,7 @@ check "MatchTypeEnum string round-trip" "$MT_ROUND_OK"
 # --- Test 3: BroadcastTypeEnum values ---
 echo ""
 echo "--- BroadcastTypeEnum tests ---"
-BT_VALUES_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+BT_VALUES_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import BroadcastTypeEnum
 ok = (
     BroadcastTypeEnum.FIND_OPPONENT == 'find_opponent'
@@ -102,13 +126,13 @@ print('true' if ok else 'false')
 " 2>/dev/null || echo false)
 check "BroadcastTypeEnum has FIND_OPPONENT='find_opponent', FIND_FOURTH='find_fourth', len==2" "$BT_VALUES_OK"
 
-BT_STR_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+BT_STR_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import BroadcastTypeEnum
 print('true' if isinstance(BroadcastTypeEnum.FIND_OPPONENT, str) and isinstance(BroadcastTypeEnum.FIND_FOURTH, str) else 'false')
 " 2>/dev/null || echo false)
 check "BroadcastTypeEnum members are str instances (StrEnum)" "$BT_STR_OK"
 
-BT_ROUND_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+BT_ROUND_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import BroadcastTypeEnum
 ok = (
     BroadcastTypeEnum('find_opponent') is BroadcastTypeEnum.FIND_OPPONENT
@@ -121,7 +145,7 @@ check "BroadcastTypeEnum string round-trip" "$BT_ROUND_OK"
 # --- Test 4: ParticipantEntry singles (team=None) is valid ---
 echo ""
 echo "--- ParticipantEntry singles case ---"
-SINGLES_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+SINGLES_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 p = ParticipantEntry(uid='user_ignatios', team=None, display_name='Ignatios C')
 print('true' if p.uid == 'user_ignatios' and p.team is None and p.display_name == 'Ignatios C' else 'false')
@@ -131,14 +155,14 @@ check "ParticipantEntry(team=None) is valid (singles)" "$SINGLES_OK"
 # --- Test 5: ParticipantEntry doubles team='A' is valid ---
 echo ""
 echo "--- ParticipantEntry doubles case ---"
-DOUBLES_A_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+DOUBLES_A_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 p = ParticipantEntry(uid='user_ignatios', team='A', display_name='Ignatios C')
 print('true' if p.team == 'A' else 'false')
 " 2>/dev/null || echo false)
 check "ParticipantEntry(team='A') is valid (doubles)" "$DOUBLES_A_OK"
 
-DOUBLES_B_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+DOUBLES_B_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 p = ParticipantEntry(uid='user_ignatios', team='B', display_name='Ignatios C')
 print('true' if p.team == 'B' else 'false')
@@ -148,7 +172,7 @@ check "ParticipantEntry(team='B') is valid (doubles)" "$DOUBLES_B_OK"
 # --- Test 6: Invalid team values rejected ---
 echo ""
 echo "--- ParticipantEntry validation tests ---"
-INVALID_TEAM_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+INVALID_TEAM_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 from pydantic import ValidationError
 try:
@@ -159,7 +183,7 @@ except ValidationError:
 " 2>/dev/null || echo false)
 check "ParticipantEntry(team='C') raises ValidationError" "$INVALID_TEAM_OK"
 
-EMPTY_UID_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+EMPTY_UID_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 from pydantic import ValidationError
 try:
@@ -170,7 +194,7 @@ except ValidationError:
 " 2>/dev/null || echo false)
 check "ParticipantEntry(uid='') raises ValidationError (min_length)" "$EMPTY_UID_OK"
 
-EMPTY_DISPLAY_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+EMPTY_DISPLAY_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 from pydantic import ValidationError
 try:
@@ -184,7 +208,7 @@ check "ParticipantEntry(display_name='') raises ValidationError (min_length)" "$
 # --- Test 7: by_alias serialization (camelCase for Firestore) ---
 echo ""
 echo "--- ParticipantEntry serialization ---"
-ALIAS_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+ALIAS_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 p = ParticipantEntry(uid='u1', team='A', display_name='Alex K')
 d = p.model_dump(by_alias=True)
@@ -193,7 +217,7 @@ print('true' if ok else 'false')
 " 2>/dev/null || echo false)
 check "model_dump(by_alias=True) emits camelCase 'displayName'" "$ALIAS_OK"
 
-SNAKE_OK=$(cd "$REPO_ROOT" && . .venv/bin/activate && python3 -c "
+SNAKE_OK=$(. "$VENV_DIR/bin/activate" && python3 -c "
 from app.models import ParticipantEntry
 p = ParticipantEntry(uid='u1', team='A', display_name='Alex K')
 d = p.model_dump()
@@ -206,7 +230,7 @@ check "model_dump() (no alias) emits snake_case 'display_name'" "$SNAKE_OK"
 echo ""
 echo "--- Unit test verification ---"
 cd "$REPO_ROOT"
-UNIT_OUTPUT=$(. .venv/bin/activate && \
+UNIT_OUTPUT=$(. "$VENV_DIR/bin/activate" && \
   pytest tests/unit/models/test_doubles_enums.py tests/unit/models/test_common.py -q 2>&1)
 UNIT_OK=$(echo "$UNIT_OUTPUT" | grep -q "passed" && echo true || echo false)
 check "Unit tests for doubles enums and common models pass" "$UNIT_OK"
