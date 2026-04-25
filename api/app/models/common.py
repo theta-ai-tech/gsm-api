@@ -60,6 +60,26 @@ class VenueRef(GsmBaseModel):
         return data
 
 
+class ParticipantEntry(GsmBaseModel):
+    """A single participant in a match or broadcast.
+
+    For singles, ``team`` is ``None``. For doubles, ``team`` is ``'A'`` or
+    ``'B'`` to indicate which side the player is on. ``display_name`` is the
+    short label shown in UI (typically first name + last initial).
+    """
+
+    uid: str = Field(min_length=1)
+    team: str | None = Field(default=None)
+    display_name: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_team(self) -> "ParticipantEntry":
+        if self.team is not None and self.team not in {"A", "B"}:
+            msg = "team must be 'A', 'B', or None"
+            raise ValueError(msg)
+        return self
+
+
 class SportRanking(GsmBaseModel):
     sport: SportEnum
     pts: int

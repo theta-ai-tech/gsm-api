@@ -22,6 +22,16 @@ class MatchStatusEnum(StrEnum):
     CANCELLED = "cancelled"
 
 
+class MatchTypeEnum(StrEnum):
+    SINGLES = "singles"
+    DOUBLES = "doubles"
+
+
+class BroadcastTypeEnum(StrEnum):
+    FIND_OPPONENT = "find_opponent"
+    FIND_FOURTH = "find_fourth"
+
+
 class LeagueStatusEnum(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
