@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies.repos import get_venue_repo
+from app.dependencies.repos import get_venue_repo, get_venue_suggestions_repo
 from app.deps import get_current_user
 from app.main import app
 from app.models.common import GeoCoordinates, VenueRef
@@ -229,4 +229,124 @@ class TestSearchVenuesAuth:
         app.dependency_overrides.pop(get_current_user, None)
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.get("/venues/search", params={"q": "padel"})
+        assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /venues/suggest
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def mock_suggestions_repo():
+    repo = Mock()
+    repo.create.return_value = "suggestion_abc123"
+    app.dependency_overrides[get_venue_suggestions_repo] = lambda: repo
+    yield repo
+    app.dependency_overrides.pop(get_venue_suggestions_repo, None)
+
+
+@pytest.fixture()
+def suggest_client(_override_auth, mock_suggestions_repo):
+    return TestClient(app)
+
+
+def _valid_suggestion_payload() -> dict:
+    return {
+        "name": "My Local Club",
+        "coordinates": {"lat": 37.95, "lng": 23.72},
+        "sport": "padel",
+        "notes": "2 outdoor courts, open until 11pm",
+    }
+
+
+class TestSuggestVenueHappyPath:
+    def test_returns_201_with_suggestion_id(
+        self, suggest_client: TestClient, mock_suggestions_repo: Mock
+    ):
+        resp = suggest_client.post("/venues/suggest", json=_valid_suggestion_payload())
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body == {"suggestionId": "suggestion_abc123"}
+
+    def test_authenticated_uid_passed_to_repo(
+        self, suggest_client: TestClient, mock_suggestions_repo: Mock
+    ):
+        suggest_client.post("/venues/suggest", json=_valid_suggestion_payload())
+        mock_suggestions_repo.create.assert_called_once()
+        kwargs = mock_suggestions_repo.create.call_args.kwargs
+        assert kwargs["uid"] == _UID
+        request_arg = kwargs["request"]
+        assert request_arg.name == "My Local Club"
+        assert request_arg.coordinates.lat == 37.95
+        assert request_arg.coordinates.lng == 23.72
+        assert request_arg.sport.value == "padel"
+        assert request_arg.notes == "2 outdoor courts, open until 11pm"
+
+    def test_notes_optional(
+        self, suggest_client: TestClient, mock_suggestions_repo: Mock
+    ):
+        payload = _valid_suggestion_payload()
+        payload.pop("notes")
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 201
+        request_arg = mock_suggestions_repo.create.call_args.kwargs["request"]
+        assert request_arg.notes is None
+
+
+class TestSuggestVenueValidation:
+    def test_missing_name_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload.pop("name")
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_empty_name_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["name"] = ""
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_name_too_long_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["name"] = "x" * 201
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_sport_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["sport"] = "chess"
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_lat_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["coordinates"]["lat"] = 100
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_lng_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["coordinates"]["lng"] = 200
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_missing_coordinates_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload.pop("coordinates")
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+    def test_notes_too_long_returns_422(self, suggest_client: TestClient):
+        payload = _valid_suggestion_payload()
+        payload["notes"] = "x" * 501
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 422
+
+
+class TestSuggestVenueAuth:
+    def test_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post("/venues/suggest", json=_valid_suggestion_payload())
         assert resp.status_code == 401

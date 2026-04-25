@@ -4,10 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.constants import VENUE_SEARCH_MAX_RESULTS
 from app.deps import get_current_user
-from app.dependencies.repos import get_venue_repo
+from app.dependencies.repos import get_venue_repo, get_venue_suggestions_repo
 from app.models.base import GsmBaseModel
 from app.models.common import VenueRef
+from app.models.venue_suggestion import (
+    CreateVenueSuggestionRequest,
+    CreateVenueSuggestionResponse,
+)
 from app.repos.venue_repo import VenueRepo
+from app.repos.venue_suggestions_repo import VenueSuggestionsRepo
 from app.security import CurrentUser
 from app.services.places_service import PlacesService, PlacesUpstreamError
 from app.settings import get_settings
@@ -99,3 +104,29 @@ def search_venues(
         merged.append(ref)
 
     return VenueSearchResponse(results=merged[:VENUE_SEARCH_MAX_RESULTS])
+
+
+# ---------------------------------------------------------------------------
+# POST /venues/suggest
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/suggest",
+    response_model=CreateVenueSuggestionResponse,
+    response_model_by_alias=True,
+    status_code=status.HTTP_201_CREATED,
+)
+def suggest_venue(
+    request: CreateVenueSuggestionRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    suggestions_repo: VenueSuggestionsRepo = Depends(get_venue_suggestions_repo),
+) -> CreateVenueSuggestionResponse:
+    """Submit a user-suggested venue to the moderation queue.
+
+    Writes to ``venueSuggestions/{autoId}`` with ``status="pending"``.
+    Suggestions are NOT promoted to the live ``venues`` collection until a
+    moderator reviews them.
+    """
+    suggestion_id = suggestions_repo.create(uid=current_user.uid, request=request)
+    return CreateVenueSuggestionResponse.model_validate({"suggestionId": suggestion_id})

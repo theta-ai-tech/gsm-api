@@ -16,6 +16,7 @@ from app.repos.ticker_repo import TickerRepo
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.repos.venue_repo import VenueRepo
+from app.repos.venue_suggestions_repo import VenueSuggestionsRepo
 
 
 @lru_cache
@@ -74,3 +75,7 @@ def get_tier_config_repo() -> TierConfigRepo:
 
 def get_venue_repo() -> VenueRepo:
     return VenueRepo(get_firestore_client())
+
+
+def get_venue_suggestions_repo() -> VenueSuggestionsRepo:
+    return VenueSuggestionsRepo(get_firestore_client())

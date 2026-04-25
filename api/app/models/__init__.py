@@ -61,6 +61,10 @@ from app.models.tier import TierConfig, TierThreshold
 from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile, PublicUserProfile
 from app.models.venue import VenueSummary
+from app.models.venue_suggestion import (
+    CreateVenueSuggestionRequest,
+    CreateVenueSuggestionResponse,
+)
 
 __all__ = [
     # base
@@ -156,4 +160,6 @@ __all__ = [
     "PrivateUserProfile",
     # venue
     "VenueSummary",
+    "CreateVenueSuggestionRequest",
+    "CreateVenueSuggestionResponse",
 ]
