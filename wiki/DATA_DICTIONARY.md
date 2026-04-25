@@ -1039,7 +1039,7 @@ live `venues` collection until a moderator reviews and approves them.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `name` | string | Venue name as entered by the user (1–200 chars) |
+| `name` | string | Trimmed venue name as entered by the user (non-blank, 1–200 chars) |
 | `coordinates` | map `{lat, lng}` | Lat/lng pair (lat: -90..90, lng: -180..180) |
 | `sport` | string (enum) | One of `tennis`, `padel`, `pickleball` |
 | `notes` | string \| null | Optional free-text notes (max 500 chars) |

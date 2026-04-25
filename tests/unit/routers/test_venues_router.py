@@ -293,6 +293,16 @@ class TestSuggestVenueHappyPath:
         request_arg = mock_suggestions_repo.create.call_args.kwargs["request"]
         assert request_arg.notes is None
 
+    def test_name_is_trimmed_before_persistence(
+        self, suggest_client: TestClient, mock_suggestions_repo: Mock
+    ):
+        payload = _valid_suggestion_payload()
+        payload["name"] = "  My Local Club  "
+        resp = suggest_client.post("/venues/suggest", json=payload)
+        assert resp.status_code == 201
+        request_arg = mock_suggestions_repo.create.call_args.kwargs["request"]
+        assert request_arg.name == "My Local Club"
+
 
 class TestSuggestVenueValidation:
     def test_missing_name_returns_422(self, suggest_client: TestClient):

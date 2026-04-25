@@ -512,7 +512,7 @@ Required (Firebase Bearer ID token).
 ```
 
 Validation:
-- `name`: required, 1–200 chars
+- `name`: required, trimmed, non-blank, 1–200 chars after trimming
 - `coordinates.lat`: required, -90 to 90
 - `coordinates.lng`: required, -180 to 180
 - `sport`: required, one of `tennis | padel | pickleball`
