@@ -11,7 +11,7 @@ PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 API="http://localhost:8000"
-FIRESTORE="http://127.0.0.1:8080/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
+FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 
 # ── Venv resolution ─────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
@@ -43,7 +43,7 @@ assert_eq() {
 }
 
 # ── Token acquisition ───────────────────────────────────────────────────────
-TOKEN=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" user_ignatios 2>/dev/null | tail -1)
+TOKEN=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" user_ignatios -t 2>/dev/null)
 if [ -z "$TOKEN" ]; then
   echo "ERROR: Could not get auth token for user_ignatios. Is the auth emulator running?"
   exit 1
