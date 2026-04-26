@@ -18,6 +18,7 @@ from app.models.enums import (
     BroadcastStatusEnum,
     CourtStatusEnum,
     MatchStatusEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
     PlayTabStateEnum,
@@ -604,6 +605,7 @@ class PlayService:
         match_data = {
             "sport": offer.sport.value,
             "status": MatchStatusEnum.SCHEDULED.value,
+            "matchType": MatchTypeEnum.SINGLES.value,
             "scheduledAt": offer.proposed_time,
             "participants": [
                 {"uid": offer.from_uid, "team": None, "role": ParticipantRoleEnum.PLAYER.value},
@@ -611,6 +613,7 @@ class PlayService:
             ],
             "participantUids": [offer.from_uid, offer.to_uid],
             "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
+            "resultSubmittedBy": [],
             "leagueId": None,
             "courtId": None,
             "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,

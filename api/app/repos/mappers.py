@@ -31,6 +31,7 @@ from app.models import (
     MatchResultEnum,
     MatchScore,
     MatchStatusEnum,
+    MatchTypeEnum,
     Offer,
     NorthStarGoal,
     OfferStatusEnum,
@@ -281,11 +282,16 @@ def to_private_user_profile(doc: dict[str, Any]) -> PrivateUserProfile:
 def _parse_participant(data: dict[str, Any]) -> MatchParticipant:
     role = data.get("role")
     result = data.get("result")
+    team = data.get("team")
+    # Coerce legacy integer team values (1/2) written before DBL-2.
+    if isinstance(team, int):
+        team = "A" if team == 1 else "B" if team == 2 else None
     return MatchParticipant(
         uid=str(data.get("uid", "")),
-        team=data.get("team"),
+        team=team,
         role=ParticipantRoleEnum(role) if role else ParticipantRoleEnum.PLAYER,
         result=MatchResultEnum(result) if result else None,
+        display_name=data.get("displayName") or data.get("display_name"),
     )
 
 
@@ -307,7 +313,34 @@ def _parse_score(score: dict[str, Any]) -> Optional[MatchScore]:
 
 
 def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
-    participants = [_parse_participant(p) for p in doc.get("participants", [])]
+    participant_uids = list(doc.get("participantUids", []) or [])
+    raw_participants = doc.get("participants")
+    is_legacy = "matchType" not in doc
+    if raw_participants:
+        participants = [_parse_participant(p) for p in raw_participants]
+        if is_legacy:
+            # Legacy singles documents may have stored ``team: 1`` / ``team: 2``
+            # as a 1-per-side label. Without a ``matchType`` field we treat
+            # them as singles and clear the team labels so the model
+            # validator (singles requires team=None) accepts them.
+            participants = [
+                MatchParticipant(
+                    uid=p.uid,
+                    team=None,
+                    role=p.role,
+                    result=p.result,
+                    display_name=p.display_name,
+                )
+                for p in participants
+            ]
+    else:
+        # Compute-on-read default for legacy documents that predate DBL-2:
+        # build a participants array from the flattened ``participantUids``
+        # with ``team=None`` (singles).
+        participants = [
+            MatchParticipant(uid=uid, team=None, role=ParticipantRoleEnum.PLAYER)
+            for uid in participant_uids
+        ]
     result_by_user = doc.get("resultByUser") or None
     if result_by_user:
         result_by_user = {uid: MatchResultEnum(val) for uid, val in result_by_user.items()}
@@ -315,10 +348,14 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
     sport_val = _require(doc, "sport")
     status_val = _require(doc, "status")
 
+    # ``matchType`` defaults to ``singles`` for legacy documents.
+    match_type_val = doc.get("matchType") or MatchTypeEnum.SINGLES.value
+
     return Match(
         match_id=match_id or doc.get("match_id") or doc.get("id") or "",
         sport=SportEnum(sport_val),
         status=MatchStatusEnum(status_val),
+        match_type=MatchTypeEnum(match_type_val),
         scheduled_at=doc.get("scheduledAt"),
         finished_at=doc.get("finishedAt"),
         league_id=doc.get("leagueId"),
@@ -327,8 +364,9 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         score=_parse_score(doc.get("score", {})),
         result_by_user=result_by_user,
         participants=participants,
-        participant_uids=doc.get("participantUids", []),
+        participant_uids=participant_uids,
         participant_pair=doc.get("participantPair"),
+        result_submitted_by=list(doc.get("resultSubmittedBy", []) or []),
     )
 
 

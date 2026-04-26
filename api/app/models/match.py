@@ -1,10 +1,13 @@
 from datetime import datetime
 
+from pydantic import model_validator
+
 from app.models.base import GsmBaseModel
 from app.models.common import MatchScore, VenueRef
 from app.models.enums import (
     MatchResultEnum,
     MatchStatusEnum,
+    MatchTypeEnum,
     ParticipantRoleEnum,
     SportEnum,
     TierEnum,
@@ -48,10 +51,43 @@ class VerifyScoreResponse(GsmBaseModel):
 
 
 class MatchParticipant(GsmBaseModel):
+    """A participant entry on a match document.
+
+    Aligned with :class:`ParticipantEntry` from DBL-1: ``team`` is ``'A'`` or
+    ``'B'`` for doubles and ``None`` for singles. ``display_name`` is optional
+    here because matches written before DBL-2 do not carry the cached label.
+    """
+
     uid: str
-    team: int | None = None  # team number for doubles; None for singles
+    team: str | None = None  # 'A' or 'B' for doubles; None for singles
     role: ParticipantRoleEnum
     result: MatchResultEnum | None = None
+    display_name: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_legacy_team(cls, data: object) -> object:
+        """Coerce legacy integer ``team`` values (1/2) to ``'A'``/``'B'``.
+
+        Pre-DBL-2 documents stored ``team: 1`` / ``team: 2``; the on-read
+        coercion keeps those documents parseable without a backfill.
+        """
+        if isinstance(data, dict):
+            data = dict(data)
+            team_val = data.get("team")
+            if isinstance(team_val, int):
+                if team_val == 1:
+                    data["team"] = "A"
+                elif team_val == 2:
+                    data["team"] = "B"
+        return data
+
+    @model_validator(mode="after")
+    def _validate_team(self) -> "MatchParticipant":
+        if self.team is not None and self.team not in {"A", "B"}:
+            msg = "team must be 'A', 'B', or None"
+            raise ValueError(msg)
+        return self
 
 
 def compute_participant_pair(uids: list[str]) -> str | None:
@@ -71,6 +107,7 @@ class Match(GsmBaseModel):
     match_id: str
     sport: SportEnum
     status: MatchStatusEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     scheduled_at: datetime | None = None
     finished_at: datetime | None = None
     league_id: str | None = None
@@ -81,3 +118,40 @@ class Match(GsmBaseModel):
     participants: list[MatchParticipant] = []
     participant_uids: list[str] = []
     participant_pair: str | None = None
+    result_submitted_by: list[str] = []
+
+    @model_validator(mode="after")
+    def _validate_participants_for_match_type(self) -> "Match":
+        """Enforce singles/doubles participant rules.
+
+        Validation only fires when ``participants`` is non-empty so that
+        legacy/test code that constructs a ``Match`` without the participants
+        array (relying on ``participant_uids`` only) keeps working. The
+        on-read mapper backfills ``participants`` from ``participant_uids``
+        for legacy Firestore documents, so all real reads still flow through
+        validation.
+        """
+        if not self.participants:
+            return self
+
+        if self.match_type == MatchTypeEnum.SINGLES:
+            if len(self.participants) != 2:
+                msg = "singles match must have exactly 2 participants"
+                raise ValueError(msg)
+            if any(p.team is not None for p in self.participants):
+                msg = "singles participants must have team=None"
+                raise ValueError(msg)
+            return self
+
+        # Doubles
+        if len(self.participants) != 4:
+            msg = "doubles match must have exactly 4 participants"
+            raise ValueError(msg)
+        teams = [p.team for p in self.participants]
+        if any(t not in {"A", "B"} for t in teams):
+            msg = "doubles participants must each have team set to 'A' or 'B'"
+            raise ValueError(msg)
+        if teams.count("A") != 2 or teams.count("B") != 2:
+            msg = "doubles must have exactly 2 participants per team"
+            raise ValueError(msg)
+        return self
