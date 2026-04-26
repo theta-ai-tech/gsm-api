@@ -216,6 +216,7 @@ def _participant_to_dict(p: MatchParticipant) -> Dict[str, Any]:
         "team": p.team,
         "role": p.role.value,
         "result": p.result.value if p.result else None,
+        "displayName": p.display_name,
     }
 
 
@@ -223,6 +224,7 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
     return {
         "sport": match.sport.value,
         "status": match.status.value,
+        "matchType": match.match_type.value,
         "scheduledAt": match.scheduled_at,
         "finishedAt": match.finished_at,
         "leagueId": match.league_id,
@@ -235,6 +237,7 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
             if match.result_by_user
             else None
         ),
+        "resultSubmittedBy": list(match.result_submitted_by),
         "score": _match_score_to_dict(match.score),
     }
 

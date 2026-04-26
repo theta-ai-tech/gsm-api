@@ -71,8 +71,8 @@ def test_match_mapping_includes_score_and_participants():
         score=MatchScore(sets=[SetScore(p1_games=6, p2_games=4)], winner_uid="u1"),
         result_by_user={"u1": MatchResultEnum.WIN, "u2": MatchResultEnum.LOSS},
         participants=[
-            MatchParticipant(uid="u1", role=ParticipantRoleEnum.PLAYER, team=1),
-            MatchParticipant(uid="u2", role=ParticipantRoleEnum.PLAYER, team=2),
+            MatchParticipant(uid="u1", role=ParticipantRoleEnum.PLAYER, team=None),
+            MatchParticipant(uid="u2", role=ParticipantRoleEnum.PLAYER, team=None),
         ],
         participant_uids=["u1", "u2"],
     )

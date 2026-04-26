@@ -181,6 +181,7 @@ class MatchConfirmationService:
             updates: dict[str, Any] = {
                 "status": MatchStatusEnum.PENDING_CONFIRMATION,
                 f"resultByUser.{uid}": caller_result,
+                "resultSubmittedBy": firestore.ArrayUnion([uid]),
             }
             if score_doc is not None:
                 updates["score"] = score_doc
@@ -242,6 +243,7 @@ class MatchConfirmationService:
                 {
                     "status": MatchStatusEnum.DISPUTED,
                     f"resultByUser.{uid}": caller_result,
+                    "resultSubmittedBy": firestore.ArrayUnion([uid]),
                 },
             )
 
@@ -386,6 +388,7 @@ class MatchConfirmationService:
                         loser_uid: MatchResultEnum.LOSS,
                     },
                     "score": score_doc,
+                    "resultSubmittedBy": firestore.ArrayUnion([uid]),
                 },
             )
 

@@ -302,8 +302,8 @@ MATCH_UPCOMING_1 = Match(
     score=None,
     result_by_user=None,
     participants=[
-        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=1),
-        MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team=2),
+        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=None),
+        MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team=None),
     ],
     participant_uids=[USER_IGNATIOS.uid, USER_BOB.uid],
     participant_pair=compute_participant_pair([USER_IGNATIOS.uid, USER_BOB.uid]),
@@ -319,8 +319,8 @@ MATCH_UPCOMING_2 = Match(
     score=None,
     result_by_user=None,
     participants=[
-        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=1),
-        MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team=2),
+        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team=None),
+        MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team=None),
     ],
     participant_uids=[USER_IGNATIOS.uid, USER_ALICE.uid],
     participant_pair=compute_participant_pair([USER_IGNATIOS.uid, USER_ALICE.uid]),

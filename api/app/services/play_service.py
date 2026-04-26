@@ -18,6 +18,7 @@ from app.models.enums import (
     BroadcastStatusEnum,
     CourtStatusEnum,
     MatchStatusEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
     PlayTabStateEnum,
@@ -45,6 +46,20 @@ from app.repos.offers_repo import OffersRepo
 from app.repos.users_repo import UsersRepo
 
 logger = logging.getLogger(__name__)
+
+
+def _short_display_name(full_name: str) -> str:
+    """Format ``Firstname Lastname`` as ``Firstname L.`` for cached display.
+
+    Mirrors the shape that DBL-1's ``ParticipantEntry.display_name`` expects
+    (short label for UI). Falls back to the raw name when there is no
+    last-name token, and to an empty string for falsy input — callers should
+    pass a non-empty name for new matches.
+    """
+    parts = (full_name or "").strip().split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[-1][0]}."
+    return parts[0] if parts else ""
 
 
 class PlayService:
@@ -600,17 +615,35 @@ class PlayService:
             else offer.venue_ref
         )
 
+        # Cached display names (short form) for the new match's participants —
+        # required by the DBL-1 ParticipantEntry contract so doubles UIs can
+        # render team labels without an extra users lookup.
+        sender_display_name = _short_display_name(sender_doc.get("name", "") or "")
+        recipient_display_name = _short_display_name(recipient_doc.get("name", "") or "")
+
         match_id = f"match_{offer_id}"  # Placeholder
         match_data = {
             "sport": offer.sport.value,
             "status": MatchStatusEnum.SCHEDULED.value,
+            "matchType": MatchTypeEnum.SINGLES.value,
             "scheduledAt": offer.proposed_time,
             "participants": [
-                {"uid": offer.from_uid, "team": None, "role": ParticipantRoleEnum.PLAYER.value},
-                {"uid": offer.to_uid, "team": None, "role": ParticipantRoleEnum.PLAYER.value},
+                {
+                    "uid": offer.from_uid,
+                    "team": None,
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": sender_display_name,
+                },
+                {
+                    "uid": offer.to_uid,
+                    "team": None,
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": recipient_display_name,
+                },
             ],
             "participantUids": [offer.from_uid, offer.to_uid],
             "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
+            "resultSubmittedBy": [],
             "leagueId": None,
             "courtId": None,
             "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
