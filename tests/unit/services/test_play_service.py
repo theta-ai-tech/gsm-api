@@ -1075,7 +1075,85 @@ class TestAcceptOffer:
             assert mock_transaction.set.call_count == 1
             match_data = mock_transaction.set.call_args.args[1]
             assert match_data["venueRef"]["venueId"] == "ten_twenty_club"
+            # DBL-2: matchType + resultSubmittedBy + per-participant displayName
+            # are stamped on the new match document.
+            assert match_data["matchType"] == "singles"
+            assert match_data["resultSubmittedBy"] == []
+            participants = match_data["participants"]
+            assert len(participants) == 2
+            assert all("displayName" in p for p in participants)
+            # Single-token names round-trip as-is via _short_display_name.
+            sender_entry = next(p for p in participants if p["uid"] == "alice")
+            recipient_entry = next(p for p in participants if p["uid"] == "bob")
+            assert sender_entry["displayName"] == "Alice"
+            assert recipient_entry["displayName"] == "Bob"
             mock_broadcasts_repo.get_by_id.assert_not_called()
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_accept_offer_writes_short_display_name(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """DBL-2: full ``Firstname Lastname`` is written as ``Firstname L.``."""
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer123",
+            from_uid="alice",
+            from_name="Alice King",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob Smith",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=_curated_venue_ref(),
+            source_broadcast_id=None,
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob Smith",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "activeBroadcastId": None,
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
+            {
+                "name": "Alice King",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+        play_service_module.firestore.transactional = lambda fn: fn
+
+        try:
+            mock_transaction = mock_firestore_client.transaction.return_value
+            play_service.accept_offer("bob", "offer123")
+
+            match_data = mock_transaction.set.call_args.args[1]
+            participants = {p["uid"]: p for p in match_data["participants"]}
+            assert participants["alice"]["displayName"] == "Alice K."
+            assert participants["bob"]["displayName"] == "Bob S."
         finally:
             play_service_module.firestore.transactional = original_transactional
 

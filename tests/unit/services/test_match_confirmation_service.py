@@ -1821,6 +1821,151 @@ class TestWinStreakTickerEvent:
 
 
 # ---------------------------------------------------------------------------
+# Tests: resultSubmittedBy lifecycle (DBL-2)
+# ---------------------------------------------------------------------------
+
+
+class TestResultSubmittedByLifecycle:
+    """DBL-2: every score-submission write path must append the caller's uid to
+    ``resultSubmittedBy`` so consumers can see who has submitted without falling
+    back to ``resultByUser`` keys."""
+
+    def _match_update_calls(self, mock_client: MagicMock) -> list[dict[str, Any]]:
+        txn = mock_client.transaction()
+        match_ref = mock_client.collection("matches").document(MATCH_ID)
+        return [c.args[1] for c in txn.update.call_args_list if c.args[0] == match_ref]
+
+    def test_first_submission_appends_caller_uid(self) -> None:
+        service, mock_client, _, _, _ = _make_service()
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            sentinel = object()
+            mock_fs.ArrayUnion = MagicMock(return_value=sentinel)
+
+            service.verify_score(
+                WINNER_UID, MATCH_ID, VerifyScoreRequest(winner_uid=WINNER_UID)
+            )
+
+            mock_fs.ArrayUnion.assert_called_once_with([WINNER_UID])
+
+        update_data = self._match_update_calls(mock_client)
+        assert len(update_data) == 1
+        assert "resultSubmittedBy" in update_data[0]
+
+    def test_dispute_appends_caller_uid(self) -> None:
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = MagicMock(return_value=object())
+
+            # Loser disputes: claims they won
+            service.verify_score(
+                LOSER_UID, MATCH_ID, VerifyScoreRequest(winner_uid=LOSER_UID)
+            )
+
+            mock_fs.ArrayUnion.assert_called_once_with([LOSER_UID])
+
+        update_data = self._match_update_calls(mock_client)
+        assert any("resultSubmittedBy" in u for u in update_data)
+
+    def test_completion_appends_caller_uid(self) -> None:
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION, score=stored_score
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE, name="Winner")
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE, name="Loser")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = MagicMock(return_value=object())
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            # Loser confirms the result (caller_uid = LOSER_UID)
+            service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+            # ArrayUnion must have been called with the confirming caller's uid
+            assert any(
+                c.args == ([LOSER_UID],) for c in mock_fs.ArrayUnion.call_args_list
+            )
+
+        update_data = self._match_update_calls(mock_client)
+        # The completion update contains both status=COMPLETED and resultSubmittedBy
+        completion_updates = [
+            u for u in update_data if u.get("status") == MatchStatusEnum.COMPLETED
+        ]
+        assert completion_updates, "completion update should have been written"
+        assert "resultSubmittedBy" in completion_updates[0]
+
+
+class TestResultSubmittedByOnRead:
+    """DBL-2: legacy completed/disputed match documents that predate
+    ``resultSubmittedBy`` should still hydrate with a non-empty list, derived
+    from ``resultByUser`` keys."""
+
+    def test_legacy_doc_with_result_by_user_falls_back(self) -> None:
+        from app.repos.mappers import to_match
+
+        doc = {
+            "sport": "tennis",
+            "status": "completed",
+            "participantUids": ["u1", "u2"],
+            "participants": [
+                {"uid": "u1", "role": "player", "team": None},
+                {"uid": "u2", "role": "player", "team": None},
+            ],
+            "resultByUser": {"u1": "W", "u2": "L"},
+            # NB: no resultSubmittedBy field at all
+        }
+        match = to_match(doc, match_id="m_legacy")
+        assert sorted(match.result_submitted_by) == ["u1", "u2"]
+
+    def test_explicit_result_submitted_by_takes_precedence(self) -> None:
+        from app.repos.mappers import to_match
+
+        doc = {
+            "sport": "tennis",
+            "status": "pending_confirmation",
+            "participantUids": ["u1", "u2"],
+            "participants": [
+                {"uid": "u1", "role": "player", "team": None},
+                {"uid": "u2", "role": "player", "team": None},
+            ],
+            "resultByUser": {"u1": "W"},
+            "resultSubmittedBy": ["u1"],
+        }
+        match = to_match(doc, match_id="m_pending")
+        assert match.result_submitted_by == ["u1"]
+
+
+# ---------------------------------------------------------------------------
 # get_region_for_user helper
 # ---------------------------------------------------------------------------
 

@@ -351,6 +351,18 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
     # ``matchType`` defaults to ``singles`` for legacy documents.
     match_type_val = doc.get("matchType") or MatchTypeEnum.SINGLES.value
 
+    # ``resultSubmittedBy`` was added in DBL-2. For legacy documents that
+    # already carry a ``resultByUser`` map (i.e. the score-submission paths
+    # ran before this field existed), fall back to the keys of that map so
+    # consumers can still tell who submitted a result without a backfill.
+    raw_submitted_by = doc.get("resultSubmittedBy")
+    if raw_submitted_by:
+        result_submitted_by = list(raw_submitted_by)
+    elif result_by_user:
+        result_submitted_by = list(result_by_user.keys())
+    else:
+        result_submitted_by = []
+
     return Match(
         match_id=match_id or doc.get("match_id") or doc.get("id") or "",
         sport=SportEnum(sport_val),
@@ -366,7 +378,7 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         participants=participants,
         participant_uids=participant_uids,
         participant_pair=doc.get("participantPair"),
-        result_submitted_by=list(doc.get("resultSubmittedBy", []) or []),
+        result_submitted_by=result_submitted_by,
     )
 
 
