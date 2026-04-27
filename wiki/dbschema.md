@@ -34,6 +34,12 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
   - status (`active|expired|cancelled|matched`), expiresAt, createdAt
   - location: { area?: int, geo?: {lat, lng}, radiusKm?: int } (at least one of area or geo required)
   - Cache: ownerName, ownerRanking? (`{sport, pts}`)
+  - Doubles (DBL-3): matchType (`singles|doubles`, default `singles`), broadcastType (`find_opponent|find_fourth`, default `find_opponent`), partnerUid?
+    - `broadcastType=find_fourth` is only valid with `matchType=doubles`.
+    - `matchType=doubles` + `broadcastType=find_opponent` requires `partnerUid` (challenge as a team).
+    - `matchType=doubles` + `broadcastType=find_fourth` keeps `partnerUid` optional.
+    - `matchType=singles` always stores `partnerUid=null`.
+    - Legacy documents written before DBL-3 are read with the defaults above.
   - One active broadcast per user at a time; offers queue against it.
 
 - `offers/{offerId}`

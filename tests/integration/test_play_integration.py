@@ -16,7 +16,9 @@ import pytest
 from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import (
     AvailabilityEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
+    MatchTypeEnum,
     PlayTabStateEnum,
     SportEnum,
 )
@@ -200,6 +202,99 @@ class TestFullBroadcastFlow:
 
         with pytest.raises(ValueError, match="BROADCAST_ACTIVE"):
             service.create_broadcast(alice_uid, make_broadcast_request())
+
+
+# ===== Test: Doubles Broadcast Fields (DBL-3) =====
+
+
+class TestDoublesBroadcastFields:
+    def test_doubles_find_opponent_persists_partner_and_surfaces_in_payload(self, db):
+        """Doubles + find_opponent broadcast persists matchType/broadcastType/
+        partnerUid in Firestore and the BROADCAST_ACTIVE discovery payload
+        exposes them so mobile can render team labels."""
+        alice_uid = "alice_doubles_find_opponent"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+            partner_uid="user_partner",
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(area=10001),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        assert response.match_type == MatchTypeEnum.DOUBLES
+        assert response.broadcast_type == BroadcastTypeEnum.FIND_OPPONENT
+        assert response.partner_uid == "user_partner"
+
+        # Firestore document carries the camelCase fields.
+        doc = (
+            db.collection("broadcasts").document(response.broadcast_id).get().to_dict()
+        )
+        assert doc["matchType"] == "doubles"
+        assert doc["broadcastType"] == "find_opponent"
+        assert doc["partnerUid"] == "user_partner"
+
+        # /me/state returns BROADCAST_ACTIVE with the doubles fields surfaced.
+        state = service.get_me_state(alice_uid)
+        assert state.mode == PlayTabStateEnum.BROADCAST_ACTIVE
+        assert state.payload["match_type"] == "doubles"
+        assert state.payload["broadcast_type"] == "find_opponent"
+        assert state.payload["partner_uid"] == "user_partner"
+
+    def test_doubles_find_fourth_without_partner_persisted(self, db):
+        """Doubles + find_fourth without a partner_uid is allowed end-to-end."""
+        alice_uid = "alice_doubles_find_fourth"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        request = CreateBroadcastRequest(
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+            location=BroadcastLocation(area=10001),
+        )
+
+        response = service.create_broadcast(alice_uid, request)
+        doc = (
+            db.collection("broadcasts").document(response.broadcast_id).get().to_dict()
+        )
+        assert doc["matchType"] == "doubles"
+        assert doc["broadcastType"] == "find_fourth"
+        assert doc["partnerUid"] is None
+
+        state = service.get_me_state(alice_uid)
+        assert state.payload["broadcast_type"] == "find_fourth"
+        assert state.payload["partner_uid"] is None
+
+    def test_singles_broadcast_default_fields_surface(self, db):
+        """Default (no doubles fields) singles broadcast surfaces the singles
+        defaults in the discovery payload — backwards compatibility for
+        existing singles flows."""
+        alice_uid = "alice_singles_default"
+        seed_discovery_user(db, alice_uid, "Alice")
+        service = make_play_service(db)
+
+        response = service.create_broadcast(alice_uid, make_broadcast_request())
+        doc = (
+            db.collection("broadcasts").document(response.broadcast_id).get().to_dict()
+        )
+        assert doc["matchType"] == "singles"
+        assert doc["broadcastType"] == "find_opponent"
+        assert doc["partnerUid"] is None
+
+        state = service.get_me_state(alice_uid)
+        assert state.payload["match_type"] == "singles"
+        assert state.payload["broadcast_type"] == "find_opponent"
+        assert state.payload["partner_uid"] is None
 
 
 # ===== Test: Direct Challenge Flow =====

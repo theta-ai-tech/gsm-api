@@ -9,6 +9,7 @@ from app.models import (
     Broadcast,
     BroadcastLocation,
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
     CursorBundle,
     GeoCoordinates,
@@ -467,12 +468,20 @@ def to_broadcast(doc: dict[str, Any], broadcast_id: str | None = None) -> Broadc
     status_val = _require(doc, "status")
     owner_ranking = _parse_sport_ranking(doc.get("ownerRanking"))
 
+    # ``matchType`` and ``broadcastType`` were added in DBL-3. Default to
+    # singles/find_opponent for legacy documents written before this change.
+    match_type_val = doc.get("matchType") or MatchTypeEnum.SINGLES.value
+    broadcast_type_val = doc.get("broadcastType") or BroadcastTypeEnum.FIND_OPPONENT.value
+
     return Broadcast(
         broadcast_id=broadcast_id or doc.get("id") or "",
         owner_uid=_require(doc, "ownerUid"),
         owner_name=doc.get("ownerName", ""),
         owner_ranking=owner_ranking,
         sport=SportEnum(sport_val),
+        match_type=MatchTypeEnum(match_type_val),
+        broadcast_type=BroadcastTypeEnum(broadcast_type_val),
+        partner_uid=doc.get("partnerUid"),
         availability=AvailabilityEnum(availability_val),
         court_status=CourtStatusEnum(court_status_val),
         court_location=doc.get("courtLocation"),

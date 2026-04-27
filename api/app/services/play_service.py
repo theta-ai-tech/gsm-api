@@ -201,6 +201,9 @@ class PlayService:
                     payload = BroadcastActivePayload(
                         broadcast_id=broadcast.broadcast_id,
                         sport=broadcast.sport,
+                        match_type=broadcast.match_type,
+                        broadcast_type=broadcast.broadcast_type,
+                        partner_uid=broadcast.partner_uid,
                         availability=broadcast.availability,
                         court_status=broadcast.court_status,
                         court_location=broadcast.court_location,
@@ -341,12 +344,21 @@ class PlayService:
         rankings = user_doc.get("rankings", {}) or {}
         sport_ranking = rankings.get(request.sport.value)
 
+        # Doubles fields (DBL-3). For singles, partner_uid is always None even
+        # if the request supplied one — singles broadcasts have no partner.
+        partner_uid = request.partner_uid
+        if request.match_type == MatchTypeEnum.SINGLES:
+            partner_uid = None
+
         # Build broadcast doc (camelCase for Firestore)
         broadcast_data = {
             "ownerUid": uid,
             "ownerName": user_name,
             "ownerRanking": sport_ranking,
             "sport": request.sport.value,
+            "matchType": request.match_type.value,
+            "broadcastType": request.broadcast_type.value,
+            "partnerUid": partner_uid,
             "availability": request.availability.value,
             "courtStatus": request.court_status.value,
             "courtLocation": request.court_location,
@@ -391,6 +403,9 @@ class PlayService:
         return CreateBroadcastResponse(
             broadcast_id=broadcast_id,
             sport=request.sport,
+            match_type=request.match_type,
+            broadcast_type=request.broadcast_type,
+            partner_uid=partner_uid,
             availability=request.availability,
             court_status=request.court_status,
             court_location=request.court_location,

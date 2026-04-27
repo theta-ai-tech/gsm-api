@@ -40,20 +40,23 @@ User has an active availability broadcast. Offers queue up and are included in t
     "activeOfferIds": ["offer_1", "offer_2"]
   },
   "payload": {
-    "broadcastId": "broadcast_abc",
+    "broadcast_id": "broadcast_abc",
     "sport": "tennis",
+    "match_type": "singles",
+    "broadcast_type": "find_opponent",
+    "partner_uid": null,
     "availability": "today",
-    "courtStatus": "have_court",
-    "courtLocation": "Central Court, Athens",
-    "venueRef": {
+    "court_status": "have_court",
+    "court_location": "Central Court, Athens",
+    "venue_ref": {
       "venueId": "ten_twenty_club",
       "placeId": null,
       "name": "Ten Twenty Club",
       "coordinates": {"lat": 37.8362, "lng": 23.7627}
     },
-    "expiresAt": "2026-02-03T16:00:00Z",
-    "createdAt": "2026-02-03T08:00:00Z",
-    "pendingOffers": [
+    "expires_at": "2026-02-03T16:00:00Z",
+    "created_at": "2026-02-03T08:00:00Z",
+    "pending_offers": [
       {
         "offerId": "offer_1",
         "fromUid": "user_456",

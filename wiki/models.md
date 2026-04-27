@@ -42,7 +42,7 @@ Request/response models for Tab 1 PLAY endpoints:
 - `OfferActionResponse`: Accept/decline/cancel offer responses
 
 Core domain models:
-- `Broadcast`: Full broadcast document with owner, sport, availability, court status, optional `venue_ref`, location (hybrid area/geo), TTL
+- `Broadcast`: Full broadcast document with owner, sport, availability, court status, optional `venue_ref`, location (hybrid area/geo), TTL, and DBL-3 doubles fields (`match_type`, `broadcast_type`, `partner_uid`)
 - `Offer`: Full offer document with sender/recipient, sport, proposed time, TTL, status, optional match linkage
 - `GeoLocation`, `BroadcastLocation`: Location support (area codes + lat/lng/radius)
 
@@ -52,7 +52,7 @@ Core domain models:
 - `UIEvent`: Transient notifications (offer_expired, broadcast_expired, etc.)
 
 Mode-specific payloads (one per PlayTabStateEnum):
-- `BroadcastActivePayload`: Active broadcast, optional `venue_ref`, + queued pending offers
+- `BroadcastActivePayload`: Active broadcast, optional `venue_ref`, doubles fields (`match_type`, `broadcast_type`, `partner_uid`), + queued pending offers
 - `OutgoingOfferPayload`: Offer sent by user
 - `IncomingOfferPayload`: Offer received by user
 - `MatchScheduledPayload`: Upcoming match details with opponent, court
