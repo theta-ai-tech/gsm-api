@@ -540,13 +540,16 @@ class PlayService:
                 # layer honest in case anyone calls send_offer with a hand-built
                 # request that bypasses the validator.
                 raise ValueError("match_type=doubles requires partner_uid")
-            distinct = {from_uid, request.to_uid, partner_uid}
-            if source_broadcast is not None and source_broadcast.partner_uid:
-                distinct.add(source_broadcast.partner_uid)
-                expected = 4
-            else:
-                expected = 3
-            if len(distinct) != expected:
+            # Direct doubles challenges (no source broadcast) are not yet
+            # supported — without a broadcast we have no signal of who the
+            # recipient's partner is. Reject up front so we never create an
+            # offer that accept_offer cannot satisfy (which would otherwise
+            # leave both users stuck in pending states).
+            if source_broadcast is None or not source_broadcast.partner_uid:
+                msg = "Doubles offers require a source broadcast carrying the recipient's partner"
+                raise ValueError(msg)
+            distinct = {from_uid, request.to_uid, partner_uid, source_broadcast.partner_uid}
+            if len(distinct) != 4:
                 msg = "Doubles offer participants must all be distinct"
                 raise ValueError(msg)
             partner_doc = self.users_repo.get_user_doc(partner_uid)

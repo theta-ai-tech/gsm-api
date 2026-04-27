@@ -1666,6 +1666,39 @@ class TestDoublesSendOffer:
                 proposed_time=now + timedelta(hours=2),
             )
 
+    def test_send_offer_direct_doubles_without_source_broadcast_rejected(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Direct doubles challenge (no source_broadcast_id) is rejected at
+        send_offer time so we never create an offer accept_offer can't satisfy.
+        """
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            # sender
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            # recipient — also in DISCOVERY, no active broadcast
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {"state": "DISCOVERY"},
+            },
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = None
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id=None,
+        )
+        with pytest.raises(ValueError, match="source broadcast"):
+            play_service.send_offer("alice", request)
+
     def test_send_offer_doubles_match_type_must_match_broadcast(
         self,
         play_service,
