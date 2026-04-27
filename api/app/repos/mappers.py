@@ -518,6 +518,10 @@ def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
     from_ranking = _parse_sport_ranking(doc.get("fromRanking"))
     to_ranking = _parse_sport_ranking(doc.get("toRanking"))
 
+    # ``matchType`` and ``partnerUid`` were added in DBL-4. Default to singles
+    # for legacy documents written before this change.
+    match_type_val = doc.get("matchType") or MatchTypeEnum.SINGLES.value
+
     return Offer(
         offer_id=offer_id or doc.get("id") or "",
         from_uid=_require(doc, "fromUid"),
@@ -527,6 +531,8 @@ def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
         to_name=doc.get("toName", ""),
         to_ranking=to_ranking,
         sport=SportEnum(sport_val),
+        match_type=MatchTypeEnum(match_type_val),
+        partner_uid=doc.get("partnerUid"),
         proposed_time=_require(doc, "proposedTime"),
         court_location=doc.get("courtLocation"),
         venue_ref=_parse_venue_ref(doc.get("venueRef")),

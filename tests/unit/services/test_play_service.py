@@ -1102,7 +1102,11 @@ class TestSendOffer:
             play_service_module.firestore.transactional = original_transactional
 
     def test_send_offer_persists_source_broadcast_id(
-        self, play_service, mock_users_repo, mock_firestore_client
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
     ):
         now = datetime.now(timezone.utc)
         mock_users_repo.get_user_doc.side_effect = [
@@ -1117,6 +1121,26 @@ class TestSendOffer:
                 },
             },
         ]
+        # DBL-4: send_offer reads the source broadcast to validate match_type.
+        # Return a singles broadcast so the validation passes for this case.
+        mock_broadcasts_repo.get_by_id.return_value = Broadcast(
+            broadcast_id="broadcast123",
+            owner_uid="bob",
+            owner_name="Bob",
+            owner_ranking=None,
+            sport=SportEnum.TENNIS,
+            match_type=MatchTypeEnum.SINGLES,
+            broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+            partner_uid=None,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            court_location="Central Park",
+            venue_ref=None,
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=now + timedelta(hours=2),
+            created_at=now - timedelta(minutes=1),
+            location=BroadcastLocation(area=10001),
+        )
 
         mock_doc_ref = Mock()
         mock_doc_ref.id = "offer123"
@@ -1146,6 +1170,9 @@ class TestSendOffer:
             mock_transaction = mock_firestore_client.transaction.return_value
             offer_data = mock_transaction.set.call_args.args[1]
             assert offer_data["sourceBroadcastId"] == "broadcast123"
+            # DBL-4: singles offer persists matchType=singles and partnerUid=null
+            assert offer_data["matchType"] == "singles"
+            assert offer_data["partnerUid"] is None
         finally:
             play_service_module.firestore.transactional = original_transactional
 
@@ -1579,6 +1606,508 @@ class TestAcceptOffer:
 
         with pytest.raises(ValueError, match="expired"):
             play_service.accept_offer("bob", "offer123")
+
+
+# ===== DBL-4: Doubles offer + acceptance flow =====
+
+
+def _doubles_broadcast(
+    *,
+    owner_uid: str = "bob",
+    partner_uid: str | None = "dave",
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT,
+    sport: SportEnum = SportEnum.PADEL,
+    venue_ref: VenueRef | None = None,
+) -> Broadcast:
+    now = datetime.now(timezone.utc)
+    return Broadcast(
+        broadcast_id="broadcast_doubles",
+        owner_uid=owner_uid,
+        owner_name="Bob",
+        owner_ranking=None,
+        sport=sport,
+        match_type=MatchTypeEnum.DOUBLES,
+        broadcast_type=broadcast_type,
+        partner_uid=partner_uid,
+        availability=AvailabilityEnum.TODAY,
+        court_status=CourtStatusEnum.HAVE_COURT,
+        court_location="Padel Athens",
+        venue_ref=venue_ref,
+        status=BroadcastStatusEnum.ACTIVE,
+        expires_at=now + timedelta(hours=2),
+        created_at=now - timedelta(minutes=5),
+        location=BroadcastLocation(area=10001),
+    )
+
+
+class TestDoublesSendOffer:
+    """DBL-4: doubles validation on the send-offer path."""
+
+    def test_send_offer_doubles_requires_partner_uid_in_request_model(self):
+        """SendOfferRequest with match_type=doubles and no partner_uid raises."""
+        now = datetime.now(timezone.utc)
+        with pytest.raises(ValueError, match="partner_uid"):
+            SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                proposed_time=now + timedelta(hours=2),
+            )
+
+    def test_send_offer_singles_must_not_carry_partner_uid(self):
+        """Singles offer with partner_uid raises at the model level."""
+        now = datetime.now(timezone.utc)
+        with pytest.raises(ValueError, match="singles offer"):
+            SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.TENNIS,
+                match_type=MatchTypeEnum.SINGLES,
+                partner_uid="charlie",
+                proposed_time=now + timedelta(hours=2),
+            )
+
+    def test_send_offer_doubles_match_type_must_match_broadcast(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Singles offer against a doubles broadcast → ValueError."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast()
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.SINGLES,
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id="broadcast_doubles",
+        )
+        with pytest.raises(ValueError, match="does not match broadcast match_type"):
+            play_service.send_offer("alice", request)
+
+    def test_send_offer_doubles_partner_must_exist(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Doubles offer with non-existent partner_uid → ValueError."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            # sender
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            # recipient (broadcaster)
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+            # partner lookup → not found
+            None,
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast()
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="ghost_partner",
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id="broadcast_doubles",
+        )
+        with pytest.raises(ValueError, match="Partner user not found"):
+            play_service.send_offer("alice", request)
+
+    def test_send_offer_doubles_rejects_duplicate_uids(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Sender = partner is rejected as a duplicate."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast()
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="alice",  # same as sender
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id="broadcast_doubles",
+        )
+        with pytest.raises(ValueError, match="distinct"):
+            play_service.send_offer("alice", request)
+
+    def test_send_offer_doubles_persists_match_type_and_partner_uid(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """Doubles offer happy path: matchType + partnerUid persisted."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            # sender
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            # recipient (broadcaster)
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+            # partner
+            {"name": "Charlie", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast()
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "offer_doubles"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+        play_service_module.firestore.transactional = lambda fn: fn
+
+        try:
+            request = SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                partner_uid="charlie",
+                proposed_time=now + timedelta(hours=2),
+                source_broadcast_id="broadcast_doubles",
+            )
+
+            response = play_service.send_offer("alice", request)
+
+            assert response.match_type == MatchTypeEnum.DOUBLES
+            assert response.partner_uid == "charlie"
+            mock_transaction = mock_firestore_client.transaction.return_value
+            offer_data = mock_transaction.set.call_args.args[1]
+            assert offer_data["matchType"] == "doubles"
+            assert offer_data["partnerUid"] == "charlie"
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_send_offer_rejects_find_fourth_broadcast(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Offers against find_fourth broadcasts are explicitly deferred."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast(
+            broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+            partner_uid=None,
+        )
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id="broadcast_doubles",
+        )
+        with pytest.raises(ValueError, match="find_fourth"):
+            play_service.send_offer("alice", request)
+
+
+class TestDoublesAcceptOffer:
+    """DBL-4: doubles match-creation transaction in accept_offer."""
+
+    def test_accept_doubles_offer_creates_4_participant_match(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """4 distinct UIDs → match with 2-A / 2-B participants; all 4 → MATCH_SCHEDULED."""
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer_doubles",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=_curated_venue_ref(),
+            source_broadcast_id="broadcast_doubles",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast(
+            owner_uid="bob",
+            partner_uid="dave",
+        )
+
+        mock_users_repo.get_user_doc.side_effect = [
+            # recipient (broadcaster)
+            {
+                "name": "Bob Smith",
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": ["offer_doubles"],
+                },
+            },
+            # sender (challenger)
+            {
+                "name": "Alice King",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer_doubles",
+                },
+            },
+            # recipient's partner
+            {"name": "Dave Knight", "playTab": {"state": "DISCOVERY"}},
+            # sender's partner
+            {"name": "Charlie Owen", "playTab": {"state": "DISCOVERY"}},
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+        play_service_module.firestore.transactional = lambda fn: fn
+
+        try:
+            mock_transaction = mock_firestore_client.transaction.return_value
+            response = play_service.accept_offer("bob", "offer_doubles")
+
+            assert response.status == OfferStatusEnum.ACCEPTED
+
+            match_data = mock_transaction.set.call_args.args[1]
+            assert match_data["matchType"] == "doubles"
+            participants = match_data["participants"]
+            assert len(participants) == 4
+
+            by_uid = {p["uid"]: p for p in participants}
+            assert by_uid["bob"]["team"] == "A"
+            assert by_uid["dave"]["team"] == "A"
+            assert by_uid["alice"]["team"] == "B"
+            assert by_uid["charlie"]["team"] == "B"
+
+            # Cached short display names (DBL-1 contract).
+            assert by_uid["alice"]["displayName"] == "Alice K."
+            assert by_uid["bob"]["displayName"] == "Bob S."
+            assert by_uid["charlie"]["displayName"] == "Charlie O."
+            assert by_uid["dave"]["displayName"] == "Dave K."
+
+            # Flattened uids cover all 4 players.
+            assert set(match_data["participantUids"]) == {
+                "alice",
+                "bob",
+                "charlie",
+                "dave",
+            }
+            # Pair key only meaningful for 2-player singles.
+            assert match_data["participantPair"] is None
+
+            # All 4 users transitioned to MATCH_SCHEDULED. We can't tell the
+            # document refs apart with a generic Mock client, but we can check
+            # how many of the update calls carried a MATCH_SCHEDULED state
+            # patch — one per user, plus one for the offer (status=accepted)
+            # and one for the broadcast (status=matched).
+            match_scheduled_calls = [
+                call
+                for call in mock_transaction.update.call_args_list
+                if call.args[1].get("playTab.state") == "MATCH_SCHEDULED"
+            ]
+            assert len(match_scheduled_calls) == 4
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_accept_doubles_offer_rejects_duplicate_uids(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Sender's partner == recipient's partner → rejected."""
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer_doubles",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="dave",  # same as recipient's partner
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=None,
+            source_broadcast_id="broadcast_doubles",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast(
+            owner_uid="bob",
+            partner_uid="dave",
+        )
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Bob", "playTab": {"state": "BROADCAST_ACTIVE"}},
+            {"name": "Alice", "playTab": {"state": "OUTGOING_OFFER_PENDING"}},
+        ]
+
+        with pytest.raises(ValueError, match="distinct"):
+            play_service.accept_offer("bob", "offer_doubles")
+
+    def test_accept_doubles_offer_requires_source_broadcast_partner(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """Doubles offer without a source broadcast → can't infer team A."""
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer_doubles",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=None,
+            source_broadcast_id=None,  # no broadcast
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Bob", "playTab": {"state": "INCOMING_OFFER_PENDING"}},
+            {"name": "Alice", "playTab": {"state": "OUTGOING_OFFER_PENDING"}},
+        ]
+
+        with pytest.raises(ValueError, match="source broadcast"):
+            play_service.accept_offer("bob", "offer_doubles")
+
+    def test_accept_doubles_offer_rejects_find_fourth_broadcast(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+    ):
+        """find_fourth doubles acceptance is deferred to a follow-up."""
+        now = datetime.now(timezone.utc)
+
+        mock_offer = Offer(
+            offer_id="offer_doubles",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=None,
+            source_broadcast_id="broadcast_doubles",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast(
+            broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+            partner_uid=None,
+        )
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Bob", "playTab": {"state": "BROADCAST_ACTIVE"}},
+            {"name": "Alice", "playTab": {"state": "OUTGOING_OFFER_PENDING"}},
+        ]
+
+        with pytest.raises(ValueError, match="find_fourth"):
+            play_service.accept_offer("bob", "offer_doubles")
 
 
 class TestDeclineOffer:
