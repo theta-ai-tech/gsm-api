@@ -6,12 +6,14 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models.enums import (
+    AvailabilityEnum,
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
+    CourtStatusEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     PlayTabStateEnum,
     SportEnum,
-    AvailabilityEnum,
-    CourtStatusEnum,
 )
 from app.models.play import (
     CreateBroadcastResponse,
@@ -147,6 +149,86 @@ class TestCreateBroadcast:
         response = client.post("/me/broadcast", json=payload)
 
         assert response.status_code == 422
+
+    def test_create_broadcast_doubles_find_opponent_requires_partner(
+        self, client, mock_play_service
+    ):
+        """match_type=doubles + broadcast_type=find_opponent without partner → 422."""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sport": "tennis",
+            "match_type": "doubles",
+            "broadcast_type": "find_opponent",
+            "availability": "today",
+            "court_status": "need_court",
+            "expires_at": (now + timedelta(hours=2)).isoformat(),
+            "location": {"area": 10001},
+        }
+
+        response = client.post("/me/broadcast", json=payload)
+
+        assert response.status_code == 422
+        assert "partner_uid" in response.text
+
+    def test_create_broadcast_singles_find_fourth_rejected(
+        self, client, mock_play_service
+    ):
+        """match_type=singles + broadcast_type=find_fourth → 422."""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sport": "tennis",
+            "match_type": "singles",
+            "broadcast_type": "find_fourth",
+            "availability": "today",
+            "court_status": "need_court",
+            "expires_at": (now + timedelta(hours=2)).isoformat(),
+            "location": {"area": 10001},
+        }
+
+        response = client.post("/me/broadcast", json=payload)
+
+        assert response.status_code == 422
+        assert "find_fourth" in response.text
+
+    def test_create_broadcast_doubles_find_fourth_without_partner_accepted(
+        self, client, mock_play_service
+    ):
+        """match_type=doubles + broadcast_type=find_fourth without partner → 201."""
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(hours=2)
+
+        mock_response = CreateBroadcastResponse(
+            broadcast_id="broadcast_dbl",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+            partner_uid=None,
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.NEED_COURT,
+            court_location=None,
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=expires_at,
+            created_at=now,
+        )
+        mock_play_service.create_broadcast.return_value = mock_response
+
+        payload = {
+            "sport": "padel",
+            "match_type": "doubles",
+            "broadcast_type": "find_fourth",
+            "availability": "today",
+            "court_status": "need_court",
+            "expires_at": expires_at.isoformat(),
+            "location": {"area": 10001},
+        }
+
+        response = client.post("/me/broadcast", json=payload)
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["match_type"] == "doubles"
+        assert data["broadcast_type"] == "find_fourth"
+        assert data["partner_uid"] is None
 
 
 class TestCancelBroadcast:

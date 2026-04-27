@@ -7,7 +7,9 @@ from app.models.common import GeoCoordinates, VenueRef
 from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     PlayTabStateEnum,
     SportEnum,
@@ -210,6 +212,55 @@ class TestGetMeState:
 
         assert response.mode == PlayTabStateEnum.BROADCAST_ACTIVE
         assert response.payload["pending_offers"] == []
+        # Defaults from a singles broadcast surface in the discovery payload.
+        assert response.payload["match_type"] == MatchTypeEnum.SINGLES.value
+        assert (
+            response.payload["broadcast_type"] == BroadcastTypeEnum.FIND_OPPONENT.value
+        )
+        assert response.payload["partner_uid"] is None
+
+    def test_get_me_state_broadcast_active_doubles_find_fourth(
+        self, play_service, mock_users_repo, mock_broadcasts_repo, mock_offers_repo
+    ):
+        """BROADCAST_ACTIVE on a doubles 'find a 4th' broadcast surfaces
+        match_type/broadcast_type in the payload (mobile renders 'Looking for
+        a 4th' badges)."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "playTab": {
+                "state": "BROADCAST_ACTIVE",
+                "activeBroadcastId": "broadcast_dbl",
+                "pendingIncomingOfferIds": [],
+            },
+        }
+
+        mock_broadcast = Broadcast(
+            broadcast_id="broadcast_dbl",
+            owner_uid="alice",
+            owner_name="Alice",
+            owner_ranking=None,
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+            partner_uid="bob",
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            court_location="Padel Club",
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=now + timedelta(hours=2),
+            created_at=now,
+            location=BroadcastLocation(area=10001),
+        )
+        mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
+        mock_offers_repo.get_by_ids.return_value = []
+
+        response = play_service.get_me_state("alice")
+
+        assert response.mode == PlayTabStateEnum.BROADCAST_ACTIVE
+        assert response.payload["match_type"] == MatchTypeEnum.DOUBLES.value
+        assert response.payload["broadcast_type"] == BroadcastTypeEnum.FIND_FOURTH.value
+        assert response.payload["partner_uid"] == "bob"
 
     def test_get_me_state_outgoing_offer_pending(
         self, play_service, mock_users_repo, mock_offers_repo
@@ -808,6 +859,159 @@ class TestCreateBroadcast:
                 play_service.create_broadcast("alice", request)
 
             assert "Broadcast created without venueRef" in caplog.text
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_create_broadcast_doubles_find_opponent_persists_doubles_fields(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """Doubles + find_opponent + partner is persisted on the Firestore doc."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast_doubles"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                match_type=MatchTypeEnum.DOUBLES,
+                broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+                partner_uid="bob",
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+
+            response = play_service.create_broadcast("alice", request)
+
+            assert response.match_type == MatchTypeEnum.DOUBLES
+            assert response.broadcast_type == BroadcastTypeEnum.FIND_OPPONENT
+            assert response.partner_uid == "bob"
+
+            mock_transaction = mock_firestore_client.transaction.return_value
+            broadcast_data = mock_transaction.set.call_args.args[1]
+            assert broadcast_data["matchType"] == "doubles"
+            assert broadcast_data["broadcastType"] == "find_opponent"
+            assert broadcast_data["partnerUid"] == "bob"
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_create_broadcast_doubles_find_fourth_without_partner(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """Doubles + find_fourth without partner persists partnerUid=None."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast_4th"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                broadcast_type=BroadcastTypeEnum.FIND_FOURTH,
+                availability=AvailabilityEnum.WEEKEND,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+
+            response = play_service.create_broadcast("alice", request)
+
+            assert response.match_type == MatchTypeEnum.DOUBLES
+            assert response.broadcast_type == BroadcastTypeEnum.FIND_FOURTH
+            assert response.partner_uid is None
+
+            mock_transaction = mock_firestore_client.transaction.return_value
+            broadcast_data = mock_transaction.set.call_args.args[1]
+            assert broadcast_data["matchType"] == "doubles"
+            assert broadcast_data["broadcastType"] == "find_fourth"
+            assert broadcast_data["partnerUid"] is None
+        finally:
+            play_service_module.firestore.transactional = original_transactional
+
+    def test_create_broadcast_singles_clears_partner_uid(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """A singles broadcast must never persist a partnerUid even if one
+        somehow leaks into the request."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast_singles"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original_transactional = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+
+        try:
+            # Construct a request and then mutate ``partner_uid`` to mimic the
+            # service receiving an ill-formed but model-valid request.
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                match_type=MatchTypeEnum.SINGLES,
+                broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+            object.__setattr__(request, "partner_uid", "ghost_partner")
+
+            response = play_service.create_broadcast("alice", request)
+
+            assert response.partner_uid is None
+            mock_transaction = mock_firestore_client.transaction.return_value
+            broadcast_data = mock_transaction.set.call_args.args[1]
+            assert broadcast_data["partnerUid"] is None
         finally:
             play_service_module.firestore.transactional = original_transactional
 

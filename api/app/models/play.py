@@ -1,13 +1,15 @@
 from datetime import datetime
 
-from pydantic import HttpUrl
+from pydantic import HttpUrl, model_validator
 
 from app.models.base import GsmBaseModel
 from app.models.common import MatchScore, SportRanking, VenueRef
 from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     PlayTabStateEnum,
     SportEnum,
@@ -25,12 +27,45 @@ class BroadcastLocation(GsmBaseModel):
     radius_km: float | None = None
 
 
+def _validate_doubles_fields(
+    match_type: MatchTypeEnum,
+    broadcast_type: BroadcastTypeEnum,
+    partner_uid: str | None,
+) -> None:
+    """Shared validation for the (matchType, broadcastType, partnerUid) trio.
+
+    Rules (DBL-3):
+    - ``find_fourth`` requires ``match_type=doubles`` (a singles broadcast can't
+      look for a 4th).
+    - ``doubles`` + ``find_opponent`` requires a ``partner_uid`` (you challenge
+      as a team, so we need the partner up front).
+    - ``doubles`` + ``find_fourth`` makes ``partner_uid`` optional (caller may
+      be solo looking for 3 others or a pair looking for 1 more).
+    - ``singles`` + ``find_opponent`` ignores ``partner_uid`` if supplied.
+    """
+    if broadcast_type == BroadcastTypeEnum.FIND_FOURTH:
+        if match_type != MatchTypeEnum.DOUBLES:
+            msg = "broadcast_type=find_fourth requires match_type=doubles"
+            raise ValueError(msg)
+
+    if (
+        match_type == MatchTypeEnum.DOUBLES
+        and broadcast_type == BroadcastTypeEnum.FIND_OPPONENT
+        and not partner_uid
+    ):
+        msg = "match_type=doubles + broadcast_type=find_opponent requires partner_uid"
+        raise ValueError(msg)
+
+
 class Broadcast(GsmBaseModel):
     broadcast_id: str
     owner_uid: str
     owner_name: str
     owner_ranking: SportRanking | None = None
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
+    partner_uid: str | None = None
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
@@ -39,6 +74,11 @@ class Broadcast(GsmBaseModel):
     expires_at: datetime
     created_at: datetime
     location: BroadcastLocation
+
+    @model_validator(mode="after")
+    def _validate_doubles(self) -> "Broadcast":
+        _validate_doubles_fields(self.match_type, self.broadcast_type, self.partner_uid)
+        return self
 
 
 class Offer(GsmBaseModel):
@@ -63,6 +103,9 @@ class Offer(GsmBaseModel):
 
 class CreateBroadcastRequest(GsmBaseModel):
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
+    partner_uid: str | None = None
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
@@ -70,10 +113,18 @@ class CreateBroadcastRequest(GsmBaseModel):
     expires_at: datetime
     location: BroadcastLocation
 
+    @model_validator(mode="after")
+    def _validate_doubles(self) -> "CreateBroadcastRequest":
+        _validate_doubles_fields(self.match_type, self.broadcast_type, self.partner_uid)
+        return self
+
 
 class CreateBroadcastResponse(GsmBaseModel):
     broadcast_id: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
+    partner_uid: str | None = None
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
@@ -137,6 +188,9 @@ class MeStatePrimary(GsmBaseModel):
 class BroadcastActivePayload(GsmBaseModel):
     broadcast_id: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
+    partner_uid: str | None = None
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None

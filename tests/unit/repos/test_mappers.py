@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 from app.models.enums import (
     AvailabilityEnum,
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
     MatchResultEnum,
+    MatchTypeEnum,
     OfferStatusEnum,
     SportEnum,
     TrainingFocusEnum,
@@ -90,6 +92,72 @@ class TestToBroadcast:
         assert broadcast.location.area is None
         assert broadcast.location.geo is None
         assert broadcast.location.radius_km is None
+
+    def test_to_broadcast_legacy_doc_defaults_doubles_fields(self):
+        """Pre-DBL-3 documents (no matchType/broadcastType/partnerUid) default to
+        singles + find_opponent + None partner."""
+        now = datetime.now(timezone.utc)
+        doc = {
+            "ownerUid": "user123",
+            "sport": "tennis",
+            "availability": "today",
+            "courtStatus": "need_court",
+            "status": "active",
+            "expiresAt": now + timedelta(hours=2),
+            "createdAt": now,
+            "location": {},
+        }
+
+        broadcast = to_broadcast(doc, broadcast_id="broadcast_legacy")
+
+        assert broadcast.match_type == MatchTypeEnum.SINGLES
+        assert broadcast.broadcast_type == BroadcastTypeEnum.FIND_OPPONENT
+        assert broadcast.partner_uid is None
+
+    def test_to_broadcast_doubles_find_opponent(self):
+        """Doubles + find_opponent + partner round-trips."""
+        now = datetime.now(timezone.utc)
+        doc = {
+            "ownerUid": "user123",
+            "sport": "tennis",
+            "matchType": "doubles",
+            "broadcastType": "find_opponent",
+            "partnerUid": "user_partner",
+            "availability": "today",
+            "courtStatus": "have_court",
+            "status": "active",
+            "expiresAt": now + timedelta(hours=2),
+            "createdAt": now,
+            "location": {"area": 10001},
+        }
+
+        broadcast = to_broadcast(doc, broadcast_id="broadcast_dbl")
+
+        assert broadcast.match_type == MatchTypeEnum.DOUBLES
+        assert broadcast.broadcast_type == BroadcastTypeEnum.FIND_OPPONENT
+        assert broadcast.partner_uid == "user_partner"
+
+    def test_to_broadcast_doubles_find_fourth_no_partner(self):
+        """Doubles + find_fourth without partner is valid (solo seeking 3)."""
+        now = datetime.now(timezone.utc)
+        doc = {
+            "ownerUid": "user123",
+            "sport": "padel",
+            "matchType": "doubles",
+            "broadcastType": "find_fourth",
+            "availability": "today",
+            "courtStatus": "have_court",
+            "status": "active",
+            "expiresAt": now + timedelta(hours=2),
+            "createdAt": now,
+            "location": {"area": 10001},
+        }
+
+        broadcast = to_broadcast(doc, broadcast_id="broadcast_4th")
+
+        assert broadcast.match_type == MatchTypeEnum.DOUBLES
+        assert broadcast.broadcast_type == BroadcastTypeEnum.FIND_FOURTH
+        assert broadcast.partner_uid is None
 
 
 class TestToOffer:

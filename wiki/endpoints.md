@@ -256,16 +256,19 @@ Required.
 ```json
 {
   "sport": "tennis",
+  "match_type": "singles",
+  "broadcast_type": "find_opponent",
+  "partner_uid": null,
   "availability": "today",
-  "courtStatus": "have_court",
-  "courtLocation": "Central Court, Athens",
-  "venueRef": {
+  "court_status": "have_court",
+  "court_location": "Central Court, Athens",
+  "venue_ref": {
     "venueId": "ten_twenty_club",
     "placeId": null,
     "name": "Ten Twenty Club",
     "coordinates": {"lat": 37.8362, "lng": 23.7627}
   },
-  "expiresAt": "2026-02-03T16:00:00Z",
+  "expires_at": "2026-02-03T16:00:00Z",
   "location": {
     "area": 101,
     "geo": {"lat": 37.98, "lng": 23.73},
@@ -274,11 +277,19 @@ Required.
 }
 ```
 
+`match_type` defaults to `singles` and `broadcast_type` defaults to `find_opponent`,
+so existing singles clients can continue to omit them. Doubles rules:
+- `broadcast_type=find_fourth` requires `match_type=doubles`.
+- `match_type=doubles` + `broadcast_type=find_opponent` requires `partner_uid`.
+- `match_type=doubles` + `broadcast_type=find_fourth` makes `partner_uid` optional.
+
 ### Behavior
 - Validates `expiresAt` is in the future.
 - Persists `venueRef` for `have_court` broadcasts when supplied.
 - Allows `have_court` broadcasts without `venueRef` for backwards compatibility.
 - Ignores `venueRef` for `need_court` broadcasts.
+- Persists `matchType`, `broadcastType`, `partnerUid` on the broadcast doc.
+- Forces `partnerUid=null` when `matchType=singles` regardless of request.
 - Creates `broadcasts/{id}` doc (status=active, denormalized owner fields).
 - Updates `users/{uid}.playTab`: state → `BROADCAST_ACTIVE`, activeBroadcastId → new ID.
 - Both writes in a single Firestore transaction.
@@ -286,21 +297,24 @@ Required.
 ### Example response (`201`)
 ```json
 {
-  "broadcastId": "broadcast_abc",
+  "broadcast_id": "broadcast_abc",
   "sport": "tennis",
+  "match_type": "singles",
+  "broadcast_type": "find_opponent",
+  "partner_uid": null,
   "availability": "today",
-  "courtStatus": "have_court",
-  "courtLocation": "Central Court, Athens",
+  "court_status": "have_court",
+  "court_location": "Central Court, Athens",
   "status": "active",
-  "expiresAt": "2026-02-03T16:00:00Z",
-  "createdAt": "2026-02-03T08:00:00Z"
+  "expires_at": "2026-02-03T16:00:00Z",
+  "created_at": "2026-02-03T08:00:00Z"
 }
 ```
 
 ### Common error responses
 - `401` missing/invalid token
 - `409` user is not in DISCOVERY state (active broadcast, offer, or match exists)
-- `422` validation error (expiresAt in past, missing required fields)
+- `422` validation error (expiresAt in past, missing required fields, invalid doubles combination)
 
 ---
 
