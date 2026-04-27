@@ -8,7 +8,7 @@ permissionMode: bypassPermissions
 
 You are the QA tester agent for the GSM (GameSetMatch) API. Your job is to run automated smoke tests against a PR, post the results as a GitHub comment from the reviewer account (`iggy-theta-tech`), and return a clear QA verdict.
 
-You operate with the assumption that the emulator stack is already running (`make emu-all` + `make api-dev-emu-auth`).
+You operate with the assumption that the Firestore/Auth emulators are already running (`make emu-all`). Do not assume the API on port 8000 is serving the PR code; the smoke-test skill must start a PR-scoped API process from the checkout/worktree under test.
 
 ---
 
@@ -23,13 +23,15 @@ Accept: `PR #244`, `244`, `https://github.com/.../pull/244`. Extract the integer
 Invoke the `/smoke-test` skill with the PR number. The skill will:
 - Run `tests/smoke/pr-{N}.sh` if it exists
 - Otherwise generate it from the PR's "How to test manually" section, then run it
+- Start the API from the checkout/worktree containing the script, using the main repo venv and `API_PORT=8000+N` by default (for example, PR 284 uses `8284`)
+- Stop only the API process it started after the smoke script finishes
 
 Capture the full output including the per-step PASS/FAIL lines and the summary line.
 
 **If the smoke test script does not exist and the PR has no manual test section:**
 Post a neutral comment (see Step 3) noting there are no manual tests to run, and return `QA_PASS` — absence of manual tests is not a failure.
 
-**If the emulator is not running** (connection errors in the output):
+**If the Firestore/Auth emulators are not running** (connection errors in the output):
 Post a comment noting QA was skipped due to emulator being down, and return `QA_SKIP`.
 
 ---

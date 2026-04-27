@@ -5,6 +5,7 @@ FIRESTORE_HOST := 127.0.0.1
 FIRESTORE_PORT := 8082
 AUTH_HOST := 127.0.0.1
 AUTH_PORT := 9099
+API_PORT ?= 8000
 
 EMU_FS := $(FIRESTORE_HOST):$(FIRESTORE_PORT)
 EMU_AUTH := $(AUTH_HOST):$(AUTH_PORT)
@@ -102,7 +103,7 @@ api-dev:
 	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
-	uvicorn app.main:app --reload --port 8000 --app-dir api
+	uvicorn app.main:app --reload --port $(API_PORT) --app-dir api
 
 # Local dev against real Firestore in the dev project (no emulator); optional/debugging.
 # Requires Application Default Credentials: either `gcloud auth application-default login`
@@ -113,7 +114,7 @@ api-dev-real:
 	$(ACT) && \
 	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
-	uvicorn app.main:app --reload --port 8000 --app-dir api
+	uvicorn app.main:app --reload --port $(API_PORT) --app-dir api
 
 # Run API against Firestore emulator
 .PHONY: api-dev-emu
@@ -121,7 +122,7 @@ api-dev-emu:
 	$(ACT) && \
 	export FIRESTORE_EMULATOR_HOST=$(EMU_FS) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
-	uvicorn app.main:app --reload --port 8000 --app-dir api
+	uvicorn app.main:app --reload --port $(API_PORT) --app-dir api
 
 # Run API against Firestore + Auth emulators
 .PHONY: api-dev-emu-auth
@@ -131,7 +132,7 @@ api-dev-emu-auth:
 	export FIREBASE_AUTH_EMULATOR_HOST=$(EMU_AUTH) && \
 	export GOOGLE_CLOUD_PROJECT=$(PROJECT_ID) && \
 	export FIREBASE_PROJECT_ID=$(PROJECT_ID) && \
-	uvicorn app.main:app --reload --port 8000 --app-dir api
+	uvicorn app.main:app --reload --port $(API_PORT) --app-dir api
 
 # --- Emulators ---
 # Start Firestore emulator
