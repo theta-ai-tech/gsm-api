@@ -555,6 +555,13 @@ class PlayService:
             partner_doc = self.users_repo.get_user_doc(partner_uid)
             if not partner_doc:
                 raise ValueError("Partner user not found")
+            # Validate the broadcaster's stored partner exists too. Without this
+            # check, an offer can be created (moving both users into pending
+            # states) only to fail at accept_offer time when the partner doc
+            # cannot be loaded — leaving everyone stuck. Fail fast here.
+            broadcast_partner_doc = self.users_repo.get_user_doc(source_broadcast.partner_uid)
+            if not broadcast_partner_doc:
+                raise ValueError("Broadcast partner user not found")
 
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=5)  # 5 minute TTL

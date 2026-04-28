@@ -1768,6 +1768,57 @@ class TestDoublesSendOffer:
         with pytest.raises(ValueError, match="Partner user not found"):
             play_service.send_offer("alice", request)
 
+    def test_send_offer_doubles_broadcast_partner_must_exist(
+        self,
+        play_service,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """Doubles offer where the broadcast's stored partner_uid does not
+        exist as a user → ValueError at send_offer time, before any write.
+
+        Without this fail-fast check, both users would be moved into pending
+        states and accept_offer would later fail when looking up the
+        broadcaster's partner.
+        """
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            # sender
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            # recipient (broadcaster)
+            {
+                "name": "Bob",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_doubles",
+                    "pendingIncomingOfferIds": [],
+                },
+            },
+            # challenger's partner (charlie) exists
+            {"name": "Charlie", "rankings": {}},
+            # broadcast partner lookup (ghost_dave) → not found
+            None,
+        ]
+        mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast(
+            partner_uid="ghost_dave",
+        )
+
+        request = SendOfferRequest(
+            to_uid="bob",
+            sport=SportEnum.PADEL,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="charlie",
+            proposed_time=now + timedelta(hours=2),
+            source_broadcast_id="broadcast_doubles",
+        )
+        with pytest.raises(ValueError, match="Broadcast partner user not found"):
+            play_service.send_offer("alice", request)
+
+        # No writes should have happened.
+        assert not mock_firestore_client.transaction.called
+
     def test_send_offer_doubles_rejects_duplicate_uids(
         self,
         play_service,
@@ -1825,6 +1876,8 @@ class TestDoublesSendOffer:
             },
             # partner
             {"name": "Charlie", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            # broadcast partner (dave)
+            {"name": "Dave", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
         ]
         mock_broadcasts_repo.get_by_id.return_value = _doubles_broadcast()
 
