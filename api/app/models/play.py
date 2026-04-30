@@ -90,6 +90,8 @@ class Offer(GsmBaseModel):
     to_name: str
     to_ranking: SportRanking | None = None
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    partner_uid: str | None = None
     proposed_time: datetime
     court_location: str | None = None
     venue_ref: VenueRef | None = None
@@ -99,6 +101,17 @@ class Offer(GsmBaseModel):
     expires_at: datetime
     created_at: datetime
     match_id: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_doubles(self) -> "Offer":
+        # Doubles offers must carry a partner. Singles offers must not.
+        if self.match_type == MatchTypeEnum.DOUBLES and not self.partner_uid:
+            msg = "match_type=doubles requires partner_uid on the offer"
+            raise ValueError(msg)
+        if self.match_type == MatchTypeEnum.SINGLES and self.partner_uid:
+            msg = "match_type=singles offer must not carry a partner_uid"
+            raise ValueError(msg)
+        return self
 
 
 class CreateBroadcastRequest(GsmBaseModel):
@@ -136,11 +149,25 @@ class CreateBroadcastResponse(GsmBaseModel):
 class SendOfferRequest(GsmBaseModel):
     to_uid: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    partner_uid: str | None = None
     proposed_time: datetime
     court_location: str | None = None
     venue_ref: VenueRef | None = None
     source_broadcast_id: str | None = None
     message: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_doubles(self) -> "SendOfferRequest":
+        # Doubles offers always require a partner_uid (you challenge as a team
+        # against a doubles broadcast). Singles offers must not carry one.
+        if self.match_type == MatchTypeEnum.DOUBLES and not self.partner_uid:
+            msg = "match_type=doubles requires partner_uid"
+            raise ValueError(msg)
+        if self.match_type == MatchTypeEnum.SINGLES and self.partner_uid:
+            msg = "match_type=singles offer must not include partner_uid"
+            raise ValueError(msg)
+        return self
 
 
 class SendOfferResponse(GsmBaseModel):
@@ -148,6 +175,8 @@ class SendOfferResponse(GsmBaseModel):
     to_uid: str
     to_name: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    partner_uid: str | None = None
     proposed_time: datetime
     status: OfferStatusEnum
     expires_at: datetime

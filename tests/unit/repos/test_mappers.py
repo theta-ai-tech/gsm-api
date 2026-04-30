@@ -227,6 +227,48 @@ class TestToOffer:
         assert offer.from_name == ""
         assert offer.to_name == ""
 
+    def test_to_offer_legacy_doc_defaults_to_singles(self):
+        """DBL-4: legacy offer doc without matchType/partnerUid → singles."""
+        from app.models.enums import MatchTypeEnum
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "fromUid": "alice",
+            "toUid": "bob",
+            "sport": "tennis",
+            "proposedTime": now + timedelta(hours=2),
+            "status": "pending",
+            "expiresAt": now + timedelta(minutes=5),
+            "createdAt": now,
+        }
+
+        offer = to_offer(doc, offer_id="offer123")
+
+        assert offer.match_type == MatchTypeEnum.SINGLES
+        assert offer.partner_uid is None
+
+    def test_to_offer_doubles_persists_partner_uid(self):
+        """DBL-4: doubles offer doc carries matchType and partnerUid."""
+        from app.models.enums import MatchTypeEnum
+
+        now = datetime.now(timezone.utc)
+        doc = {
+            "fromUid": "alice",
+            "toUid": "bob",
+            "sport": "padel",
+            "matchType": "doubles",
+            "partnerUid": "charlie",
+            "proposedTime": now + timedelta(hours=2),
+            "status": "pending",
+            "expiresAt": now + timedelta(minutes=5),
+            "createdAt": now,
+        }
+
+        offer = to_offer(doc, offer_id="offer_doubles")
+
+        assert offer.match_type == MatchTypeEnum.DOUBLES
+        assert offer.partner_uid == "charlie"
+
 
 class TestParseGeoLocation:
     def test_parse_geo_location_none(self):

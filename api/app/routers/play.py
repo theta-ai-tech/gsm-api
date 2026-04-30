@@ -121,9 +121,24 @@ def send_offer(
     try:
         return play_service.send_offer(current_user.uid, request)
     except ValueError as e:
-        if "not found" in str(e):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+        error_msg = str(e)
+        # 400 — domain validation errors (bad request inputs / mismatches)
+        bad_request_markers = (
+            "does not match",
+            "requires partner_uid",
+            "require a source broadcast",
+            "must all be distinct",
+            "find_fourth broadcasts are not yet supported",
+            "Partner user not found",
+            "Broadcast partner user not found",
+        )
+        if any(marker in error_msg for marker in bad_request_markers):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+        # 404 — entity lookups (sender/recipient missing)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
+        # 409 — state conflicts (already have offer, wrong state, etc.)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
 
 
 # ===== POST /me/offers/{offer_id}/accept =====

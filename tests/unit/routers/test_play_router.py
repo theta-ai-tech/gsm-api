@@ -318,6 +318,50 @@ class TestSendOffer:
 
         assert response.status_code == 409
 
+    def test_send_offer_match_type_mismatch_returns_400(
+        self, client, mock_play_service
+    ):
+        """Domain validation: offer match_type != broadcast match_type → 400"""
+        now = datetime.now(timezone.utc)
+        mock_play_service.send_offer.side_effect = ValueError(
+            "Offer match_type=doubles does not match broadcast match_type=singles"
+        )
+        payload = {
+            "to_uid": "bob",
+            "sport": "tennis",
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
+        }
+        response = client.post("/me/offers", json=payload)
+        assert response.status_code == 400
+
+    def test_send_offer_partner_not_found_returns_400(self, client, mock_play_service):
+        """Domain validation: doubles partner_uid does not exist → 400 (not 404)"""
+        now = datetime.now(timezone.utc)
+        mock_play_service.send_offer.side_effect = ValueError("Partner user not found")
+        payload = {
+            "to_uid": "bob",
+            "sport": "tennis",
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
+        }
+        response = client.post("/me/offers", json=payload)
+        assert response.status_code == 400
+
+    def test_send_offer_doubles_requires_partner_returns_400(
+        self, client, mock_play_service
+    ):
+        """Service-level guard: match_type=doubles without partner_uid → 400"""
+        now = datetime.now(timezone.utc)
+        mock_play_service.send_offer.side_effect = ValueError(
+            "match_type=doubles requires partner_uid"
+        )
+        payload = {
+            "to_uid": "bob",
+            "sport": "tennis",
+            "proposed_time": (now + timedelta(hours=2)).isoformat(),
+        }
+        response = client.post("/me/offers", json=payload)
+        assert response.status_code == 400
+
     def test_send_offer_validation_error(self, client, mock_play_service):
         """Missing toUid - returns 422"""
         now = datetime.now(timezone.utc)

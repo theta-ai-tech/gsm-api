@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
@@ -474,6 +475,8 @@ class PlayService:
         - Sender must be in DISCOVERY or BROADCAST_ACTIVE
         - Sender must not already have an active outgoing offer
         - Recipient must exist
+        - For doubles offers (DBL-4): partner_uid must exist as a user, and
+          the source broadcast (if any) must have match_type=doubles
         """
         # Get sender
         sender_doc = self.users_repo.get_user_doc(from_uid)
@@ -503,6 +506,63 @@ class PlayService:
         if request.source_broadcast_id and request.source_broadcast_id != recipient_broadcast_id:
             raise ValueError("sourceBroadcastId is not the recipient's active broadcast")
 
+        # Doubles validation (DBL-4).
+        # 1. If challenging a broadcast, the offer's match_type must match the
+        #    broadcast's match_type (you can't send a singles challenge to a
+        #    doubles broadcast or vice versa).
+        # 2. If match_type=doubles, partner_uid must reference an existing user
+        #    distinct from sender, recipient, and the recipient's broadcast
+        #    partner (when present).
+        # 3. find_fourth broadcasts are not yet supported by accept_offer; we
+        #    reject the offer up front to keep the surface honest.
+        source_broadcast = (
+            self.broadcasts_repo.get_by_id(request.source_broadcast_id)
+            if request.source_broadcast_id
+            else None
+        )
+        if source_broadcast is not None:
+            if source_broadcast.match_type != request.match_type:
+                msg = (
+                    f"Offer match_type={request.match_type.value} does not match "
+                    f"broadcast match_type={source_broadcast.match_type.value}"
+                )
+                raise ValueError(msg)
+            if request.match_type == MatchTypeEnum.DOUBLES and (
+                source_broadcast.broadcast_type.value == "find_fourth"
+            ):
+                msg = "find_fourth broadcasts are not yet supported for offers"
+                raise ValueError(msg)
+
+        if request.match_type == MatchTypeEnum.DOUBLES:
+            partner_uid = request.partner_uid
+            if not partner_uid:
+                # Defensive: model validator catches this, but keep the service
+                # layer honest in case anyone calls send_offer with a hand-built
+                # request that bypasses the validator.
+                raise ValueError("match_type=doubles requires partner_uid")
+            # Direct doubles challenges (no source broadcast) are not yet
+            # supported — without a broadcast we have no signal of who the
+            # recipient's partner is. Reject up front so we never create an
+            # offer that accept_offer cannot satisfy (which would otherwise
+            # leave both users stuck in pending states).
+            if source_broadcast is None or not source_broadcast.partner_uid:
+                msg = "Doubles offers require a source broadcast carrying the recipient's partner"
+                raise ValueError(msg)
+            distinct = {from_uid, request.to_uid, partner_uid, source_broadcast.partner_uid}
+            if len(distinct) != 4:
+                msg = "Doubles offer participants must all be distinct"
+                raise ValueError(msg)
+            partner_doc = self.users_repo.get_user_doc(partner_uid)
+            if not partner_doc:
+                raise ValueError("Partner user not found")
+            # Validate the broadcaster's stored partner exists too. Without this
+            # check, an offer can be created (moving both users into pending
+            # states) only to fail at accept_offer time when the partner doc
+            # cannot be loaded — leaving everyone stuck. Fail fast here.
+            broadcast_partner_doc = self.users_repo.get_user_doc(source_broadcast.partner_uid)
+            if not broadcast_partner_doc:
+                raise ValueError("Broadcast partner user not found")
+
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=5)  # 5 minute TTL
 
@@ -514,6 +574,13 @@ class PlayService:
         sender_ranking = sender_rankings.get(request.sport.value)
         recipient_ranking = recipient_rankings.get(request.sport.value)
 
+        # Singles offers never persist a partner_uid — even if the request
+        # somehow leaked one past the validator. Mirror DBL-3's defensive
+        # cleanup on the broadcast side.
+        partner_uid = request.partner_uid
+        if request.match_type == MatchTypeEnum.SINGLES:
+            partner_uid = None
+
         # Build offer doc (camelCase)
         offer_data = {
             "fromUid": from_uid,
@@ -523,6 +590,8 @@ class PlayService:
             "toName": recipient_name,
             "toRanking": recipient_ranking,
             "sport": request.sport.value,
+            "matchType": request.match_type.value,
+            "partnerUid": partner_uid,
             "proposedTime": request.proposed_time,
             "courtLocation": request.court_location,
             "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
@@ -578,6 +647,8 @@ class PlayService:
             to_uid=request.to_uid,
             to_name=recipient_name,
             sport=request.sport,
+            match_type=request.match_type,
+            partner_uid=partner_uid,
             proposed_time=request.proposed_time,
             status=OfferStatusEnum.PENDING,
             expires_at=expires_at,
@@ -593,6 +664,11 @@ class PlayService:
         Preconditions:
         - Offer must exist, be pending, and not expired
         - User must be the recipient (toUid)
+
+        Doubles (DBL-4): when ``offer.match_type == doubles``, the new match is
+        built from 4 distinct participants — Team A is the broadcaster + their
+        partner (from the source broadcast), Team B is the challenger + their
+        partner (from the offer). All 4 users transition to MATCH_SCHEDULED.
         """
         offer = self.offers_repo.get_by_id(offer_id)
         if not offer:
@@ -637,32 +713,127 @@ class PlayService:
         recipient_display_name = _short_display_name(recipient_doc.get("name", "") or "")
 
         match_id = f"match_{offer_id}"  # Placeholder
-        match_data = {
-            "sport": offer.sport.value,
-            "status": MatchStatusEnum.SCHEDULED.value,
-            "matchType": MatchTypeEnum.SINGLES.value,
-            "scheduledAt": offer.proposed_time,
-            "participants": [
+
+        # Branch by match_type. Doubles requires 4 distinct UIDs and team
+        # assignments. find_fourth is rejected at acceptance time — its team
+        # assignment is a follow-up (the issue allows scoping to
+        # singles/doubles_team_pair when the alternative would meaningfully
+        # expand scope).
+        if offer.match_type == MatchTypeEnum.DOUBLES:
+            if source_broadcast is not None and (
+                source_broadcast.broadcast_type.value == "find_fourth"
+            ):
+                msg = "find_fourth doubles acceptance is not yet supported"
+                raise ValueError(msg)
+
+            # Team A = broadcaster (recipient) + recipient's partner
+            # Team B = challenger (sender) + sender's partner (from offer)
+            recipient_partner_uid: str | None = None
+            if source_broadcast is not None:
+                recipient_partner_uid = source_broadcast.partner_uid
+            if not recipient_partner_uid:
+                # Direct-challenge case: no source_broadcast carrying the
+                # recipient's partner. Doubles direct challenges are not
+                # supported yet — without a broadcast we have no signal of who
+                # the recipient's partner is.
+                msg = "Doubles offers require a source broadcast carrying the recipient's partner"
+                raise ValueError(msg)
+            sender_partner_uid = offer.partner_uid
+            if not sender_partner_uid:
+                # Should not happen — Offer's model validator enforces this.
+                msg = "Doubles offer is missing partner_uid"
+                raise ValueError(msg)
+
+            uids = [
+                offer.to_uid,  # broadcaster (recipient)
+                recipient_partner_uid,
+                offer.from_uid,  # challenger (sender)
+                sender_partner_uid,
+            ]
+            if len(set(uids)) != 4:
+                raise ValueError("Doubles match requires 4 distinct participants")
+
+            recipient_partner_doc = self.users_repo.get_user_doc(recipient_partner_uid)
+            sender_partner_doc = self.users_repo.get_user_doc(sender_partner_uid)
+            if not recipient_partner_doc or not sender_partner_doc:
+                raise ValueError("Partner user not found")
+
+            recipient_partner_display_name = _short_display_name(
+                recipient_partner_doc.get("name", "") or ""
+            )
+            sender_partner_display_name = _short_display_name(
+                sender_partner_doc.get("name", "") or ""
+            )
+
+            participants: list[dict[str, Any]] = [
+                {
+                    "uid": offer.to_uid,
+                    "team": "A",
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": recipient_display_name,
+                },
+                {
+                    "uid": recipient_partner_uid,
+                    "team": "A",
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": recipient_partner_display_name,
+                },
                 {
                     "uid": offer.from_uid,
-                    "team": None,
+                    "team": "B",
                     "role": ParticipantRoleEnum.PLAYER.value,
                     "displayName": sender_display_name,
                 },
                 {
-                    "uid": offer.to_uid,
-                    "team": None,
+                    "uid": sender_partner_uid,
+                    "team": "B",
                     "role": ParticipantRoleEnum.PLAYER.value,
-                    "displayName": recipient_display_name,
+                    "displayName": sender_partner_display_name,
                 },
-            ],
-            "participantUids": [offer.from_uid, offer.to_uid],
-            "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
-            "resultSubmittedBy": [],
-            "leagueId": None,
-            "courtId": None,
-            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
-        }
+            ]
+            match_data: dict[str, Any] = {
+                "sport": offer.sport.value,
+                "status": MatchStatusEnum.SCHEDULED.value,
+                "matchType": MatchTypeEnum.DOUBLES.value,
+                "scheduledAt": offer.proposed_time,
+                "participants": participants,
+                "participantUids": uids,
+                # participant_pair is meaningless for 4-player matches.
+                "participantPair": None,
+                "resultSubmittedBy": [],
+                "leagueId": None,
+                "courtId": None,
+                "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+            }
+            participant_uids_to_update = uids
+        else:
+            match_data = {
+                "sport": offer.sport.value,
+                "status": MatchStatusEnum.SCHEDULED.value,
+                "matchType": MatchTypeEnum.SINGLES.value,
+                "scheduledAt": offer.proposed_time,
+                "participants": [
+                    {
+                        "uid": offer.from_uid,
+                        "team": None,
+                        "role": ParticipantRoleEnum.PLAYER.value,
+                        "displayName": sender_display_name,
+                    },
+                    {
+                        "uid": offer.to_uid,
+                        "team": None,
+                        "role": ParticipantRoleEnum.PLAYER.value,
+                        "displayName": recipient_display_name,
+                    },
+                ],
+                "participantUids": [offer.from_uid, offer.to_uid],
+                "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
+                "resultSubmittedBy": [],
+                "leagueId": None,
+                "courtId": None,
+                "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+            }
+            participant_uids_to_update = [offer.from_uid, offer.to_uid]
 
         # Transactional write
         transaction = self.client.transaction()
@@ -689,33 +860,21 @@ class PlayService:
                     other_offer_ref = self.client.collection("offers").document(other_offer_id)
                     txn.update(other_offer_ref, {"status": "declined"})
 
-            # Update recipient playTab
-            recipient_ref = self.client.collection("users").document(uid)
-            txn.update(
-                recipient_ref,
-                {
-                    "playTab.state": "MATCH_SCHEDULED",
-                    "playTab.activeMatchId": match_id,
-                    "playTab.activeBroadcastId": None,
-                    "playTab.activeOutgoingOfferId": None,
-                    "playTab.pendingIncomingOfferIds": [],
-                    "playTab.updatedAt": now,
-                },
-            )
-
-            # Update sender playTab
-            sender_ref = self.client.collection("users").document(offer.from_uid)
-            txn.update(
-                sender_ref,
-                {
-                    "playTab.state": "MATCH_SCHEDULED",
-                    "playTab.activeMatchId": match_id,
-                    "playTab.activeBroadcastId": None,
-                    "playTab.activeOutgoingOfferId": None,
-                    "playTab.pendingIncomingOfferIds": [],
-                    "playTab.updatedAt": now,
-                },
-            )
+            # Update playTab for every participant. For singles this is the
+            # sender + recipient; for doubles it's all 4 players (DBL-4).
+            for participant_uid in participant_uids_to_update:
+                participant_ref = self.client.collection("users").document(participant_uid)
+                txn.update(
+                    participant_ref,
+                    {
+                        "playTab.state": "MATCH_SCHEDULED",
+                        "playTab.activeMatchId": match_id,
+                        "playTab.activeBroadcastId": None,
+                        "playTab.activeOutgoingOfferId": None,
+                        "playTab.pendingIncomingOfferIds": [],
+                        "playTab.updatedAt": now,
+                    },
+                )
 
         accept_offer_txn(transaction)
 

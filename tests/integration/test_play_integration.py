@@ -297,6 +297,137 @@ class TestDoublesBroadcastFields:
         assert state.payload["partner_uid"] is None
 
 
+# ===== Test: Doubles Offer + Acceptance Flow (DBL-4) =====
+
+
+class TestDoublesOfferAcceptanceFlow:
+    def test_doubles_offer_creates_4_participant_match(self, db):
+        """End-to-end: Bob (broadcaster) + Dave vs Alice (challenger) + Charlie.
+
+        Bob broadcasts a doubles + find_opponent broadcast with Dave as
+        partner. Alice sends a doubles offer with Charlie as partner. Bob
+        accepts → 4-participant match created, all 4 users → MATCH_SCHEDULED.
+        """
+        bob_uid = "bob_doubles_4p"
+        alice_uid = "alice_doubles_4p"
+        dave_uid = "dave_doubles_4p"
+        charlie_uid = "charlie_doubles_4p"
+        seed_discovery_user(db, bob_uid, "Bob Smith")
+        seed_discovery_user(db, alice_uid, "Alice King")
+        seed_discovery_user(db, dave_uid, "Dave Knight")
+        seed_discovery_user(db, charlie_uid, "Charlie Owen")
+
+        service = make_play_service(db)
+
+        # Bob broadcasts doubles + find_opponent with Dave as partner.
+        broadcast_resp = service.create_broadcast(
+            bob_uid,
+            CreateBroadcastRequest(
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+                partner_uid=dave_uid,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            ),
+        )
+
+        # Alice sends a doubles offer with Charlie as her partner.
+        offer_resp = service.send_offer(
+            alice_uid,
+            SendOfferRequest(
+                to_uid=bob_uid,
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                partner_uid=charlie_uid,
+                proposed_time=datetime.now(timezone.utc) + timedelta(hours=2),
+                source_broadcast_id=broadcast_resp.broadcast_id,
+                message="Doubles?",
+            ),
+        )
+
+        # Offer doc carries the doubles fields.
+        offer_doc = (
+            db.collection("offers").document(offer_resp.offer_id).get().to_dict()
+        )
+        assert offer_doc["matchType"] == "doubles"
+        assert offer_doc["partnerUid"] == charlie_uid
+
+        # Bob accepts.
+        accept_resp = service.accept_offer(bob_uid, offer_resp.offer_id)
+        match_id = accept_resp.match_id
+        assert match_id
+
+        # Match doc has 4 participants with team A / team B.
+        match_doc = db.collection("matches").document(match_id).get().to_dict()
+        assert match_doc["matchType"] == "doubles"
+        participants = match_doc["participants"]
+        assert len(participants) == 4
+        by_uid = {p["uid"]: p for p in participants}
+        assert by_uid[bob_uid]["team"] == "A"
+        assert by_uid[dave_uid]["team"] == "A"
+        assert by_uid[alice_uid]["team"] == "B"
+        assert by_uid[charlie_uid]["team"] == "B"
+        # Cached short display names persisted.
+        assert by_uid[bob_uid]["displayName"] == "Bob S."
+        assert by_uid[alice_uid]["displayName"] == "Alice K."
+        assert by_uid[dave_uid]["displayName"] == "Dave K."
+        assert by_uid[charlie_uid]["displayName"] == "Charlie O."
+
+        # All 4 users transitioned to MATCH_SCHEDULED with the new match id.
+        for uid in (bob_uid, alice_uid, dave_uid, charlie_uid):
+            tab = get_play_tab(db, uid)
+            assert tab["state"] == "MATCH_SCHEDULED", f"{uid} not MATCH_SCHEDULED"
+            assert tab["activeMatchId"] == match_id
+
+        # Broadcast doc is matched.
+        bc = (
+            db.collection("broadcasts")
+            .document(broadcast_resp.broadcast_id)
+            .get()
+            .to_dict()
+        )
+        assert bc["status"] == "matched"
+
+    def test_doubles_offer_rejected_when_match_type_mismatches_broadcast(self, db):
+        """Singles offer against a doubles broadcast → ValueError."""
+        bob_uid = "bob_dbl_mismatch"
+        alice_uid = "alice_dbl_mismatch"
+        dave_uid = "dave_dbl_mismatch"
+        seed_discovery_user(db, bob_uid, "Bob")
+        seed_discovery_user(db, alice_uid, "Alice")
+        seed_discovery_user(db, dave_uid, "Dave")
+
+        service = make_play_service(db)
+        broadcast_resp = service.create_broadcast(
+            bob_uid,
+            CreateBroadcastRequest(
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+                partner_uid=dave_uid,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            ),
+        )
+
+        with pytest.raises(ValueError, match="does not match broadcast match_type"):
+            service.send_offer(
+                alice_uid,
+                SendOfferRequest(
+                    to_uid=bob_uid,
+                    sport=SportEnum.PADEL,
+                    match_type=MatchTypeEnum.SINGLES,
+                    proposed_time=datetime.now(timezone.utc) + timedelta(hours=2),
+                    source_broadcast_id=broadcast_resp.broadcast_id,
+                ),
+            )
+
+
 # ===== Test: Direct Challenge Flow =====
 
 
