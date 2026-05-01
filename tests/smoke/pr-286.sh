@@ -51,6 +51,79 @@ firestore_delete() {
   curl -s -X DELETE "$FIRESTORE/$path" > /dev/null
 }
 
+firestore_put_user() {
+  # Seed (or reset) a user doc with the playTab map the service needs to update.
+  # The verify-score txn does dot-path updates on playTab.state/activeMatchId/
+  # updatedAt; without a pre-existing doc Firestore returns 404 "no entity to
+  # update" and the request 500s. Includes a tennis ranking so the singles
+  # scoring path (used elsewhere in the legacy regression) does not blow up.
+  local uid="$1"
+  local name="$2"
+  curl -s -X PATCH "$FIRESTORE/users/$uid" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"fields\": {
+        \"uid\": {\"stringValue\": \"$uid\"},
+        \"name\": {\"stringValue\": \"$name\"},
+        \"email\": {\"stringValue\": \"$uid@gsm.local\"},
+        \"playTab\": {\"mapValue\": {\"fields\": {
+          \"state\": {\"stringValue\": \"DISCOVERY\"},
+          \"activeBroadcastId\": {\"nullValue\": null},
+          \"activeOutgoingOfferId\": {\"nullValue\": null},
+          \"activeMatchId\": {\"nullValue\": null},
+          \"pendingIncomingOfferIds\": {\"arrayValue\": {\"values\": []}}
+        }}},
+        \"rankings\": {\"mapValue\": {\"fields\": {
+          \"tennis\": {\"mapValue\": {\"fields\": {
+            \"pts\": {\"integerValue\": \"1000\"},
+            \"tier\": {\"stringValue\": \"AMATEUR\"}
+          }}}
+        }}}
+      }
+    }" > /dev/null
+}
+
+firestore_put_singles_match() {
+  # Seed a scheduled singles tennis match between Alice and Iggy. The smoke's
+  # singles regression (winner_team rejected on a singles match) needs the
+  # match to exist in SCHEDULED status so the request gets past the
+  # not-found check and reaches the doubles/singles guard.
+  curl -s -X PATCH "$FIRESTORE/matches/$SINGLES_MATCH_ID" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "fields": {
+        "sport": {"stringValue": "tennis"},
+        "status": {"stringValue": "scheduled"},
+        "matchType": {"stringValue": "singles"},
+        "participantUids": {"arrayValue": {"values": [
+          {"stringValue": "user_alice"},
+          {"stringValue": "user_ignatios"}
+        ]}},
+        "participants": {"arrayValue": {"values": [
+          {"mapValue": {"fields": {
+            "uid": {"stringValue": "user_alice"},
+            "role": {"stringValue": "player"},
+            "displayName": {"stringValue": "Alice"}
+          }}},
+          {"mapValue": {"fields": {
+            "uid": {"stringValue": "user_ignatios"},
+            "role": {"stringValue": "player"},
+            "displayName": {"stringValue": "Ignatios"}
+          }}}
+        ]}},
+        "resultSubmittedBy": {"arrayValue": {}},
+        "resultByUser": {"mapValue": {}}
+      }
+    }' > /dev/null
+}
+
+seed_users() {
+  firestore_put_user "user_alice"    "Alice Test"
+  firestore_put_user "user_ignatios" "Ignatios Test"
+  firestore_put_user "user_bob"      "Bob Test"
+  firestore_put_user "user_charlie"  "Charlie Test"
+}
+
 firestore_put_match() {
   # Seed the doubles match document used across tests.
   curl -s -X PATCH "$FIRESTORE/matches/$MATCH_ID" \
@@ -101,6 +174,10 @@ firestore_put_match() {
 reset_match() {
   firestore_delete "matches/$MATCH_ID"
   firestore_put_match
+  # Reset playTab on all 4 doubles participants so /me/state starts at DISCOVERY
+  # before each scenario, otherwise a previous scenario's POST_MATCH_* state
+  # leaks into subsequent assertions.
+  seed_users
   sleep 0.2
 }
 
@@ -114,6 +191,14 @@ if [ -z "$TOKEN_ALICE" ] || [ -z "$TOKEN_IGGY" ] || [ -z "$TOKEN_BOB" ] || [ -z 
   echo "ERROR: Could not get auth tokens for all 4 seeded users. Is the auth emulator running and seeded?"
   exit 1
 fi
+
+# Self-seed Firestore. We do not rely on `make seed-emu` having been run —
+# the smoke must be hermetic. We need:
+#   - users/{uid} for all 4 doubles participants (the verify-score txn updates
+#     playTab dot-paths, which 404 if the doc doesn't exist)
+#   - matches/$SINGLES_MATCH_ID for the doubles-vs-singles validation guard
+seed_users
+firestore_put_singles_match
 
 # ── Tests ───────────────────────────────────────────────────────────────────
 
@@ -218,6 +303,7 @@ fi
 
 # ── Teardown ────────────────────────────────────────────────────────────────
 firestore_delete "matches/$MATCH_ID"
+firestore_delete "matches/$SINGLES_MATCH_ID"
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo ""
