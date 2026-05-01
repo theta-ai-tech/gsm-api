@@ -15,9 +15,32 @@ from app.models.enums import (
 
 
 class VerifyScoreRequest(GsmBaseModel):
-    winner_uid: str
+    """Score-submission payload for ``POST /matches/{id}/verify-score``.
+
+    For singles matches the caller must supply ``winner_uid`` (legacy shape).
+    For doubles matches (DBL-5) the caller supplies ``winner_team`` instead —
+    ``'A'`` or ``'B'`` — since the winning side has 2 UIDs. Exactly one of
+    the two fields must be set; the service layer enforces that the value
+    matches the underlying match type.
+    """
+
+    winner_uid: str | None = None
+    winner_team: str | None = None
     score: MatchScore | None = None
     walkover: bool = False
+
+    @model_validator(mode="after")
+    def _validate_winner_target(self) -> "VerifyScoreRequest":
+        if self.winner_uid is None and self.winner_team is None:
+            msg = "exactly one of winner_uid or winner_team must be provided"
+            raise ValueError(msg)
+        if self.winner_uid is not None and self.winner_team is not None:
+            msg = "provide either winner_uid (singles) or winner_team (doubles), not both"
+            raise ValueError(msg)
+        if self.winner_team is not None and self.winner_team not in {"A", "B"}:
+            msg = "winner_team must be 'A' or 'B'"
+            raise ValueError(msg)
+        return self
 
 
 class ScoringBreakdown(GsmBaseModel):
@@ -39,14 +62,24 @@ class ScoringPayload(GsmBaseModel):
 
 
 class VerifyScoreResponse(GsmBaseModel):
+    """Response for ``POST /matches/{id}/verify-score``.
+
+    For doubles (DBL-5), ``winner_uid`` / ``loser_uid`` are empty strings and
+    ``winner_team`` / ``loser_team`` carry the side labels instead. Singles
+    responses keep the legacy shape (winner_uid / loser_uid populated,
+    winner_team / loser_team None).
+    """
+
     match_id: str
     status: MatchStatusEnum
-    winner_uid: str
-    loser_uid: str
-    winner_delta: int
-    loser_delta: int
-    winner_new_pts: int
-    loser_new_pts: int
+    winner_uid: str = ""
+    loser_uid: str = ""
+    winner_team: str | None = None
+    loser_team: str | None = None
+    winner_delta: int = 0
+    loser_delta: int = 0
+    winner_new_pts: int = 0
+    loser_new_pts: int = 0
     scoring: ScoringPayload | None = None
 
 

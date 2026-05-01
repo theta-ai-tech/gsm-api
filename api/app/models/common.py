@@ -124,11 +124,26 @@ class SetScore(GsmBaseModel):
 
 
 class MatchScore(GsmBaseModel):
-    """Structured score; free-text like '6-4 6-3' can be derived from this."""
+    """Structured score; free-text like '6-4 6-3' can be derived from this.
+
+    For singles, ``winner_uid`` identifies the winning player. For doubles
+    (DBL-5) ``winner_team`` is set to ``'A'`` or ``'B'`` instead, since there
+    is no single winning UID. Exactly one of the two should be populated for
+    a fully-resolved score; older singles documents that only carry
+    ``winner_uid`` continue to round-trip unchanged.
+    """
 
     sets: list[SetScore]
     winner_uid: str | None = None
+    winner_team: str | None = None
     retired: bool = False
+
+    @model_validator(mode="after")
+    def _validate_winner_team(self) -> "MatchScore":
+        if self.winner_team is not None and self.winner_team not in {"A", "B"}:
+            msg = "winner_team must be 'A', 'B', or None"
+            raise ValueError(msg)
+        return self
 
 
 class LeagueSummary(GsmBaseModel):

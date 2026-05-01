@@ -309,7 +309,10 @@ def _parse_score(score: dict[str, Any]) -> Optional[MatchScore]:
         for item in sets_raw
     ]
     return MatchScore(
-        sets=sets, winner_uid=score.get("winnerUid"), retired=score.get("retired", False)
+        sets=sets,
+        winner_uid=score.get("winnerUid"),
+        winner_team=score.get("winnerTeam"),
+        retired=score.get("retired", False),
     )
 
 
