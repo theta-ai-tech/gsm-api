@@ -32,6 +32,8 @@ from app.models.common import MatchScore
 from app.models.enums import (
     MatchResultEnum,
     MatchStatusEnum,
+    MatchTypeEnum,
+    PlayTabStateEnum,
     PointHistoryReasonEnum,
     TierEnum,
     TickerEventTypeEnum,
@@ -86,7 +88,17 @@ def _format_short_name(full_name: str) -> str:
     return parts[0] if parts else ""
 
 
-def _score_to_doc(score: MatchScore, winner_uid: str) -> dict[str, Any]:
+def _score_to_doc(
+    score: MatchScore,
+    winner_uid: str | None,
+    winner_team: str | None = None,
+) -> dict[str, Any]:
+    """Serialize a ``MatchScore`` into Firestore camelCase form.
+
+    For singles, ``winner_uid`` is set and ``winner_team`` is ``None``. For
+    doubles (DBL-5) the inverse is true. Both fields are always present in
+    the document so consumers don't have to guess which shape to expect.
+    """
     return {
         "sets": [
             {
@@ -97,6 +109,7 @@ def _score_to_doc(score: MatchScore, winner_uid: str) -> dict[str, Any]:
             for s in score.sets
         ],
         "winnerUid": winner_uid,
+        "winnerTeam": winner_team,
         "retired": score.retired,
     }
 
@@ -134,7 +147,14 @@ class MatchConfirmationService:
         match_id: str,
         request: VerifyScoreRequest,
     ) -> VerifyScoreResponse:
-        """Submit or confirm a match result, running inline scoring on confirmation."""
+        """Submit or confirm a match result, running inline scoring on confirmation.
+
+        For singles the legacy ``winner_uid`` payload is used and inline
+        scoring runs on confirmation. For doubles (DBL-5) the request must
+        carry ``winner_team`` (``'A'`` or ``'B'``); confirmation must come
+        from a player on the *opposing* team and there is no inline scoring
+        — the match simply transitions to COMPLETED for all 4 participants.
+        """
         match = self.matches_repo.get_by_id(match_id)
         if match is None:
             raise ValueError(f"Match {match_id} not found")
@@ -145,15 +165,218 @@ class MatchConfirmationService:
         if match.status not in (MatchStatusEnum.SCHEDULED, MatchStatusEnum.PENDING_CONFIRMATION):
             raise ValueError(f"Cannot submit result for a match with status '{match.status}'")
 
+        now = datetime.now(timezone.utc)
+
+        if match.match_type == MatchTypeEnum.DOUBLES:
+            return self._verify_score_doubles(uid, match_id, match, request, now)
+
+        # Singles (legacy path)
+        if request.winner_team is not None:
+            raise ValueError("winner_team is only valid for doubles matches; use winner_uid")
+        if request.winner_uid is None:
+            raise ValueError("winner_uid is required for singles matches")
         if request.winner_uid not in match.participant_uids:
             raise ValueError("winner_uid is not a participant in this match")
-
-        now = datetime.now(timezone.utc)
 
         if match.status == MatchStatusEnum.SCHEDULED:
             return self._first_submission(uid, match_id, match, request, now)
         else:
             return self._second_submission(uid, match_id, match, request, now)
+
+    # -------------------------------------------------------------------------
+    # Doubles (DBL-5)
+    # -------------------------------------------------------------------------
+
+    def _verify_score_doubles(
+        self,
+        uid: str,
+        match_id: str,
+        match: Match,
+        request: VerifyScoreRequest,
+        now: datetime,
+    ) -> VerifyScoreResponse:
+        if request.winner_uid is not None:
+            raise ValueError("winner_uid is not valid for doubles matches; use winner_team")
+        if request.winner_team is None:
+            raise ValueError("winner_team is required for doubles matches")
+        if request.winner_team not in {"A", "B"}:
+            raise ValueError("winner_team must be 'A' or 'B'")
+
+        # Build {uid -> team} from the participants array. The match
+        # validator (DBL-2) already guarantees doubles matches carry exactly
+        # 4 participants split 2/2 across teams A and B.
+        team_by_uid = {p.uid: p.team for p in match.participants}
+        submitter_team = team_by_uid.get(uid)
+        if submitter_team not in {"A", "B"}:
+            # Defensive: a participant in a doubles match must have a team
+            # label. If the document predates DBL-2 and this is missing we
+            # cannot safely route the confirmation — bail out.
+            raise ValueError("Doubles participant is missing a team label")
+
+        if match.status == MatchStatusEnum.SCHEDULED:
+            return self._first_submission_doubles(
+                uid, match_id, match, request, submitter_team, team_by_uid, now
+            )
+        return self._second_submission_doubles(
+            uid, match_id, match, request, submitter_team, team_by_uid, now
+        )
+
+    def _first_submission_doubles(
+        self,
+        uid: str,
+        match_id: str,
+        match: Match,
+        request: VerifyScoreRequest,
+        submitter_team: str,
+        team_by_uid: dict[str, str | None],
+        now: datetime,
+    ) -> VerifyScoreResponse:
+        winner_team = request.winner_team
+        assert winner_team is not None  # narrowed for mypy
+        loser_team = "B" if winner_team == "A" else "A"
+        # Per-player resultByUser map so /me/state can render win/loss for
+        # any participant without needing to recompute team membership.
+        result_by_user = {
+            p_uid: (MatchResultEnum.WIN if t == winner_team else MatchResultEnum.LOSS)
+            for p_uid, t in team_by_uid.items()
+        }
+
+        match_ref = self.client.collection("matches").document(match_id)
+        score_doc = _score_to_doc(request.score, None, winner_team) if request.score else None
+
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _txn(txn: firestore.Transaction) -> None:
+            updates: dict[str, Any] = {
+                "status": MatchStatusEnum.PENDING_CONFIRMATION,
+                "resultByUser": result_by_user,
+                "resultSubmittedBy": firestore.ArrayUnion([uid]),
+            }
+            if score_doc is not None:
+                updates["score"] = score_doc
+            txn.update(match_ref, updates)
+
+            # Update playTab.state for all 4 participants:
+            #  - submitter → POST_MATCH_WAITING_OPPONENT
+            #  - other 3   → POST_MATCH_CONFIRM_REQUIRED
+            for p_uid in team_by_uid:
+                user_ref = self.client.collection("users").document(p_uid)
+                state = (
+                    PlayTabStateEnum.POST_MATCH_WAITING_OPPONENT.value
+                    if p_uid == uid
+                    else PlayTabStateEnum.POST_MATCH_CONFIRM_REQUIRED.value
+                )
+                txn.update(
+                    user_ref,
+                    {
+                        "playTab.state": state,
+                        "playTab.activeMatchId": match_id,
+                        "playTab.updatedAt": now,
+                    },
+                )
+
+        _txn(transaction)
+
+        return VerifyScoreResponse(
+            match_id=match_id,
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            winner_uid="",
+            loser_uid="",
+            winner_team=winner_team,
+            loser_team=loser_team,
+        )
+
+    def _second_submission_doubles(
+        self,
+        uid: str,
+        match_id: str,
+        match: Match,
+        request: VerifyScoreRequest,
+        submitter_team: str,
+        team_by_uid: dict[str, str | None],
+        now: datetime,
+    ) -> VerifyScoreResponse:
+        winner_team = request.winner_team
+        assert winner_team is not None
+        loser_team = "B" if winner_team == "A" else "A"
+
+        # Identify the original submitter from resultSubmittedBy. If for any
+        # reason it's empty (legacy doc) we treat the call as a first
+        # submission instead so the confirmer's vote at least gets recorded.
+        original_submitter = match.result_submitted_by[0] if match.result_submitted_by else None
+        original_submitter_team = (
+            team_by_uid.get(original_submitter) if original_submitter else None
+        )
+        if original_submitter is not None and submitter_team == original_submitter_team:
+            # Same-team confirmation is not allowed — the issue requires the
+            # confirmation to come from a player on the OPPOSING team. We
+            # surface this as a 409 (the router maps ValueError → 409).
+            raise ValueError("Confirmation must come from a player on the opposing team")
+
+        stored_winner_team = match.score.winner_team if match.score else None
+        is_dispute = stored_winner_team is not None and stored_winner_team != winner_team
+
+        match_ref = self.client.collection("matches").document(match_id)
+
+        if is_dispute:
+            new_status = MatchStatusEnum.DISPUTED
+            new_play_tab_state = PlayTabStateEnum.MATCH_DISPUTED.value
+        else:
+            new_status = MatchStatusEnum.COMPLETED
+            new_play_tab_state = PlayTabStateEnum.DISCOVERY.value
+
+        result_by_user = {
+            p_uid: (MatchResultEnum.WIN if t == winner_team else MatchResultEnum.LOSS)
+            for p_uid, t in team_by_uid.items()
+        }
+
+        # Effective score: prefer request.score, fall back to stored score.
+        # The score doc carries winner_team for doubles.
+        effective_score = request.score or match.score
+        score_doc = (
+            _score_to_doc(effective_score, None, winner_team)
+            if effective_score is not None
+            else None
+        )
+
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _txn(txn: firestore.Transaction) -> None:
+            updates: dict[str, Any] = {
+                "status": new_status,
+                "resultSubmittedBy": firestore.ArrayUnion([uid]),
+            }
+            if not is_dispute:
+                updates["finishedAt"] = now
+                updates["resultByUser"] = result_by_user
+                if score_doc is not None:
+                    updates["score"] = score_doc
+            txn.update(match_ref, updates)
+
+            for p_uid in team_by_uid:
+                user_ref = self.client.collection("users").document(p_uid)
+                user_updates: dict[str, Any] = {
+                    "playTab.state": new_play_tab_state,
+                    "playTab.updatedAt": now,
+                }
+                if not is_dispute:
+                    # Match is fully resolved — drop the activeMatchId so
+                    # players go back to DISCOVERY.
+                    user_updates["playTab.activeMatchId"] = None
+                txn.update(user_ref, user_updates)
+
+        _txn(transaction)
+
+        return VerifyScoreResponse(
+            match_id=match_id,
+            status=new_status,
+            winner_uid="",
+            loser_uid="",
+            winner_team=winner_team,
+            loser_team=loser_team,
+        )
 
     # -------------------------------------------------------------------------
     # First submission: scheduled → pending_confirmation
@@ -167,7 +390,9 @@ class MatchConfirmationService:
         request: VerifyScoreRequest,
         now: datetime,
     ) -> VerifyScoreResponse:
-        winner_uid = request.winner_uid
+        # ``verify_score`` guards ensure winner_uid is set on the singles path.
+        assert request.winner_uid is not None
+        winner_uid: str = request.winner_uid
         loser_uid = next(p for p in match.participant_uids if p != winner_uid)
         caller_result = MatchResultEnum.WIN if uid == winner_uid else MatchResultEnum.LOSS
 
@@ -188,6 +413,9 @@ class MatchConfirmationService:
             txn.update(match_ref, updates)
 
         _txn(transaction)
+        # NOTE: singles play-tab state transitions on first submission are
+        # intentionally left unchanged to preserve the legacy contract — the
+        # POST_MATCH_* states are wired up only for doubles in DBL-5.
 
         return VerifyScoreResponse(
             match_id=match_id,
@@ -212,7 +440,8 @@ class MatchConfirmationService:
         request: VerifyScoreRequest,
         now: datetime,
     ) -> VerifyScoreResponse:
-        winner_uid = request.winner_uid
+        assert request.winner_uid is not None
+        winner_uid: str = request.winner_uid
         loser_uid = next(p for p in match.participant_uids if p != winner_uid)
 
         stored_winner_uid = match.score.winner_uid if match.score else None
