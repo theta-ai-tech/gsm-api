@@ -242,7 +242,20 @@ class MatchConfirmationService:
         }
 
         match_ref = self.client.collection("matches").document(match_id)
-        score_doc = _score_to_doc(request.score, None, winner_team) if request.score else None
+        # Always persist the winner_team on first submission, even when the
+        # caller did not provide a score payload. Without this, a later
+        # opposing-team submission would have no stored winner_team to
+        # compare against and a genuine disagreement would be silently
+        # accepted as a confirmation instead of routed to MATCH_DISPUTED.
+        if request.score is not None:
+            score_doc: dict[str, Any] = _score_to_doc(request.score, None, winner_team)
+        else:
+            score_doc = {
+                "sets": [],
+                "winnerUid": None,
+                "winnerTeam": winner_team,
+                "retired": False,
+            }
 
         transaction = self.client.transaction()
 
@@ -252,9 +265,8 @@ class MatchConfirmationService:
                 "status": MatchStatusEnum.PENDING_CONFIRMATION,
                 "resultByUser": result_by_user,
                 "resultSubmittedBy": firestore.ArrayUnion([uid]),
+                "score": score_doc,
             }
-            if score_doc is not None:
-                updates["score"] = score_doc
             txn.update(match_ref, updates)
 
             # Update playTab.state for all 4 participants:

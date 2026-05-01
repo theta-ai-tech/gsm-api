@@ -198,6 +198,23 @@ class TestDoublesFirstSubmission:
             == PlayTabStateEnum.POST_MATCH_WAITING_OPPONENT.value
         )
 
+    def test_first_submission_without_score_persists_winner_team(self):
+        # Regression: a scoreless first submission must still persist
+        # winner_team on the match document so a later opposing-team call
+        # can detect a dispute. Without this the dispute path silently
+        # collapses into a confirmation.
+        service, mock_client, _refs = _make_service(_doubles_match())
+        _run(service, A1, VerifyScoreRequest(winner_team="A"))
+        txn = mock_client.transaction()
+        match_ref = mock_client.collection("matches").document(MATCH_ID)
+        match_calls = [c for c in txn.update.call_args_list if c.args[0] == match_ref]
+        assert match_calls
+        updates = match_calls[0].args[1]
+        assert "score" in updates
+        assert updates["score"]["winnerTeam"] == "A"
+        assert updates["score"]["winnerUid"] is None
+        assert updates["score"]["sets"] == []
+
     def test_other_three_play_tabs_transition_to_confirm_required(self):
         service, mock_client, _refs = _make_service(_doubles_match())
         _run(service, A1, VerifyScoreRequest(winner_team="A", score=_make_score("A")))
