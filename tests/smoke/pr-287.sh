@@ -181,7 +181,35 @@ firestore_put_singles_match() {
     }' > /dev/null
 }
 
+seed_config() {
+  # Seed config/tiers and config/regions using the canonical TIER_CONFIG /
+  # REGION_MAPPING from tools/seed_data so tier-aware scoring + ticker emission
+  # work. Without this, the first scoring call raises
+  # "Tier config not found in Firestore (config/tiers)" → 404.
+  # shellcheck disable=SC2155
+  local PY="$VENV_DIR/bin/python"
+  if [ ! -x "$PY" ]; then
+    PY="python3"
+  fi
+  FIRESTORE_EMULATOR_HOST="${FIRESTORE_EMULATOR_HOST:-127.0.0.1:8082}" \
+  GOOGLE_CLOUD_PROJECT="$PROJECT" \
+  PYTHONPATH="$REPO_ROOT/api:$REPO_ROOT" \
+  "$PY" - <<'PY' >/dev/null 2>&1 || true
+from google.cloud import firestore
+from tools.seed_data import REGION_MAPPING, TIER_CONFIG
+from tools.seed_mapping import (
+    region_config_to_firestore_doc,
+    tier_config_to_firestore_doc,
+)
+
+client = firestore.Client()
+client.collection("config").document("tiers").set(tier_config_to_firestore_doc(TIER_CONFIG))
+client.collection("config").document("regions").set(region_config_to_firestore_doc(REGION_MAPPING))
+PY
+}
+
 seed_all() {
+  seed_config
   # Seed users with distinct pts so we can verify avg-opponent computation.
   # Team A: Alice=1000, Ignatios=1100 → avg=1050
   # Team B: Bob=1050,  Charlie=1200  → avg=1125

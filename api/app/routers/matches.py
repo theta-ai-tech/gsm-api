@@ -73,6 +73,11 @@ def verify_score(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
         msg = str(e)
-        if "not found" in msg:
+        # Match-not-found maps to 404; other ValueErrors (validation/state
+        # errors) are 409. Misconfigured server state (e.g. missing tier
+        # config) bubbles up as 500 so it isn't mistaken for a missing match.
+        if msg.startswith(f"Match {match_id} not found"):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=msg)
+        if "Tier config not found" in msg:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=msg)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=msg)
