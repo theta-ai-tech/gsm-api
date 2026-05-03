@@ -329,65 +329,435 @@ class MatchConfirmationService:
         stored_winner_team = match.score.winner_team if match.score else None
         is_dispute = stored_winner_team is not None and stored_winner_team != winner_team
 
-        match_ref = self.client.collection("matches").document(match_id)
-
         if is_dispute:
-            new_status = MatchStatusEnum.DISPUTED
-            new_play_tab_state = PlayTabStateEnum.MATCH_DISPUTED.value
-        else:
-            new_status = MatchStatusEnum.COMPLETED
-            new_play_tab_state = PlayTabStateEnum.DISCOVERY.value
+            return self._dispute_doubles(
+                uid, match_id, match, winner_team, loser_team, team_by_uid, now
+            )
+
+        return self._complete_with_scoring_doubles(
+            uid,
+            match_id,
+            match,
+            request,
+            winner_team,
+            loser_team,
+            team_by_uid,
+            now,
+        )
+
+    def _dispute_doubles(
+        self,
+        uid: str,
+        match_id: str,
+        match: Match,
+        winner_team: str,
+        loser_team: str,
+        team_by_uid: dict[str, str | None],
+        now: datetime,
+    ) -> VerifyScoreResponse:
+        del match  # unused; kept for parity with completion path
+        match_ref = self.client.collection("matches").document(match_id)
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _txn(txn: firestore.Transaction) -> None:
+            txn.update(
+                match_ref,
+                {
+                    "status": MatchStatusEnum.DISPUTED,
+                    "resultSubmittedBy": firestore.ArrayUnion([uid]),
+                },
+            )
+            for p_uid in team_by_uid:
+                user_ref = self.client.collection("users").document(p_uid)
+                txn.update(
+                    user_ref,
+                    {
+                        "playTab.state": PlayTabStateEnum.MATCH_DISPUTED.value,
+                        "playTab.updatedAt": now,
+                    },
+                )
+
+        _txn(transaction)
+
+        return VerifyScoreResponse(
+            match_id=match_id,
+            status=MatchStatusEnum.DISPUTED,
+            winner_uid="",
+            loser_uid="",
+            winner_team=winner_team,
+            loser_team=loser_team,
+        )
+
+    def _complete_with_scoring_doubles(
+        self,
+        uid: str,
+        match_id: str,
+        match: Match,
+        request: VerifyScoreRequest,
+        winner_team: str,
+        loser_team: str,
+        team_by_uid: dict[str, str | None],
+        now: datetime,
+    ) -> VerifyScoreResponse:
+        """Doubles equivalent of ``_complete_with_scoring``.
+
+        Scoring is computed per-player by treating the *opposing pair* as a
+        single notional opponent: each player is scored against the average
+        pts of the two opponents. We do this with 4 calls to
+        ``compute_match_scoring`` (one per player) so that per-player tier
+        comparisons (and the upset bonus they unlock) still work without
+        having to invent a "team tier".
+
+        Tier args use the player's own tier and the highest-tier opponent's
+        tier — this matches the singles semantics where the upset bonus is
+        triggered by tier diff against the actual opponent, not an averaged
+        proxy.
+        """
+        tier_config = self.tier_config_repo.get()
+        sport = match.sport
+        sport_value = sport.value
+        match_ref = self.client.collection("matches").document(match_id)
+        ph_repo = self.point_history_repo
+
+        winner_uids = [p_uid for p_uid, t in team_by_uid.items() if t == winner_team]
+        loser_uids = [p_uid for p_uid, t in team_by_uid.items() if t == loser_team]
+
+        # Defensive: doubles validator already guarantees 2/2, but we depend
+        # on it explicitly for averaging below.
+        if len(winner_uids) != 2 or len(loser_uids) != 2:
+            raise ValueError("Doubles match must have exactly 2 players per team")
+
+        winner_refs = {
+            p_uid: self.client.collection("users").document(p_uid) for p_uid in winner_uids
+        }
+        loser_refs = {
+            p_uid: self.client.collection("users").document(p_uid) for p_uid in loser_uids
+        }
+
+        effective_score = request.score or match.score
+        is_walkover = request.walkover or (effective_score is not None and effective_score.retired)
 
         result_by_user = {
             p_uid: (MatchResultEnum.WIN if t == winner_team else MatchResultEnum.LOSS)
             for p_uid, t in team_by_uid.items()
         }
 
-        # Effective score: prefer request.score, fall back to stored score.
-        # The score doc carries winner_team for doubles.
-        effective_score = request.score or match.score
-        score_doc = (
-            _score_to_doc(effective_score, None, winner_team)
-            if effective_score is not None
-            else None
-        )
-
-        transaction = self.client.transaction()
+        result_holder: dict[str, Any] = {}
 
         @firestore.transactional
-        def _txn(txn: firestore.Transaction) -> None:
-            updates: dict[str, Any] = {
-                "status": new_status,
+        def _scoring_txn(txn: firestore.Transaction) -> None:
+            # --- READS (must precede all writes) ---
+            winner_snaps = {
+                p_uid: cast(firestore.DocumentSnapshot, ref.get(transaction=txn))
+                for p_uid, ref in winner_refs.items()
+            }
+            loser_snaps = {
+                p_uid: cast(firestore.DocumentSnapshot, ref.get(transaction=txn))
+                for p_uid, ref in loser_refs.items()
+            }
+
+            def _extract(
+                snap: firestore.DocumentSnapshot,
+            ) -> dict[str, Any]:
+                data = snap.to_dict() or {}
+                ranking = (data.get("rankings") or {}).get(sport_value) or {}
+                return {
+                    "data": data,
+                    "ranking": ranking,
+                    "pts": int(ranking.get("pts", _DEFAULT_PTS)),
+                    "tier": TierEnum(ranking.get("tier", _DEFAULT_TIER)),
+                    "reg_tier": TierEnum(
+                        ranking.get("registrationTier", ranking.get("tier", _DEFAULT_TIER))
+                    ),
+                    "current_streak": int(ranking.get("currentStreak", 0)),
+                    "best_streak": int(ranking.get("bestStreak", 0)),
+                    "personal_best": (
+                        int(ranking["personalBest"])
+                        if ranking.get("personalBest") is not None
+                        else None
+                    ),
+                    "name": data.get("name", ""),
+                    "area": (data.get("preferences") or {}).get("area"),
+                    "feed_opt_out": (data.get("preferences") or {}).get("feedOptOut", False),
+                }
+
+            winners = {p_uid: _extract(snap) for p_uid, snap in winner_snaps.items()}
+            losers = {p_uid: _extract(snap) for p_uid, snap in loser_snaps.items()}
+
+            # Average opposing pts (for the per-player elo / penalty calc).
+            avg_loser_pts = sum(v["pts"] for v in losers.values()) // len(losers)
+            avg_winner_pts = sum(v["pts"] for v in winners.values()) // len(winners)
+
+            # Pick the highest-tier opponent for tier comparison so the upset
+            # bonus fires when EITHER opposing player is in a higher tier than
+            # the scored player. Mirrors the singles "did I beat someone
+            # ranked above me?" intent.
+            def _highest_tier(values: list[TierEnum]) -> TierEnum:
+                return max(values, key=lambda t: TIER_ORDER[t])
+
+            top_loser_tier = _highest_tier([v["tier"] for v in losers.values()])
+            top_winner_tier = _highest_tier([v["tier"] for v in winners.values()])
+
+            # --- COMPUTE per-player scoring ---
+            winner_results: dict[str, Any] = {}
+            for p_uid, info in winners.items():
+                scoring = compute_match_scoring(
+                    winner_pts=info["pts"],
+                    loser_pts=avg_loser_pts,
+                    winner_tier=info["tier"],
+                    loser_tier=top_loser_tier,
+                    winner_reg_tier=info["reg_tier"],
+                    loser_reg_tier=info["reg_tier"],  # unused for winner
+                    tier_config=tier_config,
+                    walkover=is_walkover,
+                    retired=effective_score.retired if effective_score else False,
+                )
+                winner_results[p_uid] = scoring
+
+            loser_results: dict[str, Any] = {}
+            for p_uid, info in losers.items():
+                scoring = compute_match_scoring(
+                    winner_pts=avg_winner_pts,
+                    loser_pts=info["pts"],
+                    winner_tier=top_winner_tier,
+                    loser_tier=info["tier"],
+                    winner_reg_tier=info["reg_tier"],  # unused for loser
+                    loser_reg_tier=info["reg_tier"],
+                    tier_config=tier_config,
+                    walkover=is_walkover,
+                    retired=effective_score.retired if effective_score else False,
+                )
+                loser_results[p_uid] = scoring
+
+            # Streak / PB updates per player
+            new_streaks: dict[str, tuple[int, int]] = {}
+            new_pbs: dict[str, int | None] = {}
+            is_new_best_map: dict[str, bool] = {}
+            for p_uid, info in winners.items():
+                if not is_walkover:
+                    cur, best = update_streak_on_win(info["current_streak"], info["best_streak"])
+                    is_new_best, new_pb = check_personal_best(
+                        winner_results[p_uid].winner_new_pts, info["personal_best"]
+                    )
+                else:
+                    cur, best = info["current_streak"], info["best_streak"]
+                    is_new_best, new_pb = False, info["personal_best"]
+                new_streaks[p_uid] = (cur, best)
+                new_pbs[p_uid] = new_pb
+                is_new_best_map[p_uid] = is_new_best
+
+            for p_uid, info in losers.items():
+                if not is_walkover:
+                    cur, best = update_streak_on_loss(info["current_streak"], info["best_streak"])
+                else:
+                    cur, best = info["current_streak"], info["best_streak"]
+                new_streaks[p_uid] = (cur, best)
+
+            score_doc = (
+                _score_to_doc(effective_score, None, winner_team) if effective_score else None
+            )
+
+            # --- WRITES ---
+            # 1. Match
+            match_updates: dict[str, Any] = {
+                "status": MatchStatusEnum.COMPLETED,
+                "finishedAt": now,
+                "resultByUser": result_by_user,
                 "resultSubmittedBy": firestore.ArrayUnion([uid]),
             }
-            if not is_dispute:
-                updates["finishedAt"] = now
-                updates["resultByUser"] = result_by_user
-                if score_doc is not None:
-                    updates["score"] = score_doc
-            txn.update(match_ref, updates)
+            if score_doc is not None:
+                match_updates["score"] = score_doc
+            txn.update(match_ref, match_updates)
 
-            for p_uid in team_by_uid:
-                user_ref = self.client.collection("users").document(p_uid)
+            # 2. Winners
+            for p_uid, info in winners.items():
+                scoring = winner_results[p_uid]
+                cur, best = new_streaks[p_uid]
                 user_updates: dict[str, Any] = {
-                    "playTab.state": new_play_tab_state,
+                    _ranking_field(sport_value, "pts"): scoring.winner_new_pts,
+                    _ranking_field(sport_value, "tier"): scoring.winner_new_tier.value,
+                    _ranking_field(sport_value, "lastUpdated"): now,
+                    _ranking_field(sport_value, "currentStreak"): cur,
+                    _ranking_field(sport_value, "bestStreak"): best,
+                    "playTab.state": PlayTabStateEnum.DISCOVERY.value,
+                    "playTab.activeMatchId": None,
                     "playTab.updatedAt": now,
                 }
-                if not is_dispute:
-                    # Match is fully resolved — drop the activeMatchId so
-                    # players go back to DISCOVERY.
-                    user_updates["playTab.activeMatchId"] = None
-                txn.update(user_ref, user_updates)
+                if new_pbs[p_uid] is not None:
+                    user_updates[_ranking_field(sport_value, "personalBest")] = new_pbs[p_uid]
+                txn.update(winner_refs[p_uid], user_updates)
 
-        _txn(transaction)
+            # 3. Losers
+            for p_uid, info in losers.items():
+                scoring = loser_results[p_uid]
+                cur, best = new_streaks[p_uid]
+                txn.update(
+                    loser_refs[p_uid],
+                    {
+                        _ranking_field(sport_value, "pts"): scoring.loser_new_pts,
+                        _ranking_field(sport_value, "tier"): scoring.loser_new_tier.value,
+                        _ranking_field(sport_value, "lastUpdated"): now,
+                        _ranking_field(sport_value, "currentStreak"): cur,
+                        _ranking_field(sport_value, "bestStreak"): best,
+                        "playTab.state": PlayTabStateEnum.DISCOVERY.value,
+                        "playTab.activeMatchId": None,
+                        "playTab.updatedAt": now,
+                    },
+                )
+
+            # 4. pointHistory — skipped for walkover/retirement
+            if not is_walkover:
+                # Opponent_uid for doubles is recorded as the first opponent
+                # in the opposing team (deterministic alphabetical order); the
+                # remaining opponent identity is recoverable via the match doc.
+                sorted_winner_uids = sorted(winner_uids)
+                sorted_loser_uids = sorted(loser_uids)
+                for p_uid, info in winners.items():
+                    scoring = winner_results[p_uid]
+                    entry = PointHistoryEntry(
+                        entry_id="",
+                        sport=sport,
+                        pts=scoring.winner_new_pts,
+                        delta=scoring.winner_delta.total,
+                        reason=PointHistoryReasonEnum.MATCH_DOUBLES_WIN,
+                        match_id=match_id,
+                        opponent_uid=sorted_loser_uids[0],
+                        opponent_pts_before=avg_loser_pts,
+                        league_id=match.league_id,
+                        created_at=now,
+                        tier_before=info["tier"],
+                        tier_after=scoring.winner_new_tier,
+                    )
+                    ph_repo.add_entry_in_transaction(txn, p_uid, entry)
+                for p_uid, info in losers.items():
+                    scoring = loser_results[p_uid]
+                    entry = PointHistoryEntry(
+                        entry_id="",
+                        sport=sport,
+                        pts=scoring.loser_new_pts,
+                        delta=scoring.loser_delta.total,
+                        reason=PointHistoryReasonEnum.MATCH_DOUBLES_LOSS,
+                        match_id=match_id,
+                        opponent_uid=sorted_winner_uids[0],
+                        opponent_pts_before=avg_winner_pts,
+                        league_id=match.league_id,
+                        created_at=now,
+                        tier_before=info["tier"],
+                        tier_after=scoring.loser_new_tier,
+                    )
+                    ph_repo.add_entry_in_transaction(txn, p_uid, entry)
+
+            # Stash for post-txn ticker emission and response building
+            result_holder["winners"] = winners
+            result_holder["losers"] = losers
+            result_holder["winner_results"] = winner_results
+            result_holder["loser_results"] = loser_results
+            result_holder["new_streaks"] = new_streaks
+            result_holder["new_pbs"] = new_pbs
+            result_holder["is_new_best_map"] = is_new_best_map
+
+        _scoring_txn(self.client.transaction())
+
+        winners = result_holder["winners"]
+        losers = result_holder["losers"]
+        winner_results = result_holder["winner_results"]
+        loser_results = result_holder["loser_results"]
+        new_streaks = result_holder["new_streaks"]
+        is_new_best_map = result_holder["is_new_best_map"]
+
+        # Fire-and-forget tickers (per-player). Upset ticker is intentionally
+        # NOT emitted for doubles in DBL-6 — the comparison rule for a 2-vs-2
+        # upset is still TBD.
+        # TODO(DBL-Upset-Ticker): defer upset ticker to follow-up issue —
+        # doubles upset comparison rule TBD.
+        if not is_walkover:
+            for p_uid, info in winners.items():
+                scoring = winner_results[p_uid]
+                self._maybe_write_tier_crossed_ticker(
+                    uid=p_uid,
+                    name=info["name"],
+                    area=info["area"],
+                    tier_before=info["tier"],
+                    tier_after=scoring.winner_new_tier,
+                    sport=sport,
+                    now=now,
+                    feed_opt_out=info["feed_opt_out"],
+                )
+                self._maybe_write_personal_best_ticker(
+                    winner_uid=p_uid,
+                    winner_name=info["name"],
+                    winner_area=info["area"],
+                    new_pts=scoring.winner_new_pts,
+                    previous_best=info["personal_best"],
+                    is_new_best=is_new_best_map.get(p_uid, False),
+                    sport=sport,
+                    now=now,
+                    feed_opt_out=info["feed_opt_out"],
+                )
+                self._maybe_write_win_streak_ticker(
+                    winner_uid=p_uid,
+                    winner_name=info["name"],
+                    winner_area=info["area"],
+                    streak=new_streaks[p_uid][0],
+                    sport=sport,
+                    now=now,
+                    feed_opt_out=info["feed_opt_out"],
+                )
+            for p_uid, info in losers.items():
+                scoring = loser_results[p_uid]
+                self._maybe_write_tier_crossed_ticker(
+                    uid=p_uid,
+                    name=info["name"],
+                    area=info["area"],
+                    tier_before=info["tier"],
+                    tier_after=scoring.loser_new_tier,
+                    sport=sport,
+                    now=now,
+                    feed_opt_out=info["feed_opt_out"],
+                )
+
+        # Build the calling user's ScoringPayload, mirroring the singles shape.
+        caller_is_winner = uid in winners
+        if caller_is_winner:
+            caller_info = winners[uid]
+            caller_scoring = winner_results[uid]
+            caller_delta = caller_scoring.winner_delta
+            caller_pts_after = caller_scoring.winner_new_pts
+            caller_tier_after = caller_scoring.winner_new_tier
+            caller_tier_crossed = caller_scoring.winner_tier_crossed
+        else:
+            caller_info = losers[uid]
+            caller_scoring = loser_results[uid]
+            caller_delta = caller_scoring.loser_delta
+            caller_pts_after = caller_scoring.loser_new_pts
+            caller_tier_after = caller_scoring.loser_new_tier
+            caller_tier_crossed = caller_scoring.loser_tier_crossed
+
+        scoring_payload = ScoringPayload(
+            sport=sport,
+            your_pts_before=caller_info["pts"],
+            your_pts_after=caller_pts_after,
+            delta=caller_delta.total,
+            breakdown=ScoringBreakdown(
+                base_win=caller_delta.base,
+                upset_bonus=caller_delta.upset_bonus,
+                elo_bonus=caller_delta.elo_bonus,
+                penalty=caller_delta.penalty,
+            ),
+            tier_before=caller_info["tier"],
+            tier_after=caller_tier_after,
+            tier_crossed=caller_tier_crossed,
+        )
 
         return VerifyScoreResponse(
             match_id=match_id,
-            status=new_status,
+            status=MatchStatusEnum.COMPLETED,
             winner_uid="",
             loser_uid="",
             winner_team=winner_team,
             loser_team=loser_team,
+            scoring=scoring_payload,
         )
 
     # -------------------------------------------------------------------------

@@ -20,8 +20,9 @@ from datetime import datetime, timezone
 
 import pytest
 
+import app.repos.tier_config_repo as tier_config_module
 from app.models.common import MatchScore, SetScore
-from app.models.enums import MatchStatusEnum, PlayTabStateEnum
+from app.models.enums import MatchStatusEnum, PlayTabStateEnum, PointHistoryReasonEnum
 from app.models.match import VerifyScoreRequest
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
@@ -187,6 +188,7 @@ class TestFirstSubmission:
 
 class TestConfirmation:
     def test_opposing_team_completes_match(self, db):
+        _seed_tier_config(db)
         _seed_all(db)
         svc = _make_service(db)
         svc.verify_score(
@@ -223,3 +225,178 @@ class TestConfirmation:
         assert _match_status(db) == MatchStatusEnum.DISPUTED
         for uid in _ALL:
             assert _state(db, uid) == PlayTabStateEnum.MATCH_DISPUTED.value
+
+
+# ---------------------------------------------------------------------------
+# DBL-6: Scoring on confirmation
+# ---------------------------------------------------------------------------
+
+
+def _seed_tier_config(db) -> None:
+    db.collection("config").document("tiers").set(
+        {
+            "version": 1,
+            "updatedAt": _NOW,
+            "thresholds": [
+                {
+                    "tier": "amateur",
+                    "minPts": 1000,
+                    "maxPts": 1999,
+                    "label": "Amateur",
+                    "color": "#aaa",
+                },
+                {
+                    "tier": "intermediate",
+                    "minPts": 2000,
+                    "maxPts": 2999,
+                    "label": "Intermediate",
+                    "color": "#bbb",
+                },
+                {
+                    "tier": "advanced",
+                    "minPts": 3000,
+                    "maxPts": 3999,
+                    "label": "Advanced",
+                    "color": "#ccc",
+                },
+                {
+                    "tier": "competitive",
+                    "minPts": 4000,
+                    "maxPts": None,
+                    "label": "Competitive",
+                    "color": "#ddd",
+                },
+            ],
+        }
+    )
+
+
+def _seed_user_with_pts(db, uid: str, pts: int, tier: str = "amateur") -> None:
+    db.collection("users").document(uid).set(
+        {
+            "name": uid,
+            "email": f"{uid}@test.com",
+            "rankings": {
+                "tennis": {
+                    "pts": pts,
+                    "tier": tier,
+                    "registrationTier": tier,
+                    "currentStreak": 0,
+                    "bestStreak": 0,
+                }
+            },
+            "playTab": {
+                "state": PlayTabStateEnum.MATCH_SCHEDULED.value,
+                "activeMatchId": _MATCH_ID,
+                "updatedAt": _NOW,
+            },
+        }
+    )
+
+
+def _ranking(db, uid: str) -> dict:
+    doc = db.collection("users").document(uid).get().to_dict() or {}
+    return (doc.get("rankings") or {}).get("tennis", {})
+
+
+@pytest.fixture(autouse=True)
+def _reset_tier_cache():
+    tier_config_module._cache = None
+    tier_config_module._cache_ts = 0.0
+    yield
+    tier_config_module._cache = None
+    tier_config_module._cache_ts = 0.0
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_scoring(db):
+    yield
+    # pointHistory subcollections + tier config cleanup beyond the basic
+    # _cleanup fixture above.
+    for uid in _ALL:
+        for ph in (
+            db.collection("users").document(uid).collection("pointHistory").stream()
+        ):
+            ph.reference.delete()
+    db.collection("config").document("tiers").delete()
+
+
+class TestScoringOnConfirmation:
+    def test_winner_pts_increase_loser_pts_unchanged_in_equal_tier(self, db):
+        _seed_tier_config(db)
+        _seed_user_with_pts(db, _A1, 1000)
+        _seed_user_with_pts(db, _A2, 1100)
+        _seed_user_with_pts(db, _B1, 1050)
+        _seed_user_with_pts(db, _B2, 1200)
+        _seed_doubles_match(db)
+
+        svc = _make_service(db)
+        svc.verify_score(
+            _A1, _MATCH_ID, VerifyScoreRequest(winner_team="A", score=_score())
+        )
+        response = svc.verify_score(_B1, _MATCH_ID, VerifyScoreRequest(winner_team="A"))
+
+        assert response.status == MatchStatusEnum.COMPLETED
+        # Winners gained +100 base each
+        assert _ranking(db, _A1)["pts"] == 1100
+        assert _ranking(db, _A2)["pts"] == 1200
+        # Losers in equal tier: penalty=0 → pts unchanged
+        assert _ranking(db, _B1)["pts"] == 1050
+        assert _ranking(db, _B2)["pts"] == 1200
+
+    def test_streaks_updated_for_all_four(self, db):
+        _seed_tier_config(db)
+        for uid, pts in ((_A1, 1000), (_A2, 1100), (_B1, 1050), (_B2, 1200)):
+            _seed_user_with_pts(db, uid, pts)
+        _seed_doubles_match(db)
+
+        svc = _make_service(db)
+        svc.verify_score(
+            _A1, _MATCH_ID, VerifyScoreRequest(winner_team="A", score=_score())
+        )
+        svc.verify_score(_B1, _MATCH_ID, VerifyScoreRequest(winner_team="A"))
+
+        assert _ranking(db, _A1)["currentStreak"] == 1
+        assert _ranking(db, _A2)["currentStreak"] == 1
+        assert _ranking(db, _B1)["currentStreak"] == 0
+        assert _ranking(db, _B2)["currentStreak"] == 0
+
+    def test_point_history_entries_created_for_all_four(self, db):
+        _seed_tier_config(db)
+        for uid, pts in ((_A1, 1000), (_A2, 1100), (_B1, 1050), (_B2, 1200)):
+            _seed_user_with_pts(db, uid, pts)
+        _seed_doubles_match(db)
+
+        svc = _make_service(db)
+        svc.verify_score(
+            _A1, _MATCH_ID, VerifyScoreRequest(winner_team="A", score=_score())
+        )
+        svc.verify_score(_B1, _MATCH_ID, VerifyScoreRequest(winner_team="A"))
+
+        for uid, expected_reason in (
+            (_A1, PointHistoryReasonEnum.MATCH_DOUBLES_WIN),
+            (_A2, PointHistoryReasonEnum.MATCH_DOUBLES_WIN),
+            (_B1, PointHistoryReasonEnum.MATCH_DOUBLES_LOSS),
+            (_B2, PointHistoryReasonEnum.MATCH_DOUBLES_LOSS),
+        ):
+            entries = list(
+                db.collection("users").document(uid).collection("pointHistory").stream()
+            )
+            assert len(entries) == 1, f"{uid} missing point history"
+            assert entries[0].to_dict().get("reason") == expected_reason.value
+
+    def test_match_status_completed_and_all_four_in_discovery(self, db):
+        _seed_tier_config(db)
+        for uid, pts in ((_A1, 1000), (_A2, 1100), (_B1, 1050), (_B2, 1200)):
+            _seed_user_with_pts(db, uid, pts)
+        _seed_doubles_match(db)
+
+        svc = _make_service(db)
+        svc.verify_score(
+            _A1, _MATCH_ID, VerifyScoreRequest(winner_team="A", score=_score())
+        )
+        svc.verify_score(_B1, _MATCH_ID, VerifyScoreRequest(winner_team="A"))
+
+        assert _match_status(db) == MatchStatusEnum.COMPLETED
+        for uid in _ALL:
+            assert _state(db, uid) == PlayTabStateEnum.DISCOVERY.value
