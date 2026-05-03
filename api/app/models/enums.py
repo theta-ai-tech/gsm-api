@@ -135,5 +135,7 @@ class TickerEventTypeEnum(StrEnum):
 class PointHistoryReasonEnum(StrEnum):
     MATCH_WIN = "match_win"
     MATCH_LOSS = "match_loss"
+    MATCH_DOUBLES_WIN = "match_doubles_win"
+    MATCH_DOUBLES_LOSS = "match_doubles_loss"
     ADMIN_ADJUSTMENT = "admin_adjustment"
     TIER_REBALANCE = "tier_rebalance"
