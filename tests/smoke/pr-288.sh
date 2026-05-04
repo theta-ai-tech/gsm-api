@@ -2,7 +2,7 @@
 # Smoke tests for PR #288: feat: DBL-7 update GET /me/state payloads for doubles (#171)
 # Usage: bash tests/smoke/pr-288.sh
 #
-# Requires: make emu-all + make api-dev-emu-auth running on port 8000.
+# Requires: make emu-all + API_BASE_URL pointing at the PR API.
 #
 # This script exercises the new doubles-aware fields on the GET /me/state
 # payloads (match_type, partner_uid, partner_name, participants array). It is
@@ -14,7 +14,7 @@ set -uo pipefail
 PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-API="${API:-http://localhost:8000}"
+API="${API_BASE_URL:-http://localhost:8000}"
 
 # ── Venv resolution ─────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
