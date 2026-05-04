@@ -15,8 +15,10 @@ from typing import Any
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
+from app.constants import DISCOVERY_FEED_DEFAULT_LIMIT
 from app.models.enums import (
     BroadcastStatusEnum,
+    BroadcastTypeEnum,
     CourtStatusEnum,
     MatchStatusEnum,
     MatchTypeEnum,
@@ -30,6 +32,9 @@ from app.models.play import (
     BroadcastActivePayload,
     CreateBroadcastRequest,
     CreateBroadcastResponse,
+    DiscoveryAnnotations,
+    DiscoveryBroadcastCard,
+    DiscoveryPayload,
     IncomingOfferPayload,
     MatchDisputedPayload,
     MatchScheduledPayload,
@@ -144,12 +149,15 @@ class PlayService:
 
     # ===== GET /me/state =====
 
-    def get_me_state(self, uid: str) -> MeStateResponse:
+    def get_me_state(self, uid: str, match_type: MatchTypeEnum | None = None) -> MeStateResponse:
         """
         Get current Tab 1 state for a user with freshness reconciliation.
 
         Reads persisted playTab from user doc, checks for time-based expirations,
         corrects stale state if needed, and returns mode-specific payload.
+
+        ``match_type`` is an optional filter for the DISCOVERY feed only; it is
+        silently ignored when mode != DISCOVERY.
         """
         user_doc = self.users_repo.get_user_doc(uid)
         if not user_doc:
@@ -158,7 +166,10 @@ class PlayService:
                 mode=PlayTabStateEnum.DISCOVERY,
                 server_time=datetime.now(timezone.utc),
                 primary=MeStatePrimary(),
-                payload={},
+                payload=DiscoveryPayload(),
+                annotations=DiscoveryAnnotations(
+                    nearby_count=0, doubles_count=0, find_fourth_count=0
+                ),
             )
 
         play_tab = user_doc.get("playTab", {}) or {}
@@ -174,7 +185,7 @@ class PlayService:
             state = corrected_state
 
         # Build response based on final state
-        return self._build_state_response(uid, state, play_tab, now, ui_events)
+        return self._build_state_response(uid, state, play_tab, now, ui_events, match_type)
 
     def _reconcile_freshness(
         self, uid: str, state: str, play_tab: dict, now: datetime
@@ -235,8 +246,61 @@ class PlayService:
 
         return state, ui_events
 
+    def _build_discovery_payload(
+        self, uid: str, match_type: MatchTypeEnum | None
+    ) -> tuple[DiscoveryPayload, DiscoveryAnnotations]:
+        """Fetch active broadcasts, exclude caller's own, build DISCOVERY payload.
+
+        Annotation counts reflect the post-filter card set (Phase 1 — no geo,
+        so nearby_count == len(cards)).
+        """
+        broadcasts = self.broadcasts_repo.list_active(
+            match_type=match_type, limit=DISCOVERY_FEED_DEFAULT_LIMIT
+        )
+        # Exclude caller's own broadcast
+        broadcasts = [b for b in broadcasts if b.owner_uid != uid]
+
+        cards: list[DiscoveryBroadcastCard] = []
+        doubles_count = 0
+        find_fourth_count = 0
+
+        for b in broadcasts:
+            cards.append(
+                DiscoveryBroadcastCard(
+                    broadcast_id=b.broadcast_id,
+                    owner_uid=b.owner_uid,
+                    owner_name=b.owner_name,
+                    owner_ranking=b.owner_ranking,
+                    sport=b.sport,
+                    match_type=b.match_type,
+                    broadcast_type=b.broadcast_type,
+                    availability=b.availability,
+                    court_status=b.court_status,
+                    court_location=b.court_location,
+                    expires_at=b.expires_at,
+                    created_at=b.created_at,
+                )
+            )
+            if b.match_type == MatchTypeEnum.DOUBLES:
+                doubles_count += 1
+            if b.broadcast_type == BroadcastTypeEnum.FIND_FOURTH:
+                find_fourth_count += 1
+
+        annotations = DiscoveryAnnotations(
+            nearby_count=len(cards),
+            doubles_count=doubles_count,
+            find_fourth_count=find_fourth_count,
+        )
+        return DiscoveryPayload(broadcasts=cards), annotations
+
     def _build_state_response(
-        self, uid: str, state: str, play_tab: dict, now: datetime, ui_events: list
+        self,
+        uid: str,
+        state: str,
+        play_tab: dict,
+        now: datetime,
+        ui_events: list,
+        match_type: MatchTypeEnum | None = None,
     ) -> MeStateResponse:
         """Build the MeStateResponse based on current state."""
         mode = PlayTabStateEnum(state)
@@ -252,9 +316,17 @@ class PlayService:
             ),
         )
 
-        payload: dict = {}
+        payload: dict | DiscoveryPayload = {}
+        annotations: dict | DiscoveryAnnotations = {}
 
-        if mode == PlayTabStateEnum.BROADCAST_ACTIVE:
+        if mode == PlayTabStateEnum.DISCOVERY:
+            discovery_payload, discovery_annotations = self._build_discovery_payload(
+                uid, match_type
+            )
+            payload = discovery_payload
+            annotations = discovery_annotations
+
+        elif mode == PlayTabStateEnum.BROADCAST_ACTIVE:
             broadcast_id = play_tab.get("activeBroadcastId")
             if broadcast_id:
                 broadcast = self.broadcasts_repo.get_by_id(broadcast_id)
@@ -428,6 +500,7 @@ class PlayService:
             server_time=now,
             primary=primary,
             payload=payload,
+            annotations=annotations,
             ui_events=ui_events,
         )
 

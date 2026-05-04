@@ -331,6 +331,37 @@ class UIEvent(GsmBaseModel):
     meta: dict[str, str] | None = None
 
 
+class DiscoveryBroadcastCard(GsmBaseModel):
+    """A single card shown in the DISCOVERY feed."""
+
+    broadcast_id: str
+    owner_uid: str
+    owner_name: str
+    owner_ranking: SportRanking | None = None
+    sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
+    availability: AvailabilityEnum
+    court_status: CourtStatusEnum
+    court_location: str | None = None
+    expires_at: datetime
+    created_at: datetime
+
+
+class DiscoveryAnnotations(GsmBaseModel):
+    """Aggregate counts surfaced alongside the discovery feed."""
+
+    nearby_count: int
+    doubles_count: int
+    find_fourth_count: int
+
+
+class DiscoveryPayload(GsmBaseModel):
+    """Payload returned when mode == DISCOVERY."""
+
+    broadcasts: list[DiscoveryBroadcastCard] = []
+
+
 class MeStateResponse(GsmBaseModel):
     mode: PlayTabStateEnum
     server_time: datetime
@@ -345,6 +376,7 @@ class MeStateResponse(GsmBaseModel):
         | PostMatchWaitingOpponentPayload
         | PostMatchConfirmRequiredPayload
         | MatchDisputedPayload
+        | DiscoveryPayload
     ) = {}
-    annotations: dict = {}
+    annotations: dict | DiscoveryAnnotations = {}
     ui_events: list[UIEvent] = []

@@ -2,7 +2,7 @@
 Tab 1 PLAY router - Matchmaking endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.dependencies.repos import (
@@ -12,6 +12,7 @@ from app.dependencies.repos import (
     get_offers_repo,
     get_users_repo,
 )
+from app.models.enums import MatchTypeEnum
 from app.models.play import (
     CreateBroadcastRequest,
     CreateBroadcastResponse,
@@ -47,6 +48,10 @@ def get_play_service(
 
 @router.get("/state", response_model=MeStateResponse)
 def get_me_state(
+    match_type: MatchTypeEnum | None = Query(
+        default=None,
+        description="Optional filter for the DISCOVERY feed. Silently ignored in other modes.",
+    ),
     current_user: CurrentUser = Depends(get_current_user),
     play_service: PlayService = Depends(get_play_service),
 ):
@@ -54,8 +59,10 @@ def get_me_state(
     Get current Tab 1 state for the authenticated user.
 
     Returns mode-specific payload with freshness reconciliation.
+    When mode is DISCOVERY, an optional ``match_type`` query param filters the
+    broadcast feed (e.g. ``?match_type=doubles``).
     """
-    return play_service.get_me_state(current_user.uid)
+    return play_service.get_me_state(current_user.uid, match_type=match_type)
 
 
 # ===== POST /me/broadcast =====

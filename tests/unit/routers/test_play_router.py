@@ -66,7 +66,40 @@ class TestGetMeState:
         assert response.status_code == 200
         data = response.json()
         assert data["mode"] == "DISCOVERY"
-        mock_play_service.get_me_state.assert_called_once_with("test_user")
+        mock_play_service.get_me_state.assert_called_once_with(
+            "test_user", match_type=None
+        )
+
+    def test_get_me_state_doubles_filter(self, client, mock_play_service):
+        """?match_type=doubles passes MatchTypeEnum.DOUBLES to the service."""
+        from app.models.enums import MatchTypeEnum
+        from app.models.play import DiscoveryAnnotations, DiscoveryPayload
+
+        now = datetime.now(timezone.utc)
+        mock_response = MeStateResponse(
+            mode=PlayTabStateEnum.DISCOVERY,
+            server_time=now,
+            primary=MeStatePrimary(),
+            payload=DiscoveryPayload(broadcasts=[]),
+            annotations=DiscoveryAnnotations(
+                nearby_count=0, doubles_count=0, find_fourth_count=0
+            ),
+            ui_events=[],
+        )
+        mock_play_service.get_me_state.return_value = mock_response
+
+        response = client.get("/me/state?match_type=doubles")
+
+        assert response.status_code == 200
+        mock_play_service.get_me_state.assert_called_once_with(
+            "test_user", match_type=MatchTypeEnum.DOUBLES
+        )
+
+    def test_get_me_state_invalid_match_type(self, client, mock_play_service):
+        """Invalid ?match_type value returns 422."""
+        response = client.get("/me/state?match_type=invalid_value")
+
+        assert response.status_code == 422
 
 
 class TestCreateBroadcast:
