@@ -134,6 +134,7 @@ def _seed(db):
 
 @pytest.fixture
 def discovery_client(db):
+    previous_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[get_users_repo] = lambda: UsersRepo(db)
     app.dependency_overrides[get_broadcasts_repo] = lambda: BroadcastsRepo(db)
     app.dependency_overrides[get_matches_repo] = lambda: MatchesRepo(db)
@@ -143,7 +144,7 @@ def discovery_client(db):
         uid=VIEWER_UID, email="disc_viewer@gsm.local"
     )
     yield TestClient(app)
-    app.dependency_overrides.clear()
+    app.dependency_overrides = previous_overrides
 
 
 # ===== Tests =====
