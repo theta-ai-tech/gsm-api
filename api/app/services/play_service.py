@@ -25,18 +25,24 @@ from app.models.enums import (
     PlayTabStateEnum,
 )
 from app.models import compute_participant_pair
+from app.models.match import Match
 from app.models.play import (
     BroadcastActivePayload,
     CreateBroadcastRequest,
     CreateBroadcastResponse,
     IncomingOfferPayload,
+    MatchDisputedPayload,
     MatchScheduledPayload,
+    MeStateParticipant,
     MeStatePrimary,
     MeStateResponse,
     OpponentSummary,
     OfferActionResponse,
     OutgoingOfferPayload,
     PendingOfferSummary,
+    PostMatchConfirmRequiredPayload,
+    PostMatchLogAvailablePayload,
+    PostMatchWaitingOpponentPayload,
     SendOfferRequest,
     SendOfferResponse,
 )
@@ -63,6 +69,22 @@ def _short_display_name(full_name: str) -> str:
     return parts[0] if parts else ""
 
 
+def _participants_from_match(match: Match, name_by_uid: dict[str, str]) -> list[MeStateParticipant]:
+    """Project match participants into the /me/state participant shape (DBL-7).
+
+    For singles matches, ``team`` is ``None`` for both entries. For doubles,
+    ``team`` is preserved verbatim ('A' or 'B'). The display name resolves to
+    the cached ``display_name`` on the match doc when present, otherwise to the
+    full name from the user doc, otherwise to an empty string — so callers can
+    safely render the array without an extra users lookup.
+    """
+    out: list[MeStateParticipant] = []
+    for p in match.participants:
+        name = p.display_name or name_by_uid.get(p.uid, "")
+        out.append(MeStateParticipant(uid=p.uid, name=name, team=p.team, role=p.role))
+    return out
+
+
 class PlayService:
     """Service for Tab 1 PLAY business logic."""
 
@@ -79,6 +101,46 @@ class PlayService:
         self.matches_repo = matches_repo
         self.offers_repo = offers_repo
         self.client = firestore_client
+
+    def _build_opponent_summary(self, uid: str, match: Match) -> OpponentSummary:
+        """Build an :class:`OpponentSummary` for a participant in ``match``.
+
+        For singles, the opponent is the other participant. For doubles, we
+        return the first opposing-team participant we find — UI surfaces
+        already render Team A vs Team B from the ``participants`` array, so the
+        ``opponent`` field is kept for legacy clients only and any opposing
+        player is sufficient.
+        """
+        opponent = next(
+            (p for p in match.participants if p.uid != uid),
+            None,
+        )
+        opponent_doc = (self.users_repo.get_user_doc(opponent.uid) if opponent else None) or {}
+        opponent_rankings = opponent_doc.get("rankings", {}) or {}
+        opponent_ranking = _parse_sport_ranking(opponent_rankings.get(match.sport.value))
+        return OpponentSummary(
+            uid=opponent.uid if opponent else "",
+            name=opponent_doc.get("name", ""),
+            profile_url=opponent_doc.get("profileUrl"),
+            ranking=opponent_ranking,
+        )
+
+    def _resolve_participant_names(self, match: Match) -> dict[str, str]:
+        """Resolve display names for participants whose match doc has no
+        cached ``display_name``.
+
+        Pre-DBL-2 match docs do not carry the cached label; for those rows we
+        fall back to a per-uid user doc lookup. New matches written after
+        DBL-2/DBL-4 cache the short name on the participant entry, so this
+        only fires for legacy data.
+        """
+        out: dict[str, str] = {}
+        for p in match.participants:
+            if p.display_name:
+                continue
+            user_doc = self.users_repo.get_user_doc(p.uid) or {}
+            out[p.uid] = user_doc.get("name", "") or ""
+        return out
 
     # ===== GET /me/state =====
 
@@ -199,12 +261,17 @@ class PlayService:
                 if broadcast:
                     pending_offer_ids = play_tab.get("pendingIncomingOfferIds", [])
                     pending_offers = self.offers_repo.get_by_ids(pending_offer_ids)
+                    partner_name: str | None = None
+                    if broadcast.partner_uid:
+                        partner_doc = self.users_repo.get_user_doc(broadcast.partner_uid) or {}
+                        partner_name = partner_doc.get("name") or None
                     payload = BroadcastActivePayload(
                         broadcast_id=broadcast.broadcast_id,
                         sport=broadcast.sport,
                         match_type=broadcast.match_type,
                         broadcast_type=broadcast.broadcast_type,
                         partner_uid=broadcast.partner_uid,
+                        partner_name=partner_name,
                         availability=broadcast.availability,
                         court_status=broadcast.court_status,
                         court_location=broadcast.court_location,
@@ -231,12 +298,19 @@ class PlayService:
             if offer_id:
                 offer = self.offers_repo.get_by_id(offer_id)
                 if offer:
+                    out_partner_name: str | None = None
+                    if offer.partner_uid:
+                        out_partner_doc = self.users_repo.get_user_doc(offer.partner_uid) or {}
+                        out_partner_name = out_partner_doc.get("name") or None
                     payload = OutgoingOfferPayload(
                         offer_id=offer.offer_id,
                         to_uid=offer.to_uid,
                         to_name=offer.to_name,
                         to_ranking=offer.to_ranking,
                         sport=offer.sport,
+                        match_type=offer.match_type,
+                        partner_uid=offer.partner_uid,
+                        partner_name=out_partner_name,
                         proposed_time=offer.proposed_time,
                         court_location=offer.court_location,
                         message=offer.message,
@@ -249,12 +323,19 @@ class PlayService:
             if pending_ids:
                 offer = self.offers_repo.get_by_id(pending_ids[0])
                 if offer:
+                    in_partner_name: str | None = None
+                    if offer.partner_uid:
+                        in_partner_doc = self.users_repo.get_user_doc(offer.partner_uid) or {}
+                        in_partner_name = in_partner_doc.get("name") or None
                     payload = IncomingOfferPayload(
                         offer_id=offer.offer_id,
                         from_uid=offer.from_uid,
                         from_name=offer.from_name,
                         from_ranking=offer.from_ranking,
                         sport=offer.sport,
+                        match_type=offer.match_type,
+                        partner_uid=offer.partner_uid,
+                        partner_name=in_partner_name,
                         proposed_time=offer.proposed_time,
                         court_location=offer.court_location,
                         message=offer.message,
@@ -267,33 +348,79 @@ class PlayService:
             if match_id:
                 match = self.matches_repo.get_by_id(match_id)
                 if match and match.scheduled_at:
-                    opponent = next(
-                        (
-                            participant
-                            for participant in match.participants
-                            if participant.uid != uid
-                        ),
-                        None,
-                    )
-                    opponent_doc = (
-                        self.users_repo.get_user_doc(opponent.uid) if opponent else None
-                    ) or {}
-                    opponent_rankings = opponent_doc.get("rankings", {}) or {}
-                    opponent_ranking = _parse_sport_ranking(
-                        opponent_rankings.get(match.sport.value)
-                    )
+                    name_by_uid = self._resolve_participant_names(match)
                     payload = MatchScheduledPayload(
                         match_id=match.match_id,
                         sport=match.sport,
+                        match_type=match.match_type,
                         scheduled_at=match.scheduled_at,
                         court_id=match.court_id,
                         venue_ref=match.venue_ref,
-                        opponent=OpponentSummary(
-                            uid=opponent.uid if opponent else "",
-                            name=opponent_doc.get("name", ""),
-                            profile_url=opponent_doc.get("profileUrl"),
-                            ranking=opponent_ranking,
-                        ),
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_LOG_AVAILABLE:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.scheduled_at:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchLogAvailablePayload(
+                        match_id=match.match_id,
+                        sport=match.sport,
+                        match_type=match.match_type,
+                        scheduled_at=match.scheduled_at,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_WAITING_OPPONENT:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchWaitingOpponentPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        submitted_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_CONFIRM_REQUIRED:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchConfirmRequiredPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        opponent_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.MATCH_DISPUTED:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                # Disputed matches only persist the first submitter's score on
+                # the match doc — we surface it as both ``my_score`` and
+                # ``opponent_score`` so the legacy schema stays populated; the
+                # client can treat the two fields as equal until per-side
+                # score storage lands.
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = MatchDisputedPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        my_score=match.score,
+                        opponent_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
                     ).model_dump(by_alias=True)
 
         return MeStateResponse(

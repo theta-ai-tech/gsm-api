@@ -11,6 +11,7 @@ from app.models.enums import (
     CourtStatusEnum,
     MatchTypeEnum,
     OfferStatusEnum,
+    ParticipantRoleEnum,
     PlayTabStateEnum,
     SportEnum,
 )
@@ -208,6 +209,21 @@ class OpponentSummary(GsmBaseModel):
     ranking: SportRanking | None = None
 
 
+class MeStateParticipant(GsmBaseModel):
+    """Participant entry surfaced in /me/state payloads.
+
+    Mirrors ``MatchParticipant`` from the match document but always carries a
+    resolved display name so the mobile client can render Team A vs Team B
+    labels without an extra users lookup. ``team`` is ``'A'`` / ``'B'`` for
+    doubles and ``None`` for singles (DBL-7).
+    """
+
+    uid: str
+    name: str = ""
+    team: str | None = None
+    role: ParticipantRoleEnum = ParticipantRoleEnum.PLAYER
+
+
 class MeStatePrimary(GsmBaseModel):
     broadcast_id: str | None = None
     match_id: str | None = None
@@ -220,6 +236,7 @@ class BroadcastActivePayload(GsmBaseModel):
     match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT
     partner_uid: str | None = None
+    partner_name: str | None = None
     availability: AvailabilityEnum
     court_status: CourtStatusEnum
     court_location: str | None = None
@@ -235,6 +252,9 @@ class OutgoingOfferPayload(GsmBaseModel):
     to_name: str
     to_ranking: SportRanking | None = None
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    partner_uid: str | None = None
+    partner_name: str | None = None
     proposed_time: datetime
     court_location: str | None = None
     message: str | None = None
@@ -248,6 +268,9 @@ class IncomingOfferPayload(GsmBaseModel):
     from_name: str
     from_ranking: SportRanking | None = None
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
+    partner_uid: str | None = None
+    partner_name: str | None = None
     proposed_time: datetime
     court_location: str | None = None
     message: str | None = None
@@ -258,38 +281,48 @@ class IncomingOfferPayload(GsmBaseModel):
 class MatchScheduledPayload(GsmBaseModel):
     match_id: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     scheduled_at: datetime
     court_id: str | None = None
     court_name: str | None = None
     court_geo: GeoLocation | None = None
     venue_ref: VenueRef | None = None
     opponent: OpponentSummary
+    participants: list[MeStateParticipant] = []
 
 
 class PostMatchLogAvailablePayload(GsmBaseModel):
     match_id: str
     sport: SportEnum
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     scheduled_at: datetime
     opponent: OpponentSummary
+    participants: list[MeStateParticipant] = []
 
 
 class PostMatchWaitingOpponentPayload(GsmBaseModel):
     match_id: str
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     submitted_score: MatchScore
     opponent: OpponentSummary
+    participants: list[MeStateParticipant] = []
 
 
 class PostMatchConfirmRequiredPayload(GsmBaseModel):
     match_id: str
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     opponent_score: MatchScore
     opponent: OpponentSummary
+    participants: list[MeStateParticipant] = []
 
 
 class MatchDisputedPayload(GsmBaseModel):
     match_id: str
+    match_type: MatchTypeEnum = MatchTypeEnum.SINGLES
     my_score: MatchScore
     opponent_score: MatchScore
     opponent: OpponentSummary
+    participants: list[MeStateParticipant] = []
 
 
 class UIEvent(GsmBaseModel):
