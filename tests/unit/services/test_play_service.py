@@ -419,10 +419,18 @@ class TestGetMeState:
             match_type=MatchTypeEnum.DOUBLES,
             scheduled_at=now + timedelta(hours=2),
             participants=[
-                MatchParticipant(uid="alice", team="A", role="player", display_name="Alice A."),
-                MatchParticipant(uid="bob", team="A", role="player", display_name="Bob B."),
-                MatchParticipant(uid="carol", team="B", role="player", display_name="Carol C."),
-                MatchParticipant(uid="dave", team="B", role="player", display_name="Dave D."),
+                MatchParticipant(
+                    uid="alice", team="A", role="player", display_name="Alice A."
+                ),
+                MatchParticipant(
+                    uid="bob", team="A", role="player", display_name="Bob B."
+                ),
+                MatchParticipant(
+                    uid="carol", team="B", role="player", display_name="Carol C."
+                ),
+                MatchParticipant(
+                    uid="dave", team="B", role="player", display_name="Dave D."
+                ),
             ],
             participant_uids=["alice", "bob", "carol", "dave"],
         )

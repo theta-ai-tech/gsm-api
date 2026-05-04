@@ -14,7 +14,7 @@ set -uo pipefail
 PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-API="${API_BASE_URL:-http://localhost:8000}"
+API="${API_BASE_URL:-${API:-http://localhost:8000}}"
 
 # ── Venv resolution ─────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
@@ -129,9 +129,13 @@ assert_eq "payload is empty object" "$(echo "$RESP" | jq -c '.payload')" "{}"
 
 # Test 4: Singles outgoing offer => match_type=singles, partner fields null.
 echo "Test 4: OUTGOING_OFFER_PENDING for a singles offer surfaces singles defaults"
-# Bob broadcasts so Ignatios can challenge.
+# Alice broadcasts so Ignatios can challenge. Using Alice (not Bob) leaves Bob
+# in DISCOVERY so the recipient flips to INCOMING_OFFER_PENDING in Test 5
+# below — recipients who already have an active broadcast stay
+# BROADCAST_ACTIVE while the offer queues in pendingIncomingOfferIds, which
+# would not exercise the INCOMING_OFFER_PENDING payload we want to assert on.
 curl -s -o /dev/null -X POST "$API/me/broadcast" \
-  -H "Authorization: Bearer $TOKEN_BO" \
+  -H "Authorization: Bearer $TOKEN_AL" \
   -H "Content-Type: application/json" \
   -d '{
     "sport": "tennis",
@@ -140,12 +144,12 @@ curl -s -o /dev/null -X POST "$API/me/broadcast" \
     "expires_at": "2099-01-01T00:00:00Z",
     "location": {"area": 101}
   }'
-BCAST_ID=$(curl -s -H "Authorization: Bearer $TOKEN_BO" "$API/me/state" | jq -r '.payload.broadcast_id')
+BCAST_ID=$(curl -s -H "Authorization: Bearer $TOKEN_AL" "$API/me/state" | jq -r '.payload.broadcast_id')
 curl -s -o /dev/null -X POST "$API/me/offers" \
   -H "Authorization: Bearer $TOKEN_IG" \
   -H "Content-Type: application/json" \
   -d "{
-    \"to_uid\": \"user_bob\",
+    \"to_uid\": \"user_alice\",
     \"sport\": \"tennis\",
     \"proposed_time\": \"2099-01-01T10:00:00Z\",
     \"source_broadcast_id\": \"$BCAST_ID\",
@@ -157,8 +161,23 @@ assert_eq "outgoing match_type=singles" "$(echo "$RESP" | jq -r '.payload.match_
 assert_eq "outgoing partner_uid null" "$(echo "$RESP" | jq -r '.payload.partner_uid')" "null"
 assert_eq "outgoing partner_name null" "$(echo "$RESP" | jq -r '.payload.partner_name')" "null"
 
-# Test 5: Recipient sees the matching IncomingOfferPayload.
+# Test 5: Recipient sees the matching IncomingOfferPayload. Alice broadcast +
+# offer queue → Alice stays BROADCAST_ACTIVE. To exercise the
+# INCOMING_OFFER_PENDING branch, send a direct offer to Bob (DISCOVERY).
 echo "Test 5: INCOMING_OFFER_PENDING surfaces match_type/partner fields"
+# Cancel Ignatios's outgoing offer first so we can send a fresh one to Bob.
+OFFER_ID=$(curl -s -H "Authorization: Bearer $TOKEN_IG" "$API/me/state" | jq -r '.payload.offer_id')
+curl -s -o /dev/null -X POST -H "Authorization: Bearer $TOKEN_IG" \
+  "$API/me/offers/$OFFER_ID/cancel"
+curl -s -o /dev/null -X POST "$API/me/offers" \
+  -H "Authorization: Bearer $TOKEN_IG" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_uid": "user_bob",
+    "sport": "tennis",
+    "proposed_time": "2099-01-01T10:00:00Z",
+    "message": "smoke test direct"
+  }'
 RESP=$(curl -s -H "Authorization: Bearer $TOKEN_BO" "$API/me/state")
 assert_eq "incoming mode" "$(echo "$RESP" | jq -r '.mode')" "INCOMING_OFFER_PENDING"
 assert_eq "incoming match_type=singles" "$(echo "$RESP" | jq -r '.payload.match_type')" "singles"

@@ -31,6 +31,7 @@ from app.models.play import (
     CreateBroadcastRequest,
     CreateBroadcastResponse,
     IncomingOfferPayload,
+    MatchDisputedPayload,
     MatchScheduledPayload,
     MeStateParticipant,
     MeStatePrimary,
@@ -39,6 +40,9 @@ from app.models.play import (
     OfferActionResponse,
     OutgoingOfferPayload,
     PendingOfferSummary,
+    PostMatchConfirmRequiredPayload,
+    PostMatchLogAvailablePayload,
+    PostMatchWaitingOpponentPayload,
     SendOfferRequest,
     SendOfferResponse,
 )
@@ -97,6 +101,29 @@ class PlayService:
         self.matches_repo = matches_repo
         self.offers_repo = offers_repo
         self.client = firestore_client
+
+    def _build_opponent_summary(self, uid: str, match: Match) -> OpponentSummary:
+        """Build an :class:`OpponentSummary` for a participant in ``match``.
+
+        For singles, the opponent is the other participant. For doubles, we
+        return the first opposing-team participant we find — UI surfaces
+        already render Team A vs Team B from the ``participants`` array, so the
+        ``opponent`` field is kept for legacy clients only and any opposing
+        player is sufficient.
+        """
+        opponent = next(
+            (p for p in match.participants if p.uid != uid),
+            None,
+        )
+        opponent_doc = (self.users_repo.get_user_doc(opponent.uid) if opponent else None) or {}
+        opponent_rankings = opponent_doc.get("rankings", {}) or {}
+        opponent_ranking = _parse_sport_ranking(opponent_rankings.get(match.sport.value))
+        return OpponentSummary(
+            uid=opponent.uid if opponent else "",
+            name=opponent_doc.get("name", ""),
+            profile_url=opponent_doc.get("profileUrl"),
+            ranking=opponent_ranking,
+        )
 
     def _resolve_participant_names(self, match: Match) -> dict[str, str]:
         """Resolve display names for participants whose match doc has no
@@ -321,21 +348,6 @@ class PlayService:
             if match_id:
                 match = self.matches_repo.get_by_id(match_id)
                 if match and match.scheduled_at:
-                    opponent = next(
-                        (
-                            participant
-                            for participant in match.participants
-                            if participant.uid != uid
-                        ),
-                        None,
-                    )
-                    opponent_doc = (
-                        self.users_repo.get_user_doc(opponent.uid) if opponent else None
-                    ) or {}
-                    opponent_rankings = opponent_doc.get("rankings", {}) or {}
-                    opponent_ranking = _parse_sport_ranking(
-                        opponent_rankings.get(match.sport.value)
-                    )
                     name_by_uid = self._resolve_participant_names(match)
                     payload = MatchScheduledPayload(
                         match_id=match.match_id,
@@ -344,12 +356,70 @@ class PlayService:
                         scheduled_at=match.scheduled_at,
                         court_id=match.court_id,
                         venue_ref=match.venue_ref,
-                        opponent=OpponentSummary(
-                            uid=opponent.uid if opponent else "",
-                            name=opponent_doc.get("name", ""),
-                            profile_url=opponent_doc.get("profileUrl"),
-                            ranking=opponent_ranking,
-                        ),
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_LOG_AVAILABLE:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.scheduled_at:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchLogAvailablePayload(
+                        match_id=match.match_id,
+                        sport=match.sport,
+                        match_type=match.match_type,
+                        scheduled_at=match.scheduled_at,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_WAITING_OPPONENT:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchWaitingOpponentPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        submitted_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.POST_MATCH_CONFIRM_REQUIRED:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = PostMatchConfirmRequiredPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        opponent_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
+                        participants=_participants_from_match(match, name_by_uid),
+                    ).model_dump(by_alias=True)
+
+        elif mode == PlayTabStateEnum.MATCH_DISPUTED:
+            match_id = play_tab.get("activeMatchId")
+            if match_id:
+                match = self.matches_repo.get_by_id(match_id)
+                # Disputed matches only persist the first submitter's score on
+                # the match doc — we surface it as both ``my_score`` and
+                # ``opponent_score`` so the legacy schema stays populated; the
+                # client can treat the two fields as equal until per-side
+                # score storage lands.
+                if match and match.score is not None:
+                    name_by_uid = self._resolve_participant_names(match)
+                    payload = MatchDisputedPayload(
+                        match_id=match.match_id,
+                        match_type=match.match_type,
+                        my_score=match.score,
+                        opponent_score=match.score,
+                        opponent=self._build_opponent_summary(uid, match),
                         participants=_participants_from_match(match, name_by_uid),
                     ).model_dump(by_alias=True)
 
