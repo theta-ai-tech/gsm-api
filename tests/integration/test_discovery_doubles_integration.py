@@ -71,6 +71,7 @@ def _seed_broadcast(
     owner_name: str,
     match_type: MatchTypeEnum = MatchTypeEnum.SINGLES,
     broadcast_type: BroadcastTypeEnum = BroadcastTypeEnum.FIND_OPPONENT,
+    partner_uid: str | None = None,
 ) -> None:
     db.collection("broadcasts").document(broadcast_id).set(
         {
@@ -80,7 +81,7 @@ def _seed_broadcast(
             "sport": "tennis",
             "matchType": match_type.value,
             "broadcastType": broadcast_type.value,
-            "partnerUid": None,
+            "partnerUid": partner_uid,
             "availability": "today",
             "courtStatus": "have_court",
             "courtLocation": "Court A",
@@ -112,6 +113,7 @@ def _seed(db):
         "Player C",
         MatchTypeEnum.DOUBLES,
         BroadcastTypeEnum.FIND_OPPONENT,
+        partner_uid=PLAYER_D_UID,
     )
     _seed_broadcast(
         db,

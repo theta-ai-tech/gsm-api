@@ -100,7 +100,13 @@ cleanup
 
 # ── Helper: seed a broadcast directly via Firestore REST (emulator) ─────────
 seed_broadcast() {
-  local doc_id="$1" owner_uid="$2" owner_name="$3" match_type="$4" broadcast_type="$5"
+  local doc_id="$1" owner_uid="$2" owner_name="$3" match_type="$4" broadcast_type="$5" partner_uid="${6:-}"
+  local partner_field
+  if [ -n "$partner_uid" ]; then
+    partner_field="\"partnerUid\": {\"stringValue\": \"$partner_uid\"}"
+  else
+    partner_field="\"partnerUid\": {\"nullValue\": null}"
+  fi
   curl -s -o /dev/null -X PATCH \
     "$FS_URL/broadcasts/$doc_id" \
     -H "Content-Type: application/json" \
@@ -111,7 +117,7 @@ seed_broadcast() {
         \"sport\": {\"stringValue\": \"tennis\"},
         \"matchType\": {\"stringValue\": \"$match_type\"},
         \"broadcastType\": {\"stringValue\": \"$broadcast_type\"},
-        \"partnerUid\": {\"nullValue\": null},
+        $partner_field,
         \"availability\": {\"stringValue\": \"today\"},
         \"courtStatus\": {\"stringValue\": \"need_court\"},
         \"courtLocation\": {\"nullValue\": null},
@@ -149,7 +155,7 @@ echo ""
 echo "=== Test 3: Broadcast cards carry match_type and broadcast_type badges ==="
 # Seed 3 broadcasts for 3 different virtual users
 seed_broadcast "smoke_bc_singles"   "virt_singles"  "Virt Singles"  "singles" "find_opponent"
-seed_broadcast "smoke_bc_doubles"   "virt_doubles"  "Virt Doubles"  "doubles" "find_opponent"
+seed_broadcast "smoke_bc_doubles"   "virt_doubles"  "Virt Doubles"  "doubles" "find_opponent" "virt_partner"
 seed_broadcast "smoke_bc_fourth"    "virt_fourth"   "Virt Fourth"   "doubles" "find_fourth"
 
 RESP=$(curl -s -H "Authorization: Bearer $TOKEN_BO" "$API/me/state")
