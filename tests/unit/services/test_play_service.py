@@ -226,14 +226,18 @@ class TestGetMeState:
         match_type/broadcast_type in the payload (mobile renders 'Looking for
         a 4th' badges)."""
         now = datetime.now(timezone.utc)
-        mock_users_repo.get_user_doc.return_value = {
-            "name": "Alice",
-            "playTab": {
-                "state": "BROADCAST_ACTIVE",
-                "activeBroadcastId": "broadcast_dbl",
-                "pendingIncomingOfferIds": [],
+        user_docs = {
+            "alice": {
+                "name": "Alice",
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "broadcast_dbl",
+                    "pendingIncomingOfferIds": [],
+                },
             },
+            "bob": {"name": "Bob Brown"},
         }
+        mock_users_repo.get_user_doc.side_effect = lambda uid: user_docs.get(uid)
 
         mock_broadcast = Broadcast(
             broadcast_id="broadcast_dbl",
@@ -261,6 +265,8 @@ class TestGetMeState:
         assert response.payload["match_type"] == MatchTypeEnum.DOUBLES.value
         assert response.payload["broadcast_type"] == BroadcastTypeEnum.FIND_FOURTH.value
         assert response.payload["partner_uid"] == "bob"
+        # DBL-7: partner_name is resolved from the partner's user doc.
+        assert response.payload["partner_name"] == "Bob Brown"
 
     def test_get_me_state_outgoing_offer_pending(
         self, play_service, mock_users_repo, mock_offers_repo
@@ -342,22 +348,23 @@ class TestGetMeState:
         self, play_service, mock_users_repo, mock_matches_repo
     ):
         now = datetime.now(timezone.utc)
-        mock_users_repo.get_user_doc.side_effect = [
-            {
-                "name": "Alice",
+        user_docs = {
+            "alice": {
+                "name": "Alice Anderson",
                 "playTab": {
                     "state": "MATCH_SCHEDULED",
                     "activeMatchId": "match_offer123",
                 },
             },
-            {
-                "name": "Bob",
+            "bob": {
+                "name": "Bob Brown",
                 "profileUrl": "https://example.com/bob.png",
                 "rankings": {
                     "tennis": {"sport": "tennis", "pts": 1200, "globalRanking": 42}
                 },
             },
-        ]
+        }
+        mock_users_repo.get_user_doc.side_effect = lambda uid: user_docs.get(uid)
         mock_matches_repo.get_by_id.return_value = Match(
             match_id="match_offer123",
             sport=SportEnum.TENNIS,
@@ -376,9 +383,61 @@ class TestGetMeState:
 
         assert response.mode == PlayTabStateEnum.MATCH_SCHEDULED
         assert response.payload["match_id"] == "match_offer123"
+        assert response.payload["match_type"] == MatchTypeEnum.SINGLES.value
         assert response.payload["venue_ref"]["venueId"] == "ten_twenty_club"
         assert response.payload["opponent"]["uid"] == "bob"
         assert response.payload["opponent"]["ranking"]["global_ranking"] == 42
+        # Singles: participants array has 2 entries with team=None (DBL-7).
+        participants = response.payload["participants"]
+        assert len(participants) == 2
+        assert {p["uid"] for p in participants} == {"alice", "bob"}
+        assert all(p["team"] is None for p in participants)
+        assert all(p["role"] == "player" for p in participants)
+
+    def test_get_me_state_match_scheduled_doubles(
+        self, play_service, mock_users_repo, mock_matches_repo
+    ):
+        """Doubles MATCH_SCHEDULED returns participants with team A/B and matchType=doubles."""
+        now = datetime.now(timezone.utc)
+        user_docs = {
+            "alice": {
+                "name": "Alice Anderson",
+                "playTab": {
+                    "state": "MATCH_SCHEDULED",
+                    "activeMatchId": "match_dbl",
+                },
+            },
+            "bob": {"name": "Bob Brown"},
+            "carol": {"name": "Carol Carr"},
+            "dave": {"name": "Dave Doe"},
+        }
+        mock_users_repo.get_user_doc.side_effect = lambda uid: user_docs.get(uid)
+        mock_matches_repo.get_by_id.return_value = Match(
+            match_id="match_dbl",
+            sport=SportEnum.PADEL,
+            status="scheduled",
+            match_type=MatchTypeEnum.DOUBLES,
+            scheduled_at=now + timedelta(hours=2),
+            participants=[
+                MatchParticipant(uid="alice", team="A", role="player", display_name="Alice A."),
+                MatchParticipant(uid="bob", team="A", role="player", display_name="Bob B."),
+                MatchParticipant(uid="carol", team="B", role="player", display_name="Carol C."),
+                MatchParticipant(uid="dave", team="B", role="player", display_name="Dave D."),
+            ],
+            participant_uids=["alice", "bob", "carol", "dave"],
+        )
+
+        response = play_service.get_me_state("alice")
+
+        assert response.mode == PlayTabStateEnum.MATCH_SCHEDULED
+        assert response.payload["match_type"] == MatchTypeEnum.DOUBLES.value
+        participants = response.payload["participants"]
+        assert len(participants) == 4
+        teams = {p["uid"]: p["team"] for p in participants}
+        assert teams == {"alice": "A", "bob": "A", "carol": "B", "dave": "B"}
+        names = {p["uid"]: p["name"] for p in participants}
+        assert names["alice"] == "Alice A."
+        assert names["dave"] == "Dave D."
 
 
 class TestFreshnessReconciliation:
