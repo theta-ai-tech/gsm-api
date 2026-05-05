@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from app.models.enums import BroadcastStatusEnum
+from app.models.enums import BroadcastStatusEnum, MatchTypeEnum
 from app.models.play import Broadcast
 from app.repos.base import RepoBase
 from app.repos.mappers import to_broadcast
@@ -31,6 +31,32 @@ class BroadcastsRepo(RepoBase):
         for doc in docs:
             return to_broadcast(doc.to_dict() or {}, broadcast_id=doc.id)
         return None
+
+    def list_active(
+        self,
+        sport: str | None = None,
+        match_type: MatchTypeEnum | None = None,
+        limit: int = 25,
+    ) -> list[Broadcast]:
+        """List active broadcasts ordered by createdAt desc.
+
+        Applies an optional matchType filter. When match_type is provided a
+        composite Firestore index on (status, matchType, createdAt) is required.
+        """
+        query = (
+            self.client.collection("broadcasts")
+            .where("status", "==", "active")
+            .order_by("createdAt", direction="DESCENDING")
+        )
+        if match_type is not None:
+            query = query.where("matchType", "==", match_type.value)
+        if sport is not None:
+            query = query.where("sport", "==", sport)
+        query = query.limit(limit)
+        results: list[Broadcast] = []
+        for doc in query.stream():
+            results.append(to_broadcast(doc.to_dict() or {}, broadcast_id=doc.id))
+        return results
 
     def create(self, broadcast_data: dict) -> str:
         """

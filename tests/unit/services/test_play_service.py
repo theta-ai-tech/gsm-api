@@ -36,7 +36,10 @@ def mock_users_repo():
 
 @pytest.fixture
 def mock_broadcasts_repo():
-    return Mock(spec=BroadcastsRepo)
+    repo = Mock(spec=BroadcastsRepo)
+    # list_active must return an iterable (used by DISCOVERY payload builder)
+    repo.list_active.return_value = []
+    return repo
 
 
 @pytest.fixture
@@ -83,24 +86,31 @@ def _curated_venue_ref() -> VenueRef:
 class TestGetMeState:
     def test_get_me_state_user_not_found(self, play_service, mock_users_repo):
         """Returns DISCOVERY mode when user doesn't exist"""
+        from app.models.play import DiscoveryPayload
+
         mock_users_repo.get_user_doc.return_value = None
 
         response = play_service.get_me_state("nonexistent_user")
 
         assert response.mode == PlayTabStateEnum.DISCOVERY
-        assert response.payload == {}
+        assert isinstance(response.payload, DiscoveryPayload)
 
-    def test_get_me_state_discovery(self, play_service, mock_users_repo):
-        """Returns DISCOVERY mode with empty payload"""
+    def test_get_me_state_discovery(
+        self, play_service, mock_users_repo, mock_broadcasts_repo
+    ):
+        """Returns DISCOVERY mode with DiscoveryPayload"""
+        from app.models.play import DiscoveryPayload
+
         mock_users_repo.get_user_doc.return_value = {
             "name": "Alice",
             "playTab": {"state": "DISCOVERY"},
         }
+        mock_broadcasts_repo.list_active.return_value = []
 
         response = play_service.get_me_state("alice")
 
         assert response.mode == PlayTabStateEnum.DISCOVERY
-        assert response.payload == {}
+        assert isinstance(response.payload, DiscoveryPayload)
 
     def test_get_me_state_broadcast_active(
         self, play_service, mock_users_repo, mock_broadcasts_repo, mock_offers_repo
