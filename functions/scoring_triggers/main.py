@@ -119,8 +119,9 @@ def handle_match_write_update_league_stats(
     now: datetime | None = None,
 ) -> None:
     """
-    On league match completion, atomically increment wins/losses for both participants
-    in the league member subcollection. Casual matches (no leagueId) are ignored.
+    On league match completion, atomically increment wins/losses for every participant
+    in the league member subcollection. Supports both singles (1 winner + 1 loser) and
+    doubles (2 winners + 2 losers). Casual matches (no leagueId) are ignored.
     Idempotent via processedMatchIds on the member doc.
     """
     match_id = _extract_match_id(before, after)
@@ -178,10 +179,10 @@ def handle_match_write_update_league_stats(
         return
 
     result_by_user: dict[str, str] = after.get("resultByUser") or {}
-    winner_uid = next((uid for uid, r in result_by_user.items() if r == "win"), None)
-    loser_uid = next((uid for uid, r in result_by_user.items() if r == "loss"), None)
+    winner_uids = [uid for uid, r in result_by_user.items() if r == "win"]
+    loser_uids = [uid for uid, r in result_by_user.items() if r == "loss"]
 
-    if not winner_uid or not loser_uid:
+    if not winner_uids or not loser_uids:
         log_event(
             trigger=_TRIGGER_D52,
             action="ignore",
@@ -195,8 +196,8 @@ def handle_match_write_update_league_stats(
         return
 
     writes_count = 0
-    for uid, field in ((winner_uid, "wins"), (loser_uid, "losses")):
-        applied = increment_member_stats(client, str(league_id), uid, field, result.match_id)
+    for uid in winner_uids:
+        applied = increment_member_stats(client, str(league_id), uid, "wins", result.match_id)
         if applied:
             writes_count += 1
         log_event(
@@ -205,7 +206,20 @@ def handle_match_write_update_league_stats(
             matchId=result.match_id,
             leagueId=str(league_id),
             uid=uid,
-            field=field,
+            field="wins",
+            applied=applied,
+        )
+    for uid in loser_uids:
+        applied = increment_member_stats(client, str(league_id), uid, "losses", result.match_id)
+        if applied:
+            writes_count += 1
+        log_event(
+            trigger=_TRIGGER_D52,
+            action="increment_stats",
+            matchId=result.match_id,
+            leagueId=str(league_id),
+            uid=uid,
+            field="losses",
             applied=applied,
         )
 

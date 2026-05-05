@@ -164,6 +164,44 @@ class TestQualifyingEvent:
         data: dict = mock_batch.update.call_args[0][1]
         assert data[f"rankings.{SPORT}.lastUpdated"] is firestore.SERVER_TIMESTAMP
 
+    def test_doubles_match_triggers_single_per_sport_recompute(self) -> None:
+        """
+        D5.1: a doubles match (4 participants) must trigger exactly one per-sport
+        recompute — not one per participant. The ranking scan covers all users in the
+        sport, so participant count is irrelevant.
+        """
+        snaps = [
+            _make_doc_snap("u1", 2500),
+            _make_doc_snap("u2", 2400),
+            _make_doc_snap("u3", 2300),
+            _make_doc_snap("u4", 2200),
+        ]
+        client = _make_client(snaps)
+
+        doubles_after = {
+            "matchId": "m_doubles",
+            "status": "completed",
+            "finishedAt": _FINISHED,
+            "participantUids": ["u1", "u2", "u3", "u4"],
+            "sport": SPORT,
+        }
+        doubles_before = {
+            "matchId": "m_doubles",
+            "status": "pending_confirmation",
+            "participantUids": ["u1", "u2", "u3", "u4"],
+        }
+
+        handle_match_write_recompute_global_ranking(
+            client, doubles_before, doubles_after, now=_NOW
+        )
+
+        # batch() called exactly once — one single per-sport recompute
+        assert client.batch.call_count == 1
+        mock_batch = client.batch.return_value
+        # All 4 users in the sport get a ranking write
+        assert mock_batch.update.call_count == 4
+        mock_batch.commit.assert_called_once()
+
     def test_last_updated_written_regardless_of_rank_change(self) -> None:
         """lastUpdated is always written, even when the ordinal position is unchanged."""
         snaps = [_make_doc_snap("u1", 2500)]

@@ -21,6 +21,10 @@ WINNER_UID = "user_winner"
 LOSER_UID = "user_loser"
 MATCH_ID = "match_001"
 
+# Doubles participants
+WINNER_UID_2 = "user_winner2"
+LOSER_UID_2 = "user_loser2"
+
 
 def _after(
     status: str = "completed",
@@ -169,6 +173,101 @@ class TestQualifyingEvent:
         fields_written = [list(d.keys()) for d in updated_fields]
         assert any("stats.wins" in keys for keys in fields_written)
         assert any("stats.losses" in keys for keys in fields_written)
+
+
+# ---------------------------------------------------------------------------
+# Doubles match — 4 participants
+# ---------------------------------------------------------------------------
+
+
+class TestDoublesMatch:
+    """D5.2 must increment stats for every winner and every loser (2+2 for doubles)."""
+
+    def _doubles_after(self) -> dict:
+        return {
+            "matchId": MATCH_ID,
+            "status": "completed",
+            "finishedAt": _FINISHED,
+            "participantUids": [WINNER_UID, WINNER_UID_2, LOSER_UID, LOSER_UID_2],
+            "sport": "padel",
+            "leagueId": LEAGUE_ID,
+            "resultByUser": {
+                WINNER_UID: "win",
+                WINNER_UID_2: "win",
+                LOSER_UID: "loss",
+                LOSER_UID_2: "loss",
+            },
+        }
+
+    def _doubles_before(self) -> dict:
+        return {
+            "matchId": MATCH_ID,
+            "status": "pending_confirmation",
+            "participantUids": [WINNER_UID, WINNER_UID_2, LOSER_UID, LOSER_UID_2],
+        }
+
+    def test_doubles_increments_four_transactions(self) -> None:
+        """Four calls to increment_member_stats — one per participant."""
+        member_snap = _make_member_snap()
+        client = _make_client(member_snap)
+
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = MagicMock(side_effect=lambda n: f"Increment({n})")
+            mock_fs.ArrayUnion = MagicMock(side_effect=lambda v: f"ArrayUnion({v})")
+            handle_match_write_update_league_stats(
+                client, self._doubles_before(), self._doubles_after(), now=_NOW
+            )
+
+        # One transaction per participant: 2 winners + 2 losers = 4
+        assert client.transaction.call_count == 4
+
+    def test_doubles_writes_wins_for_both_winners(self) -> None:
+        """Both winner UIDs receive a 'wins' increment."""
+        member_snap = _make_member_snap()
+        client = _make_client(member_snap)
+
+        updated_fields: list[dict] = []
+
+        def _capture_update(ref: MagicMock, data: dict) -> None:
+            updated_fields.append(data)
+
+        client.transaction.return_value.update.side_effect = _capture_update
+
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = lambda n: f"Increment({n})"
+            mock_fs.ArrayUnion = lambda v: f"ArrayUnion({v})"
+            handle_match_write_update_league_stats(
+                client, self._doubles_before(), self._doubles_after(), now=_NOW
+            )
+
+        wins_writes = sum(1 for d in updated_fields if "stats.wins" in d)
+        losses_writes = sum(1 for d in updated_fields if "stats.losses" in d)
+        assert wins_writes == 2
+        assert losses_writes == 2
+
+    def test_singles_still_produces_exactly_two_transactions(self) -> None:
+        """Regression guard: singles match must still produce exactly 2 transactions."""
+        member_snap = _make_member_snap()
+        client = _make_client(member_snap)
+
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = MagicMock(side_effect=lambda n: f"Increment({n})")
+            mock_fs.ArrayUnion = MagicMock(side_effect=lambda v: f"ArrayUnion({v})")
+            # Use the standard singles _after() fixture (1 winner, 1 loser)
+            handle_match_write_update_league_stats(
+                client, _before(), _after(), now=_NOW
+            )
+
+        assert client.transaction.call_count == 2
 
 
 # ---------------------------------------------------------------------------

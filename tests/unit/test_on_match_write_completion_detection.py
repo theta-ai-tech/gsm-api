@@ -70,6 +70,27 @@ def test_scheduled_to_cancelled_ignored() -> None:
     assert result.reason == "status_not_transitioned"
 
 
+def test_doubles_four_participant_uids_all_returned() -> None:
+    """D2: qualify_completion_match_write must surface all 4 UIDs for a doubles match."""
+    now = _utc(2025, 1, 1, 12, 0)
+    before = {
+        "matchId": "m_doubles_2",
+        "status": "scheduled",
+        "participantUids": ["u1", "u2", "u3", "u4"],
+    }
+    after = {
+        "matchId": "m_doubles_2",
+        "status": "completed",
+        "finishedAt": _utc(2025, 1, 1, 13, 0),
+        "participantUids": ["u1", "u2", "u3", "u4"],
+    }
+
+    result = qualify_completion_match_write(before, after, now)
+
+    assert result.qualifies is True
+    assert result.participant_uids == ["u1", "u2", "u3", "u4"]
+
+
 def test_scheduled_to_completed_missing_finished_at_ignored() -> None:
     now = _utc(2025, 1, 1, 12, 0)
     before = {
