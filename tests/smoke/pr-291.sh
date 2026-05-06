@@ -158,8 +158,32 @@ cleanup() {
   curl -s -o /dev/null -X DELETE "$FS_URL/matches/$MATCH_ID_DOUBLES" || true
   curl -s -o /dev/null -X DELETE "$FS_URL/matches/$MATCH_ID_SINGLES" || true
 }
+
+seed_member() {
+  # Seed a complete league member doc so the stats trigger can write to it.
+  # The trigger skips non-existent member docs (to avoid phantom memberships),
+  # so tests require pre-seeded docs with role, status, and joinedAt.
+  local uid="$1"
+  curl -s -o /dev/null -X PATCH \
+    "$FS_URL/leagues/$LEAGUE_ID/members/$uid" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "fields": {
+        "role":     {"stringValue": "player"},
+        "status":   {"stringValue": "active"},
+        "joinedAt": {"timestampValue": "2025-01-01T00:00:00Z"}
+      }
+    }' || true
+}
+
 trap cleanup EXIT
 cleanup
+
+# Seed complete member docs for all 4 participants before running any trigger.
+# The trigger intentionally skips missing docs, so members must exist first.
+for uid in "$WINNER1" "$WINNER2" "$LOSER1" "$LOSER2"; do
+  seed_member "$uid"
+done
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
