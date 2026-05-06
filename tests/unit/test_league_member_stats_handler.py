@@ -52,8 +52,11 @@ def _before(status: str = "pending_confirmation") -> dict:
     }
 
 
-def _make_member_snap(processed_match_ids: list[str] | None = None) -> MagicMock:
+def _make_member_snap(
+    processed_match_ids: list[str] | None = None, exists: bool = True
+) -> MagicMock:
     snap = MagicMock()
+    snap.exists = exists
     snap.to_dict.return_value = {"processedMatchIds": processed_match_ids or []}
     return snap
 
@@ -366,3 +369,60 @@ class TestProductionEncoding:
         handle_match_write_update_league_stats(client, _before(), after, now=_NOW)
         # No winner found → ignored
         client.transaction.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Missing member doc — must never create a partial membership record
+# ---------------------------------------------------------------------------
+
+
+class TestMissingMemberDoc:
+    """
+    If the league member doc does not exist, increment_member_stats must skip
+    the write entirely. Creating a partial doc with only stats/processedMatchIds
+    would create a spurious membership record (role_service checks doc existence).
+    """
+
+    def test_missing_member_doc_skips_write(self) -> None:
+        """A non-existent member doc must produce no txn.set call."""
+        snap = _make_member_snap(exists=False)
+        client = _make_client(snap)
+
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = MagicMock(side_effect=lambda n: f"Increment({n})")
+            mock_fs.ArrayUnion = MagicMock(side_effect=lambda v: f"ArrayUnion({v})")
+            handle_match_write_update_league_stats(
+                client, _before(), _after(), now=_NOW
+            )
+
+        txn = client.transaction.return_value
+        txn.set.assert_not_called()
+
+    def test_missing_member_doc_returns_false(self) -> None:
+        """increment_member_stats returns False when the member doc does not exist."""
+        from functions.scoring_triggers.league_member_stats import (
+            increment_member_stats,
+        )
+
+        snap = MagicMock()
+        snap.exists = False
+        client = MagicMock()
+        (
+            client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value
+        ) = snap
+        mock_txn = MagicMock()
+        client.transaction.return_value = mock_txn
+
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            result = increment_member_stats(
+                client, "league_001", "unknown_user", "wins", "match_x"
+            )
+
+        assert result is False
+        mock_txn.set.assert_not_called()
