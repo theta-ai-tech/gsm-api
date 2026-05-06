@@ -43,12 +43,13 @@ def increment_member_stats(
         if match_id in processed:
             result_holder["applied"] = False
             return
-        txn.update(
+        txn.set(
             member_ref,
             {
-                f"stats.{field}": firestore.Increment(1),
+                "stats": {field: firestore.Increment(1)},
                 "processedMatchIds": firestore.ArrayUnion([match_id]),
             },
+            merge=True,
         )
         result_holder["applied"] = True
 

@@ -40,7 +40,7 @@ def _after(
     }
     if league_id is not None:
         doc["leagueId"] = league_id
-    doc["resultByUser"] = result_by_user or {WINNER_UID: "win", LOSER_UID: "loss"}
+    doc["resultByUser"] = result_by_user or {WINNER_UID: "W", LOSER_UID: "L"}
     return doc
 
 
@@ -116,7 +116,7 @@ class TestNonQualifyingEvents:
     def test_incomplete_result_by_user_without_winner_is_ignored(self) -> None:
         client = _make_client()
         handle_match_write_update_league_stats(
-            client, _before(), _after(result_by_user={LOSER_UID: "loss"}), now=_NOW
+            client, _before(), _after(result_by_user={LOSER_UID: "L"}), now=_NOW
         )
         client.transaction.assert_not_called()
 
@@ -153,12 +153,12 @@ class TestQualifyingEvent:
         snap = _make_member_snap()
         client = _make_client(snap)
 
-        updated_fields: list[dict] = []
+        written_data: list[dict] = []
 
-        def _capture_update(ref: MagicMock, data: dict) -> None:
-            updated_fields.append(data)
+        def _capture_set(ref: MagicMock, data: dict, **kwargs: object) -> None:
+            written_data.append(data)
 
-        client.transaction.return_value.update.side_effect = _capture_update
+        client.transaction.return_value.set.side_effect = _capture_set
 
         with patch(
             "functions.scoring_triggers.league_member_stats.firestore"
@@ -170,9 +170,9 @@ class TestQualifyingEvent:
                 client, _before(), _after(), now=_NOW
             )
 
-        fields_written = [list(d.keys()) for d in updated_fields]
-        assert any("stats.wins" in keys for keys in fields_written)
-        assert any("stats.losses" in keys for keys in fields_written)
+        stats_keys = [set(d.get("stats", {}).keys()) for d in written_data]
+        assert any("wins" in keys for keys in stats_keys)
+        assert any("losses" in keys for keys in stats_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +192,10 @@ class TestDoublesMatch:
             "sport": "padel",
             "leagueId": LEAGUE_ID,
             "resultByUser": {
-                WINNER_UID: "win",
-                WINNER_UID_2: "win",
-                LOSER_UID: "loss",
-                LOSER_UID_2: "loss",
+                WINNER_UID: "W",
+                WINNER_UID_2: "W",
+                LOSER_UID: "L",
+                LOSER_UID_2: "L",
             },
         }
 
@@ -229,12 +229,12 @@ class TestDoublesMatch:
         member_snap = _make_member_snap()
         client = _make_client(member_snap)
 
-        updated_fields: list[dict] = []
+        written_data: list[dict] = []
 
-        def _capture_update(ref: MagicMock, data: dict) -> None:
-            updated_fields.append(data)
+        def _capture_set(ref: MagicMock, data: dict, **kwargs: object) -> None:
+            written_data.append(data)
 
-        client.transaction.return_value.update.side_effect = _capture_update
+        client.transaction.return_value.set.side_effect = _capture_set
 
         with patch(
             "functions.scoring_triggers.league_member_stats.firestore"
@@ -246,8 +246,8 @@ class TestDoublesMatch:
                 client, self._doubles_before(), self._doubles_after(), now=_NOW
             )
 
-        wins_writes = sum(1 for d in updated_fields if "stats.wins" in d)
-        losses_writes = sum(1 for d in updated_fields if "stats.losses" in d)
+        wins_writes = sum(1 for d in written_data if "wins" in d.get("stats", {}))
+        losses_writes = sum(1 for d in written_data if "losses" in d.get("stats", {}))
         assert wins_writes == 2
         assert losses_writes == 2
 
@@ -291,6 +291,78 @@ class TestIdempotency:
                 client, _before(), _after(), now=_NOW
             )
 
-        # Transactions run but txn.update should NOT be called (skipped)
+        # Transactions run but txn.set should NOT be called (skipped)
         txn = client.transaction.return_value
-        txn.update.assert_not_called()
+        txn.set.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Production encoding regression — MatchResultEnum values "W" / "L"
+# ---------------------------------------------------------------------------
+
+
+class TestProductionEncoding:
+    """
+    Regression guard: confirm that the handler accepts the real MatchResultEnum
+    storage values ("W" / "L") written by match_confirmation_service, not the
+    legacy strings ("win" / "loss") that only appear in older fixture data.
+    """
+
+    def test_singles_with_enum_values_runs_two_transactions(self) -> None:
+        """Singles match using "W"/"L" must produce exactly 2 transactions."""
+        member_snap = _make_member_snap()
+        client = _make_client(member_snap)
+
+        after = _after(result_by_user={WINNER_UID: "W", LOSER_UID: "L"})
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = MagicMock(side_effect=lambda n: f"Increment({n})")
+            mock_fs.ArrayUnion = MagicMock(side_effect=lambda v: f"ArrayUnion({v})")
+            handle_match_write_update_league_stats(client, _before(), after, now=_NOW)
+
+        assert client.transaction.call_count == 2
+
+    def test_doubles_with_enum_values_runs_four_transactions(self) -> None:
+        """Doubles match using "W"/"L" must produce exactly 4 transactions."""
+        member_snap = _make_member_snap()
+        client = _make_client(member_snap)
+
+        after = {
+            "matchId": MATCH_ID,
+            "status": "completed",
+            "finishedAt": _FINISHED,
+            "participantUids": [WINNER_UID, WINNER_UID_2, LOSER_UID, LOSER_UID_2],
+            "sport": "padel",
+            "leagueId": LEAGUE_ID,
+            "resultByUser": {
+                WINNER_UID: "W",
+                WINNER_UID_2: "W",
+                LOSER_UID: "L",
+                LOSER_UID_2: "L",
+            },
+        }
+        before = {
+            "matchId": MATCH_ID,
+            "status": "pending_confirmation",
+            "participantUids": [WINNER_UID, WINNER_UID_2, LOSER_UID, LOSER_UID_2],
+        }
+        with patch(
+            "functions.scoring_triggers.league_member_stats.firestore"
+        ) as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.Increment = MagicMock(side_effect=lambda n: f"Increment({n})")
+            mock_fs.ArrayUnion = MagicMock(side_effect=lambda v: f"ArrayUnion({v})")
+            handle_match_write_update_league_stats(client, before, after, now=_NOW)
+
+        assert client.transaction.call_count == 4
+
+    def test_unknown_result_value_is_ignored(self) -> None:
+        """An unrecognized result value ("win" lowercase, "draw", etc.) must not trigger writes."""
+        client = _make_client()
+        # Payload with only unrecognized values — no "W" winner present
+        after = _after(result_by_user={WINNER_UID: "draw", LOSER_UID: "L"})
+        handle_match_write_update_league_stats(client, _before(), after, now=_NOW)
+        # No winner found → ignored
+        client.transaction.assert_not_called()

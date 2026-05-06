@@ -166,7 +166,7 @@ cleanup
 echo ""
 echo "=== Test 1: Doubles match increments wins for BOTH winners ==="
 P_UIDS='["'"$WINNER1"'","'"$WINNER2"'","'"$LOSER1"'","'"$LOSER2"'"]'
-RESULT_BY_USER='{"'"$WINNER1"'": "win", "'"$WINNER2"'": "win", "'"$LOSER1"'": "loss", "'"$LOSER2"'": "loss"}'
+RESULT_BY_USER='{"'"$WINNER1"'": "W", "'"$WINNER2"'": "W", "'"$LOSER1"'": "L", "'"$LOSER2"'": "L"}'
 
 RUN_RESULT=$(run_trigger "$MATCH_ID_DOUBLES" "$LEAGUE_ID" "pending_confirmation" "$P_UIDS" "$RESULT_BY_USER")
 assert_eq "trigger ran successfully" "$RUN_RESULT" "ok"
@@ -215,7 +215,7 @@ echo "=== Test 5: Singles match (regression) still increments exactly 2 members 
 # Use a different match ID so idempotency guard doesn't block
 S_MATCH_ID="$MATCH_ID_SINGLES"
 S_P_UIDS='["'"$SINGLES_WINNER"'","'"$SINGLES_LOSER"'"]'
-S_RESULT='{"'"$SINGLES_WINNER"'": "win", "'"$SINGLES_LOSER"'": "loss"}'
+S_RESULT='{"'"$SINGLES_WINNER"'": "W", "'"$SINGLES_LOSER"'": "L"}'
 
 RUN_RESULT=$(run_trigger "$S_MATCH_ID" "$LEAGUE_ID" "pending_confirmation" "$S_P_UIDS" "$S_RESULT")
 assert_eq "singles trigger ran successfully" "$RUN_RESULT" "ok"
@@ -243,7 +243,7 @@ fi
 echo ""
 echo "=== Test 6: Missing winner in resultByUser — trigger ignores the match ==="
 # Only a loser in resultByUser — must be ignored (no writes)
-INCOMPLETE_RESULT='{"'"$LOSER1"'": "loss"}'
+INCOMPLETE_RESULT='{"'"$LOSER1"'": "L"}'
 # Read current wins before
 PRE_WINS=$(get_member_wins "$LEAGUE_ID" "$LOSER1")
 RUN_RESULT=$(run_trigger "smoke-incomplete-match" "$LEAGUE_ID" "pending_confirmation" "$P_UIDS" "$INCOMPLETE_RESULT")

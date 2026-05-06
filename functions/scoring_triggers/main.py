@@ -179,8 +179,9 @@ def handle_match_write_update_league_stats(
         return
 
     result_by_user: dict[str, str] = after.get("resultByUser") or {}
-    winner_uids = [uid for uid, r in result_by_user.items() if r == "win"]
-    loser_uids = [uid for uid, r in result_by_user.items() if r == "loss"]
+    # Accept both MatchResultEnum values ("W"/"L") and legacy strings ("win"/"loss")
+    winner_uids = [uid for uid, r in result_by_user.items() if r in ("W", "win")]
+    loser_uids = [uid for uid, r in result_by_user.items() if r in ("L", "loss")]
 
     if not winner_uids or not loser_uids:
         log_event(
