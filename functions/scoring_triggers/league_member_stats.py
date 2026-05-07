@@ -38,17 +38,23 @@ def increment_member_stats(
     @firestore.transactional
     def _apply(txn: firestore.Transaction) -> None:
         snap = member_ref.get(transaction=txn)
+        if not snap.exists:
+            # Only increment stats for existing members — never create partial docs
+            # that would appear as membership authority without role/status/joinedAt.
+            result_holder["applied"] = False
+            return
         data: dict[str, Any] = snap.to_dict() or {}
         processed: list[str] = data.get("processedMatchIds") or []
         if match_id in processed:
             result_holder["applied"] = False
             return
-        txn.update(
+        txn.set(
             member_ref,
             {
-                f"stats.{field}": firestore.Increment(1),
+                "stats": {field: firestore.Increment(1)},
                 "processedMatchIds": firestore.ArrayUnion([match_id]),
             },
+            merge=True,
         )
         result_holder["applied"] = True
 
