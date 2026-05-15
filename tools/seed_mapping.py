@@ -172,7 +172,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
 
 
 def league_to_firestore_doc(league: League) -> Dict[str, Any]:
-    return {
+    doc: Dict[str, Any] = {
         "name": league.name,
         "sport": league.sport.value,
         "season": league.season,
@@ -180,6 +180,19 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
         "ownerUid": league.owner_uid,
         "meta": league.meta or {},
     }
+    if league.region is not None:
+        doc["region"] = league.region
+    if league.max_players is not None:
+        doc["maxPlayers"] = league.max_players
+    if league.current_players is not None:
+        doc["currentPlayers"] = league.current_players
+    if league.start_date is not None:
+        doc["startDate"] = league.start_date
+    if league.end_date is not None:
+        doc["endDate"] = league.end_date
+    if league.tier is not None:
+        doc["tier"] = league.tier
+    return doc
 
 
 def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:

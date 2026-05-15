@@ -18,8 +18,14 @@ Firestore is schemaless, but we keep a consistent structure using deterministic 
     - Fields: title, body, tags[], createdAt, matchId?, sport?, visibility (`private|friends`)
 
 - `leagues/{leagueId}`
-  - Fields: name, sport, season?, status (`active|completed|upcoming`), ownerUid, meta (dict)
-  - (Future) Subcollection: `members/{uid}` with role, status, joinedAt, stats?
+  - Fields: name, sport, season?, status (`active|completed|upcoming|open`), ownerUid, meta (dict)
+  - region?: string — named region (e.g. "athens") for PL-L1 browser filter
+  - maxPlayers?: int — hard cap for the league (PL-L1 "8/12 spots")
+  - currentPlayers?: int — denormalized active member count (updated on join/leave; PL-L1 progress bar)
+  - startDate?: timestamp — when play begins (PL-L1 "Starts May 1")
+  - endDate?: timestamp — when the season ends (PL-L2 detail view)
+  - tier?: string — display-only tier label for MVP; no join enforcement (e.g. "intermediate")
+  - Subcollection: `members/{uid}` with role, status, joinedAt, stats?
 
 - `matches/{matchId}`
   - Fields: sport, status (`scheduled|pending_confirmation|completed|disputed|cancelled`)

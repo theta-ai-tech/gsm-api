@@ -12,6 +12,12 @@ class League(GsmBaseModel):
     season: str | None = None
     status: LeagueStatusEnum
     owner_uid: str
+    region: str | None = None
+    max_players: int | None = None
+    current_players: int | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    tier: str | None = None
     meta: dict[str, Any] | None = None
 
 

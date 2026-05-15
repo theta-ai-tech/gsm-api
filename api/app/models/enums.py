@@ -36,6 +36,7 @@ class LeagueStatusEnum(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
     UPCOMING = "upcoming"
+    OPEN = "open"
 
 
 class LeagueRoleEnum(StrEnum):

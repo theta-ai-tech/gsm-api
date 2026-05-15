@@ -243,6 +243,12 @@ LEAGUE_PADEL_LOCAL = League(
     season="Autumn 2025",
     status=LeagueStatusEnum.ACTIVE,
     owner_uid=USER_IGNATIOS.uid,
+    region="athens",
+    max_players=12,
+    current_players=3,
+    start_date=utc(2025, 9, 1),
+    end_date=utc(2025, 11, 30),
+    tier="intermediate",
     meta={},
 )
 
@@ -251,8 +257,14 @@ LEAGUE_TENNIS_LOCAL = League(
     name="Local Tennis Series 2025",
     sport=SportEnum.TENNIS,
     season="Spring 2025",
-    status=LeagueStatusEnum.UPCOMING,
+    status=LeagueStatusEnum.OPEN,
     owner_uid=USER_ALICE.uid,
+    region="thessaloniki",
+    max_players=16,
+    current_players=5,
+    start_date=utc(2025, 4, 1),
+    end_date=utc(2025, 6, 30),
+    tier="intermediate",
     meta=None,
 )
 
@@ -263,6 +275,12 @@ LEAGUE_TENNIS_COMPLETED = League(
     season="Autumn 2024",
     status=LeagueStatusEnum.COMPLETED,
     owner_uid=USER_ALICE.uid,
+    region="thessaloniki",
+    max_players=8,
+    current_players=8,
+    start_date=utc(2024, 9, 1),
+    end_date=utc(2024, 11, 30),
+    tier="advanced",
     meta=None,
 )
 
