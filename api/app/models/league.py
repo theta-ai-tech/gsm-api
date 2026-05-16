@@ -27,3 +27,15 @@ class LeagueMember(GsmBaseModel):
     status: LeagueMemberStatusEnum
     joined_at: datetime
     stats: dict[str, Any] | None = None
+
+
+class LeagueBrowseCard(GsmBaseModel):
+    league_id: str
+    name: str
+    sport: SportEnum
+    status: LeagueStatusEnum
+    region: str | None = None
+    tier: str | None = None
+    max_players: int | None = None
+    current_players: int | None = None
+    start_date: datetime | None = None

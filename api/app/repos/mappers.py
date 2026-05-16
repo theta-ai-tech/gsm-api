@@ -19,6 +19,7 @@ from app.models import (
     JournalEntrySummary,
     JournalVisibilityEnum,
     League,
+    LeagueBrowseCard,
     LeagueMember,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
@@ -403,6 +404,22 @@ def to_league(doc: dict[str, Any], league_id: str | None = None) -> League:
         end_date=doc.get("endDate"),
         tier=doc.get("tier"),
         meta=doc.get("meta"),
+    )
+
+
+def to_league_browse_card(doc: dict[str, Any], league_id: str | None = None) -> LeagueBrowseCard:
+    sport_val = _require(doc, "sport")
+    status_val = _require(doc, "status")
+    return LeagueBrowseCard(
+        league_id=league_id or doc.get("id") or "",
+        name=doc.get("name", ""),
+        sport=SportEnum(sport_val),
+        status=LeagueStatusEnum(status_val),
+        region=doc.get("region"),
+        tier=doc.get("tier"),
+        max_players=doc.get("maxPlayers"),
+        current_players=doc.get("currentPlayers"),
+        start_date=doc.get("startDate"),
     )
 
 
