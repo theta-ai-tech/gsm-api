@@ -21,6 +21,7 @@ from app.repos.mappers import (
     _parse_sport_ranking,
     to_broadcast,
     to_journal_entry,
+    to_league_browse_card,
     to_offer,
 )
 from app.models.journal import JournalEntry, MatchReflection
@@ -654,3 +655,72 @@ class TestParseUserPreferences:
         prefs = UserPreferences(area=1, levels=PerSportLevels(), sports=[])
 
         assert prefs.feed_opt_out is False
+
+
+# ── to_league_browse_card ─────────────────────────────────────────────────────
+
+
+class TestToLeagueBrowseCard:
+    def test_to_league_browse_card_complete(self):
+        """All fields including camelCase browse fields map correctly with enum coercion."""
+        start = datetime(2025, 9, 1, tzinfo=timezone.utc)
+        doc = {
+            "name": "Athens Open",
+            "sport": "tennis",
+            "status": "open",
+            "region": "athens",
+            "tier": "gold",
+            "maxPlayers": 16,
+            "currentPlayers": 8,
+            "startDate": start,
+        }
+
+        card = to_league_browse_card(doc, league_id="league_athens_open")
+
+        assert card.league_id == "league_athens_open"
+        assert card.name == "Athens Open"
+        assert card.sport == SportEnum.TENNIS
+        assert card.status.value == "open"
+        assert card.region == "athens"
+        assert card.tier == "gold"
+        assert card.max_players == 16
+        assert card.current_players == 8
+        assert card.start_date == start
+
+    def test_to_league_browse_card_minimal(self):
+        """Doc with only required fields (sport + status) — all optionals are None."""
+        doc = {
+            "sport": "padel",
+            "status": "open",
+        }
+
+        card = to_league_browse_card(doc, league_id="league_minimal")
+
+        assert card.league_id == "league_minimal"
+        assert card.name == ""
+        assert card.sport == SportEnum.PADEL
+        assert card.region is None
+        assert card.tier is None
+        assert card.max_players is None
+        assert card.current_players is None
+        assert card.start_date is None
+
+    def test_to_league_browse_card_legacy_doc(self):
+        """Legacy doc without any LG-1 browse fields returns None for all optionals."""
+        doc = {
+            "name": "Old League",
+            "sport": "pickleball",
+            "status": "open",
+            # no region, tier, maxPlayers, currentPlayers, startDate
+        }
+
+        card = to_league_browse_card(doc, league_id="league_legacy")
+
+        assert card.league_id == "league_legacy"
+        assert card.name == "Old League"
+        assert card.sport == SportEnum.PICKLEBALL
+        assert card.region is None
+        assert card.tier is None
+        assert card.max_players is None
+        assert card.current_players is None
+        assert card.start_date is None
