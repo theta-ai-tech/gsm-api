@@ -42,7 +42,8 @@ Values below match the C1 enums in code.
 ### leagueStatus
 - Firestore representation: string
 - API/Pydantic representation: string enum
-- Allowed values: `active`, `completed`, `upcoming`
+- Allowed values: `active`, `completed`, `upcoming`, `open`
+  - `open`: registration is open, play has not yet started (distinct from `upcoming` which may be pre-registration)
 
 ### journalVisibility
 - Firestore representation: string
@@ -474,8 +475,14 @@ Purpose: league metadata, configuration, and lifecycle.
 | name | string | required | — | canonical | — | League display name. |
 | sport | string | required | sport | canonical | — | Sport enum. |
 | season | string | optional | — | canonical | — | Season label (e.g., "Autumn 2025"). |
-| status | string | required | leagueStatus | canonical | — | League lifecycle state. |
+| status | string | required | leagueStatus | canonical | index=filter | League lifecycle state. |
 | ownerUid | string | required | — | canonical | — | League owner uid. |
+| region | string | optional | — | canonical | index=filter | Named region (e.g. "athens"). Matches region format used by leaderboards. Used by PL-L1 browser filter (`?region=athens`). |
+| maxPlayers | number | optional | — | canonical | — | Hard cap on total players. Used by PL-L1 card ("8/12 spots"). |
+| currentPlayers | number | optional | — | cache | — | Denormalized count of active members. Updated on join/leave. Used by PL-L1 progress bar. |
+| startDate | timestamp | optional | — | canonical | — | When play begins. Displayed on PL-L1 card ("Starts May 1"). |
+| endDate | timestamp | optional | — | canonical | — | When the season ends. Displayed on PL-L2 detail view. |
+| tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
 | meta | map | optional | — | canonical | — | Free-form metadata. |
 
 ## Subcollection: leagues/{leagueId}/members
@@ -508,8 +515,14 @@ Purpose: membership record for a user in a league.
   "name": "Local Padel Ladder 2025",
   "sport": "padel",
   "season": "Autumn 2025",
-  "status": "active",
+  "status": "open",
   "ownerUid": "user_123",
+  "region": "athens",
+  "maxPlayers": 12,
+  "currentPlayers": 4,
+  "startDate": "2026-06-01T00:00:00Z",
+  "endDate": "2026-08-31T00:00:00Z",
+  "tier": "intermediate",
   "meta": {}
 }
 ```
