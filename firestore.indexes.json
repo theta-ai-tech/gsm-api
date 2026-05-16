@@ -132,6 +132,25 @@
         { "fieldPath": "matchType", "mode": "ASCENDING" },
         { "fieldPath": "createdAt", "mode": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "leagues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "region", "mode": "ASCENDING" },
+        { "fieldPath": "sport", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "leagues",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "region", "mode": "ASCENDING" },
+        { "fieldPath": "sport", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "startDate", "mode": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

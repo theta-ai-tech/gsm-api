@@ -509,6 +509,13 @@ Purpose: membership record for a user in a league.
 - Check membership existence for a user: read `leagues/{leagueId}/members/{uid}`.
 - User profiles cache league summaries in `users/{uid}.leaguesActive` / `leaguesCompleted`.
 
+### Required composite indexes
+Indexes are defined in `firestore.indexes.json` and required for browse queries:
+- League browse (primary): `region` (ASC), `sport` (ASC), `status` (ASC)
+- League browse + sort by start date: `region` (ASC), `sport` (ASC), `status` (ASC), `startDate` (ASC)
+
+⚠️ **Deployment note:** These indexes must be deployed via `firebase deploy --only firestore:indexes` before `GET /leagues` (LG-7) is live in production. Index creation can take several minutes on large collections.
+
 ### leagues/{leagueId}
 ```json
 {
