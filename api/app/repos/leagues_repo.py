@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from google.cloud.firestore_v1.field_path import FieldPath  # type: ignore[attr-defined, import-untyped]
@@ -51,7 +51,7 @@ class LeaguesRepo(RepoBase):
         limit: int = 20,
         cursor: Optional[dict] = None,
     ) -> List[League]:
-        query = self.client.collection("leagues")
+        query: firestore.Query = cast(firestore.Query, self.client.collection("leagues"))
         if region is not None:
             query = query.where("region", "==", region)
         if sport is not None:
