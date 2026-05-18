@@ -15,6 +15,7 @@ class LeagueService:
         self.client = firestore_client
 
     def join_league(self, league_id: str, uid: str) -> LeagueMember:
+        # Fast pre-checks (non-transactional — stable data)
         league = self.leagues_repo.get_by_id(league_id)
         if league is None:
             raise ValueError(f"League {league_id!r} not found")
@@ -23,14 +24,6 @@ class LeagueService:
             raise ValueError(
                 f"Cannot join league with status {league.status!r}; must be OPEN or UPCOMING"
             )
-
-        existing_members = self.leagues_repo.list_members(league_id)
-        if any(m.uid == uid for m in existing_members):
-            raise ValueError(f"User {uid!r} is already a member of league {league_id!r}")
-
-        if league.max_players is not None and league.current_players is not None:
-            if league.current_players >= league.max_players:
-                raise ValueError(f"League {league_id!r} is at full capacity")
 
         now = datetime.now(timezone.utc)
         member_data = {
@@ -50,8 +43,23 @@ class LeagueService:
                 .collection("members")
                 .document(uid)
             )
-            txn.set(member_ref, member_data)
             league_ref = self.client.collection("leagues").document(league_id)
+
+            # Reads must come before writes in a Firestore transaction
+            member_doc = member_ref.get(transaction=txn)
+            league_doc = league_ref.get(transaction=txn)
+
+            if member_doc.exists:
+                raise ValueError(f"User {uid!r} is already a member of league {league_id!r}")
+
+            if league_doc.exists:
+                data = league_doc.to_dict() or {}
+                current = data.get("currentPlayers")
+                max_p = data.get("maxPlayers")
+                if current is not None and max_p is not None and current >= max_p:
+                    raise ValueError(f"League {league_id!r} is at full capacity")
+
+            txn.set(member_ref, member_data)
             txn.update(league_ref, {"currentPlayers": firestore.Increment(1)})
 
         _join_txn(transaction)
