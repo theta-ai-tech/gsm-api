@@ -61,6 +61,7 @@ def _setup_txn_mocks(
     mock_league_doc = Mock()
     mock_league_doc.exists = True
     mock_league_doc.to_dict.return_value = {
+        "status": "open",
         "currentPlayers": current_players,
         "maxPlayers": max_players,
     }
@@ -180,6 +181,30 @@ class TestJoinLeague:
             result = league_service.join_league("lg1", "uid1")
         assert result.uid == "uid1"
 
+    def test_status_rechecked_inside_transaction(
+        self,
+        league_service: LeagueService,
+        mock_leagues_repo: Mock,
+        mock_firestore_client: Mock,
+    ) -> None:
+        """TOCTOU guard: league was OPEN at pre-check but transitions to ACTIVE before txn commit."""
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            status=LeagueStatusEnum.OPEN
+        )
+        with patch("app.services.league_service.firestore.transactional", lambda f: f):
+            _setup_txn_mocks(mock_firestore_client, member_exists=False)
+            # Override the league_doc to return "active" status — simulates TOCTOU race
+            mock_league_ref = (
+                mock_firestore_client.collection.return_value.document.return_value
+            )
+            mock_league_ref.get.return_value.to_dict.return_value = {
+                "status": "active",
+                "currentPlayers": 3,
+                "maxPlayers": 10,
+            }
+            with pytest.raises(ValueError, match="active"):
+                league_service.join_league("lg1", "uid1")
+
     def test_no_max_players_allows_join(
         self,
         league_service: LeagueService,
@@ -195,7 +220,9 @@ class TestJoinLeague:
 
             mock_league_doc = Mock()
             mock_league_doc.exists = True
-            mock_league_doc.to_dict.return_value = {}  # no currentPlayers/maxPlayers
+            mock_league_doc.to_dict.return_value = {
+                "status": "open"
+            }  # no currentPlayers/maxPlayers
 
             mock_member_ref = Mock()
             mock_member_ref.get.return_value = mock_member_doc

@@ -55,7 +55,7 @@ PYTHONPATH="$REPO_ROOT/api" \
     --tb=short --no-header -q 2>&1
 PYTEST_EXIT=$?
 
-assert_exit_code "LeagueService unit tests pass (9 tests)" 0 "$PYTEST_EXIT"
+assert_exit_code "LeagueService unit tests pass (10 tests)" 0 "$PYTEST_EXIT"
 
 # ── Step 2: Not-found guard raises ──────────────────────────────────────────
 echo ""
@@ -87,7 +87,7 @@ assert_exit_code "not-found guard raises ValueError" 0 "$GUARD_EXIT"
 echo ""
 echo "Verifying specific guard: full capacity..."
 PYTHONPATH="$REPO_ROOT/api" "$PYTHON" -c "
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from app.repos.leagues_repo import LeaguesRepo
 from app.models.league import League
 from app.models.enums import LeagueStatusEnum, SportEnum
@@ -98,11 +98,30 @@ repo.get_by_id.return_value = League(
     league_id='lg1', name='Full League', sport=SportEnum.TENNIS,
     status=LeagueStatusEnum.OPEN, owner_uid='o1', max_players=5, current_players=5,
 )
-repo.list_members.return_value = []
-svc = LeagueService(repo, Mock())
+
+client = Mock()
+client.transaction.return_value = Mock()
+
+# Member doc: not yet a member
+mock_member_doc = Mock()
+mock_member_doc.exists = False
+mock_member_ref = Mock()
+mock_member_ref.get.return_value = mock_member_doc
+
+# League doc: at full capacity, status open
+mock_league_doc = Mock()
+mock_league_doc.exists = True
+mock_league_doc.to_dict.return_value = {'status': 'open', 'currentPlayers': 5, 'maxPlayers': 5}
+mock_league_ref = Mock()
+mock_league_ref.get.return_value = mock_league_doc
+mock_league_ref.collection.return_value.document.return_value = mock_member_ref
+client.collection.return_value.document.return_value = mock_league_ref
+
+svc = LeagueService(repo, client)
 
 try:
-    svc.join_league('lg1', 'uid1')
+    with patch('app.services.league_service.firestore.transactional', lambda f: f):
+        svc.join_league('lg1', 'uid1')
     print('FAIL: expected ValueError')
     exit(1)
 except ValueError as e:

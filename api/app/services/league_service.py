@@ -54,6 +54,11 @@ class LeagueService:
 
             if league_doc.exists:
                 data = league_doc.to_dict() or {}
+                status_val = data.get("status")
+                if status_val not in (LeagueStatusEnum.OPEN.value, LeagueStatusEnum.UPCOMING.value):
+                    raise ValueError(
+                        f"Cannot join league with status {status_val!r}; must be OPEN or UPCOMING"
+                    )
                 current = data.get("currentPlayers")
                 max_p = data.get("maxPlayers")
                 if current is not None and max_p is not None and current >= max_p:
