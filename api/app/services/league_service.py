@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
@@ -47,7 +48,7 @@ class LeagueService:
 
             # Reads must come before writes in a Firestore transaction
             member_doc = member_ref.get(transaction=txn)
-            league_doc = league_ref.get(transaction=txn)
+            league_doc = cast(firestore.DocumentSnapshot, league_ref.get(transaction=txn))
 
             if member_doc.exists:
                 raise ValueError(f"User {uid!r} is already a member of league {league_id!r}")
