@@ -5,7 +5,7 @@ from typing import cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
-from app.models import LeagueMember
+from app.models import LeagueMember, StandingsEntry
 from app.models.enums import LeagueMemberStatusEnum, LeagueRoleEnum, LeagueStatusEnum
 from app.repos.leagues_repo import LeaguesRepo
 
@@ -77,3 +77,40 @@ class LeagueService:
             joined_at=now,
             stats=None,
         )
+
+    def get_standings(self, league_id: str) -> list[StandingsEntry]:
+        members = self.leagues_repo.list_members(league_id)
+
+        # Build sortable rows: (wins, losses, display_name, uid)
+        # display_name falls back to uid — displayName not yet stored in member docs
+        rows: list[tuple[int, int, str, str]] = []
+        for m in members:
+            stats = m.stats or {}
+            wins = int(stats.get("wins", 0))
+            losses = int(stats.get("losses", 0))
+            rows.append((wins, losses, m.uid, m.uid))
+
+        # Sort: wins DESC, losses ASC, (wins-losses) DESC, display_name ASC
+        rows.sort(key=lambda r: (-r[0], r[1], -(r[0] - r[1]), r[2]))
+
+        # Dense ranking: tied (wins, losses) share the same rank; next rank is +1 not +gap
+        result: list[StandingsEntry] = []
+        rank = 0
+        prev_key: tuple[int, int] | None = None
+        for wins, losses, display_name, uid in rows:
+            key = (wins, losses)
+            if key != prev_key:
+                rank += 1
+                prev_key = key
+            result.append(
+                StandingsEntry(
+                    rank=rank,
+                    uid=uid,
+                    display_name=display_name,
+                    wins=wins,
+                    losses=losses,
+                    tier_ring=None,
+                )
+            )
+
+        return result
