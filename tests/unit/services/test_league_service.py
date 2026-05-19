@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -239,3 +240,122 @@ class TestJoinLeague:
 
             result = league_service.join_league("lg1", "uid1")
         assert result.uid == "uid1"
+
+
+def _make_member_with_stats(uid: str, wins: int = 0, losses: int = 0) -> LeagueMember:
+    return LeagueMember(
+        uid=uid,
+        role=LeagueRoleEnum.PLAYER,
+        status=LeagueMemberStatusEnum.ACTIVE,
+        joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        stats={"wins": wins, "losses": losses},
+    )
+
+
+class TestGetStandings:
+    def test_empty_member_list_returns_empty(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = []
+        result = league_service.get_standings("lg1")
+        assert result == []
+
+    def test_single_member_gets_rank_1(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [_make_member_with_stats("uid1")]
+        result = league_service.get_standings("lg1")
+        assert len(result) == 1
+        assert result[0].rank == 1
+        assert result[0].uid == "uid1"
+        assert result[0].wins == 0
+        assert result[0].losses == 0
+
+    def test_member_with_no_stats_gets_zero(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        member = LeagueMember(
+            uid="uid1",
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            stats=None,
+        )
+        mock_leagues_repo.list_members.return_value = [member]
+        result = league_service.get_standings("lg1")
+        assert result[0].wins == 0
+        assert result[0].losses == 0
+
+    def test_sort_wins_descending(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid_a", wins=3, losses=0),
+            _make_member_with_stats("uid_b", wins=5, losses=0),
+        ]
+        result = league_service.get_standings("lg1")
+        assert result[0].uid == "uid_b"
+        assert result[0].rank == 1
+        assert result[1].uid == "uid_a"
+        assert result[1].rank == 2
+
+    def test_sort_losses_ascending_for_same_wins(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid_a", wins=3, losses=5),
+            _make_member_with_stats("uid_b", wins=3, losses=2),
+        ]
+        result = league_service.get_standings("lg1")
+        assert result[0].uid == "uid_b"
+        assert result[0].rank == 1
+        assert result[1].uid == "uid_a"
+        assert result[1].rank == 2
+
+    def test_tied_members_share_rank(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid_a", wins=3, losses=2),
+            _make_member_with_stats("uid_b", wins=3, losses=2),
+        ]
+        result = league_service.get_standings("lg1")
+        assert result[0].rank == 1
+        assert result[1].rank == 1
+
+    def test_dense_ranking_after_tie(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid_a", wins=3, losses=2),
+            _make_member_with_stats("uid_b", wins=3, losses=2),
+            _make_member_with_stats("uid_c", wins=1, losses=0),
+        ]
+        result = league_service.get_standings("lg1")
+        ranks = [e.rank for e in result]
+        assert ranks[0] == 1
+        assert ranks[1] == 1
+        assert ranks[2] == 2  # dense: 2 not 3
+
+    def test_display_name_falls_back_to_uid(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid1", wins=2, losses=1)
+        ]
+        result = league_service.get_standings("lg1")
+        assert result[0].display_name == "uid1"
+
+    def test_alphabetical_tiebreak_within_tied_group(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("zara_uid", wins=2, losses=1),
+            _make_member_with_stats("anna_uid", wins=2, losses=1),
+        ]
+        result = league_service.get_standings("lg1")
+        # Both rank 1; "anna_uid" sorts before "zara_uid" alphabetically
+        assert result[0].uid == "anna_uid"
+        assert result[1].uid == "zara_uid"
+        assert result[0].rank == 1
+        assert result[1].rank == 1

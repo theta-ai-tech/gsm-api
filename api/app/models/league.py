@@ -39,3 +39,12 @@ class LeagueBrowseCard(GsmBaseModel):
     max_players: int | None = None
     current_players: int | None = None
     start_date: datetime | None = None
+
+
+class StandingsEntry(GsmBaseModel):
+    rank: int
+    uid: str
+    display_name: str
+    wins: int
+    losses: int
+    tier_ring: str | None = None
