@@ -128,10 +128,12 @@ class TestListBySportAndArea:
         collection_mock = MagicMock()
         where_sport_mock = MagicMock()
         ordered_mock = MagicMock()
+        limited_mock = MagicMock()
         client.collection.return_value = collection_mock
         collection_mock.where.return_value = where_sport_mock
         where_sport_mock.order_by.return_value = ordered_mock
-        ordered_mock.stream.return_value = [
+        ordered_mock.limit.return_value = limited_mock
+        limited_mock.stream.return_value = [
             _make_venue_doc(
                 "venue_flisvos",
                 name="Flisvos Padel Academy",
@@ -174,11 +176,13 @@ class TestListBySportAndArea:
         where_sport_mock = MagicMock()
         where_area_mock = MagicMock()
         ordered_mock = MagicMock()
+        limited_mock = MagicMock()
         client.collection.return_value = collection_mock
         collection_mock.where.return_value = where_sport_mock
         where_sport_mock.where.return_value = where_area_mock
         where_area_mock.order_by.return_value = ordered_mock
-        ordered_mock.stream.return_value = [
+        ordered_mock.limit.return_value = limited_mock
+        limited_mock.stream.return_value = [
             _make_venue_doc(
                 "venue_glyfada_tennis",
                 name="Glyfada Tennis Club",
@@ -212,11 +216,58 @@ class TestListBySportAndArea:
         collection_mock = MagicMock()
         where_sport_mock = MagicMock()
         ordered_mock = MagicMock()
+        limited_mock = MagicMock()
         client.collection.return_value = collection_mock
         collection_mock.where.return_value = where_sport_mock
         where_sport_mock.order_by.return_value = ordered_mock
-        ordered_mock.stream.return_value = []
+        ordered_mock.limit.return_value = limited_mock
+        limited_mock.stream.return_value = []
 
         result = repo.list_by_sport_and_area("pickleball")
 
         assert result == []
+
+
+class TestListBySportAndAreaPagination:
+    def _setup_chain(
+        self, client: MagicMock, area: str | None = None
+    ) -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+        collection_mock = MagicMock()
+        where_sport_mock = MagicMock()
+        ordered_mock = MagicMock()
+        limited_mock = MagicMock()
+        client.collection.return_value = collection_mock
+        collection_mock.where.return_value = where_sport_mock
+        if area is not None:
+            where_area_mock = MagicMock()
+            where_sport_mock.where.return_value = where_area_mock
+            where_area_mock.order_by.return_value = ordered_mock
+        else:
+            where_sport_mock.order_by.return_value = ordered_mock
+        ordered_mock.limit.return_value = limited_mock
+        limited_mock.stream.return_value = []
+        return collection_mock, where_sport_mock, ordered_mock, limited_mock
+
+    def test_limit_passed_to_firestore_query(self) -> None:
+        repo, client = _make_repo()
+        _, _, ordered_mock, limited_mock = self._setup_chain(client)
+
+        repo.list_by_sport_and_area("padel", limit=5)
+
+        ordered_mock.limit.assert_called_once_with(5)
+
+    def test_cursor_applies_start_after_on_name(self) -> None:
+        repo, client = _make_repo()
+        _, _, _, limited_mock = self._setup_chain(client)
+
+        repo.list_by_sport_and_area("padel", cursor={"name": "Athens Padel Club"})
+
+        limited_mock.start_after.assert_called_once_with(["Athens Padel Club"])
+
+    def test_no_cursor_skips_start_after(self) -> None:
+        repo, client = _make_repo()
+        _, _, _, limited_mock = self._setup_chain(client)
+
+        repo.list_by_sport_and_area("padel")
+
+        limited_mock.start_after.assert_not_called()

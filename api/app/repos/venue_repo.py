@@ -24,7 +24,13 @@ class VenueRepo(RepoBase):
             return None
         return to_venue_summary(data, venue_id=venue_id)
 
-    def list_by_sport_and_area(self, sport: str, area: str | None = None) -> list[VenueSummary]:
+    def list_by_sport_and_area(
+        self,
+        sport: str,
+        area: str | None = None,
+        limit: int = 20,
+        cursor: dict | None = None,
+    ) -> list[VenueSummary]:
         """List curated venues that support ``sport``, optionally filtered by ``area``.
 
         ``sport`` is matched via ``array_contains`` against the venue's
@@ -35,7 +41,9 @@ class VenueRepo(RepoBase):
         query = self.client.collection(self.COLLECTION).where("sports", "array_contains", sport)
         if area is not None:
             query = query.where("area", "==", area)
-        query = query.order_by("name")
+        query = query.order_by("name").limit(limit)
+        if cursor and cursor.get("name"):
+            query = query.start_after([cursor["name"]])
         return [to_venue_summary(doc.to_dict() or {}, venue_id=doc.id) for doc in query.stream()]
 
     def search_by_name_prefix(self, prefix: str, limit: int = 10) -> list[VenueSummary]:

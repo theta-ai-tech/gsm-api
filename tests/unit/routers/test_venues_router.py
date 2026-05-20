@@ -366,3 +366,112 @@ class TestSuggestVenueAuth:
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.post("/venues/suggest", json=_valid_suggestion_payload())
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /venues
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def list_client(_override_auth, mock_venue_repo):
+    mock_venue_repo.list_by_sport_and_area.return_value = []
+    return TestClient(app)
+
+
+class TestListVenues:
+    def test_returns_200_empty_list_when_no_venues(self, list_client: TestClient):
+        resp = list_client.get("/venues", params={"sport": "padel"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["venues"] == []
+        assert body["nextCursor"] is None
+
+    def test_sport_required_passed_to_repo(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        list_client.get("/venues", params={"sport": "padel"})
+        mock_venue_repo.list_by_sport_and_area.assert_called_once()
+        call_kwargs = mock_venue_repo.list_by_sport_and_area.call_args
+        assert call_kwargs.args[0] == "padel"
+
+    def test_area_forwarded_to_repo(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        list_client.get("/venues", params={"sport": "padel", "area": "Glyfada"})
+        mock_venue_repo.list_by_sport_and_area.assert_called_once()
+        call_kwargs = mock_venue_repo.list_by_sport_and_area.call_args
+        assert call_kwargs.kwargs.get("area") == "Glyfada"
+
+    def test_area_is_optional(self, list_client: TestClient):
+        resp = list_client.get("/venues", params={"sport": "padel"})
+        assert resp.status_code == 200
+
+    def test_response_shape(self, list_client: TestClient, mock_venue_repo: Mock):
+        mock_venue_repo.list_by_sport_and_area.return_value = [
+            _curated_venue("ven_001", "Athens Padel Club")
+        ]
+        resp = list_client.get("/venues", params={"sport": "padel", "limit": "1"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "venues" in body
+        assert "nextCursor" in body
+        assert len(body["venues"]) == 1
+
+    def test_venues_serialized_as_camelcase(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.list_by_sport_and_area.return_value = [
+            _curated_venue("ven_001", "Athens Padel Club")
+        ]
+        resp = list_client.get("/venues", params={"sport": "padel", "limit": "1"})
+        assert resp.status_code == 200
+        venue = resp.json()["venues"][0]
+        assert "venueId" in venue
+        assert "courtCount" in venue
+
+    def test_next_cursor_none_when_fewer_than_limit(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.list_by_sport_and_area.return_value = [
+            _curated_venue("ven_001", "Athens Padel Club"),
+            _curated_venue("ven_002", "Glyfada Tennis Club"),
+        ]
+        resp = list_client.get("/venues", params={"sport": "padel"})
+        assert resp.status_code == 200
+        assert resp.json()["nextCursor"] is None
+
+    def test_next_cursor_set_when_results_equal_limit(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.list_by_sport_and_area.return_value = [
+            _curated_venue("ven_001", "Athens Padel Club"),
+            _curated_venue("ven_002", "Glyfada Tennis Club"),
+            _curated_venue("ven_003", "Piraeus Padel"),
+        ]
+        resp = list_client.get("/venues", params={"sport": "padel", "limit": "3"})
+        assert resp.status_code == 200
+        assert resp.json()["nextCursor"] is not None
+
+    def test_missing_sport_returns_422(self, list_client: TestClient):
+        resp = list_client.get("/venues")
+        assert resp.status_code == 422
+
+    def test_invalid_sport_returns_422(self, list_client: TestClient):
+        resp = list_client.get("/venues", params={"sport": "chess"})
+        assert resp.status_code == 422
+
+    def test_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/venues", params={"sport": "padel"})
+        assert resp.status_code == 401
+
+    def test_invalid_cursor_returns_400(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.list_by_sport_and_area.return_value = []
+        resp = list_client.get(
+            "/venues", params={"sport": "padel", "cursor": "garbage"}
+        )
+        assert resp.status_code == 400

@@ -505,6 +505,58 @@ Required (must be the offer sender).
 ---
 
 
+## `GET /venues`
+
+### Purpose
+List curated venues that support a given sport, optionally filtered by area. Returns the manually
+seeded venue list (15–20 Athens venues for MVP); non-curated venues are resolved via
+`GET /venues/search`.
+
+### Auth
+Required (Firebase Bearer ID token).
+
+### Query parameters
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sport` | `tennis \| padel \| pickleball` | Yes | Sport to filter by |
+| `area` | string | No | Exact area string match (e.g. `"Glyfada"`) |
+| `limit` | int (1–100, default 20) | No | Max venues to return |
+| `cursor` | string | No | Opaque pagination token from previous response |
+
+### Example response (`200`)
+```json
+{
+  "venues": [
+    {
+      "venueId": "venue_flisvos",
+      "name": "Flisvos Padel Academy",
+      "coordinates": {"lat": 37.93, "lng": 23.68},
+      "area": "Palaio Faliro",
+      "sports": ["padel", "tennis"],
+      "courtCount": 6,
+      "indoor": false,
+      "placeId": "ChIJFlisvos"
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+### Behavior
+- Queries the `venues/{venueId}` Firestore collection using `array_contains` on `sports`.
+- If `area` is provided, adds an exact-match filter on the `area` field.
+- Results are ordered by `name` alphabetically.
+- Pagination: pass `nextCursor` from a previous response as `cursor` to fetch the next page.
+- Returns `200` with `venues: []` when no venues match (never 404).
+
+### Common error responses
+- `400` invalid cursor token
+- `401` missing/invalid token
+- `422` validation error (invalid `sport` value, `limit` out of range)
+
+---
+
+
 ## `POST /venues/suggest`
 
 ### Purpose

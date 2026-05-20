@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import base64
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import Field
 
 from app.constants import VENUE_SEARCH_MAX_RESULTS
 from app.deps import get_current_user
 from app.dependencies.repos import get_venue_repo, get_venue_suggestions_repo
 from app.models.base import GsmBaseModel
 from app.models.common import VenueRef
+from app.models.enums import SportEnum
+from app.models.venue import VenueSummary
 from app.models.venue_suggestion import (
     CreateVenueSuggestionRequest,
     CreateVenueSuggestionResponse,
@@ -19,14 +25,40 @@ from app.settings import get_settings
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
+_VENUE_LIST_MAX_LIMIT = 100
+
 
 # ---------------------------------------------------------------------------
-# Response model
+# Response models
 # ---------------------------------------------------------------------------
+
+
+class VenueListResponse(GsmBaseModel):
+    venues: list[VenueSummary]
+    next_cursor: str | None = Field(default=None, alias="nextCursor")
 
 
 class VenueSearchResponse(GsmBaseModel):
     results: list[VenueRef]
+
+
+# ---------------------------------------------------------------------------
+# Cursor helpers
+# ---------------------------------------------------------------------------
+
+
+def _decode_venue_cursor(cursor_str: str | None) -> dict | None:
+    if not cursor_str:
+        return None
+    try:
+        return json.loads(base64.urlsafe_b64decode(cursor_str.encode()))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
+
+
+def _encode_venue_cursor(venue: VenueSummary) -> str:
+    data = {"name": venue.name, "venueId": venue.venue_id}
+    return base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +74,29 @@ def get_places_service() -> PlacesService:
             detail="Google Places API key not configured",
         )
     return PlacesService(api_key=settings.google_places_api_key)
+
+
+# ---------------------------------------------------------------------------
+# GET /venues
+# ---------------------------------------------------------------------------
+
+
+@router.get("", response_model=VenueListResponse, response_model_by_alias=True)
+def list_venues(
+    sport: SportEnum = Query(...),
+    area: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=_VENUE_LIST_MAX_LIMIT),
+    cursor: str | None = Query(default=None),
+    current_user: CurrentUser = Depends(get_current_user),
+    venue_repo: VenueRepo = Depends(get_venue_repo),
+) -> VenueListResponse:
+    """List curated venues filtered by sport and optional area."""
+    parsed_cursor = _decode_venue_cursor(cursor)
+    venues = venue_repo.list_by_sport_and_area(
+        sport.value, area=area, limit=limit, cursor=parsed_cursor
+    )
+    next_cursor = _encode_venue_cursor(venues[-1]) if len(venues) == limit else None
+    return VenueListResponse(venues=venues, nextCursor=next_cursor)
 
 
 # ---------------------------------------------------------------------------
