@@ -14,6 +14,7 @@ from app.routers.improve import router as improve_router
 from app.routers.lab import router as lab_router
 from app.routers.matches import router as matches_router
 from app.routers.play import router as play_router
+from app.routers.leagues import router as leagues_router
 from app.routers.venues import router as venues_router
 from app.security import CurrentUser, require_league_member, require_self
 from app.settings import get_settings
@@ -28,6 +29,7 @@ app.include_router(lab_router)
 app.include_router(matches_router)
 app.include_router(clubhouse_router)
 app.include_router(venues_router)
+app.include_router(leagues_router)
 
 settings = get_settings()
 logger = logging.getLogger("gsm-api")
