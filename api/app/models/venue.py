@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pydantic import Field
+
 from app.models.base import GsmBaseModel
 from app.models.common import GeoCoordinates
 from app.models.enums import SportEnum
@@ -14,11 +16,11 @@ class VenueSummary(GsmBaseModel):
     Places are represented by :class:`app.models.common.VenueRef` instead.
     """
 
-    venue_id: str
+    venue_id: str = Field(alias="venueId")
     name: str
     coordinates: GeoCoordinates
     area: str
     sports: list[SportEnum]
-    court_count: int | None = None
+    court_count: int | None = Field(default=None, alias="courtCount")
     indoor: bool | None = None
-    place_id: str | None = None
+    place_id: str | None = Field(default=None, alias="placeId")

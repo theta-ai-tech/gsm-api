@@ -676,15 +676,17 @@ def to_venue_summary(doc: dict[str, Any], venue_id: str | None = None) -> VenueS
         raise ValueError("Missing required field: venue_id")
     sports_raw = _require(doc, "sports")
     sports = [SportEnum(s) for s in sports_raw]
-    return VenueSummary(
-        venue_id=resolved_id,
-        name=_require(doc, "name"),
-        coordinates=_parse_geo_coordinates(doc.get("coordinates")),
-        area=_require(doc, "area"),
-        sports=sports,
-        court_count=doc.get("courtCount"),
-        indoor=doc.get("indoor"),
-        place_id=doc.get("placeId"),
+    return VenueSummary.model_validate(
+        {
+            "venueId": resolved_id,
+            "name": _require(doc, "name"),
+            "coordinates": _parse_geo_coordinates(doc.get("coordinates")),
+            "area": _require(doc, "area"),
+            "sports": sports,
+            "courtCount": doc.get("courtCount"),
+            "indoor": doc.get("indoor"),
+            "placeId": doc.get("placeId"),
+        }
     )
 
 
