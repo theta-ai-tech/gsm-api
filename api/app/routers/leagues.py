@@ -8,13 +8,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies.repos import get_league_service, get_leagues_repo
-from app.deps import get_current_user
+from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
 from app.models.league import League, LeagueBrowseCard, StandingsEntry
 from app.repos.leagues_repo import LeaguesRepo
-from app.security import CurrentUser, require_league_member
+from app.security import CurrentUser, require_membership
 from app.services.league_service import LeagueService
+from app.services.role_service import RoleService
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
 
@@ -94,14 +95,22 @@ def list_leagues(
     )
 
 
+def _require_league_member_or_404(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    role_service: RoleService = Depends(get_role_service),
+) -> None:
+    if leagues_repo.get_by_id(league_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    require_membership(current_user=current_user, league_id=league_id, role_service=role_service)
+
+
 @router.get("/{league_id}/standings", response_model=StandingsResponse)
 def get_league_standings(
     league_id: str,
-    _auth: None = Depends(require_league_member()),
-    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    _auth: None = Depends(_require_league_member_or_404),
     league_service: LeagueService = Depends(get_league_service),
 ) -> StandingsResponse:
-    if leagues_repo.get_by_id(league_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
     standings = league_service.get_standings(league_id)
     return StandingsResponse(league_id=league_id, standings=standings)

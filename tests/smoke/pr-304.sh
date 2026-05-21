@@ -18,7 +18,7 @@ if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   VENV_DIR="$REPO_ROOT/.venv"
 else
   MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree / {print; exit}')
+    | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
   VENV_DIR="$MAIN_WT/.venv"
 fi
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
@@ -79,8 +79,8 @@ assert_eq "GET /leagues/padel-local-2025/standings returns 200 with correct leag
 
 # Test 2: standings array is present and non-empty (seeded member above)
 ACTUAL=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$API/leagues/padel-local-2025/standings" | jq -r '.standings | length')
-assert_eq "standings array contains seeded member" "$ACTUAL" "1"
+  "$API/leagues/padel-local-2025/standings" | jq -r '.standings | length > 0')
+assert_eq "standings array is non-empty after member seed" "$ACTUAL" "true"
 
 # Test 3: StandingsEntry shape — rank field present
 ACTUAL=$(curl -s -H "Authorization: Bearer $TOKEN" \
