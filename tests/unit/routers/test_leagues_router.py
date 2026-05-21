@@ -1,4 +1,4 @@
-"""Unit tests for GET /leagues."""
+"""Unit tests for GET /leagues and GET /leagues/{league_id}/matches."""
 
 from __future__ import annotations
 
@@ -10,11 +10,17 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies.repos import get_leagues_repo
-from app.deps import get_current_user
+from app.dependencies.repos import get_leagues_repo, get_matches_repo
+from app.deps import get_current_user, get_role_service
 from app.main import app
-from app.models.enums import LeagueStatusEnum, SportEnum
+from app.models.enums import (
+    LeagueStatusEnum,
+    MatchStatusEnum,
+    ParticipantRoleEnum,
+    SportEnum,
+)
 from app.models.league import League
+from app.models.match import Match, MatchParticipant
 from app.security import CurrentUser
 
 _UID = "user_test"
@@ -311,3 +317,167 @@ class TestGetLeagueDetail:
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.get("/leagues/padel-local-2025")
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Helpers for TestGetLeagueMatches
+# ---------------------------------------------------------------------------
+
+
+def _make_match(
+    match_id: str = "m1",
+    status: MatchStatusEnum = MatchStatusEnum.SCHEDULED,
+    scheduled_at: datetime | None = datetime(2026, 7, 1, tzinfo=timezone.utc),
+    finished_at: datetime | None = None,
+    league_id: str = "lg1",
+) -> Match:
+    return Match(
+        match_id=match_id,
+        sport=SportEnum.PADEL,
+        status=status,
+        league_id=league_id,
+        scheduled_at=scheduled_at,
+        finished_at=finished_at,
+        participant_uids=["uid1", "uid2"],
+        participants=[
+            MatchParticipant(uid="uid1", role=ParticipantRoleEnum.PLAYER),
+            MatchParticipant(uid="uid2", role=ParticipantRoleEnum.PLAYER),
+        ],
+    )
+
+
+class TestGetLeagueMatches:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        """Set up auth, leagues repo, matches repo, and role service overrides."""
+        # Auth
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+            uid=_UID, email="test@gsm.local"
+        )
+
+        # leagues repo — get_by_id returns a valid league by default
+        leagues_repo = Mock(
+            spec_set=[
+                "list_by_filter",
+                "get_by_id",
+                "list_members",
+                "get_member_count",
+                "increment_member_count",
+            ]
+        )
+        leagues_repo.get_by_id.return_value = _make_league("lg1")
+        app.dependency_overrides[get_leagues_repo] = lambda: leagues_repo
+
+        # matches repo
+        matches_repo = Mock(
+            spec_set=["list_upcoming_for_league", "list_completed_for_league"]
+        )
+        matches_repo.list_upcoming_for_league.return_value = []
+        matches_repo.list_completed_for_league.return_value = []
+        app.dependency_overrides[get_matches_repo] = lambda: matches_repo
+
+        # role service — member by default
+        role_service = Mock(
+            spec_set=[
+                "is_league_member",
+                "get_league_member_role",
+                "get_league_owner_uid",
+            ]
+        )
+        role_service.is_league_member.return_value = True
+        role_service.get_league_owner_uid.return_value = None
+        app.dependency_overrides[get_role_service] = lambda: role_service
+
+        self.leagues_repo = leagues_repo
+        self.matches_repo = matches_repo
+        self.role_service = role_service
+        self.client = TestClient(app)
+
+        yield
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_leagues_repo, None)
+        app.dependency_overrides.pop(get_matches_repo, None)
+        app.dependency_overrides.pop(get_role_service, None)
+
+    def test_upcoming_delegates_to_repo(self):
+        resp = self.client.get("/leagues/lg1/matches", params={"type": "upcoming"})
+        assert resp.status_code == 200
+        self.matches_repo.list_upcoming_for_league.assert_called_once()
+        self.matches_repo.list_completed_for_league.assert_not_called()
+
+    def test_completed_delegates_to_repo(self):
+        resp = self.client.get("/leagues/lg1/matches", params={"type": "completed"})
+        assert resp.status_code == 200
+        self.matches_repo.list_completed_for_league.assert_called_once()
+        self.matches_repo.list_upcoming_for_league.assert_not_called()
+
+    def test_default_type_is_upcoming(self):
+        resp = self.client.get("/leagues/lg1/matches")
+        assert resp.status_code == 200
+        self.matches_repo.list_upcoming_for_league.assert_called_once()
+
+    def test_returns_200_with_match_list(self):
+        self.matches_repo.list_upcoming_for_league.return_value = [_make_match("m1")]
+        resp = self.client.get("/leagues/lg1/matches")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "matches" in body
+        assert "next_cursor" in body
+        assert len(body["matches"]) == 1
+        assert body["matches"][0]["match_id"] == "m1"
+
+    def test_next_cursor_set_when_has_more(self):
+        # limit=2, return 3 → has_more=True
+        self.matches_repo.list_upcoming_for_league.return_value = [
+            _make_match(
+                f"m{i}", scheduled_at=datetime(2026, 7, i + 1, tzinfo=timezone.utc)
+            )
+            for i in range(3)
+        ]
+        resp = self.client.get("/leagues/lg1/matches", params={"limit": 2})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["matches"]) == 2
+        assert body["next_cursor"] is not None
+
+    def test_next_cursor_none_when_fewer_results(self):
+        self.matches_repo.list_upcoming_for_league.return_value = [_make_match("m1")]
+        resp = self.client.get("/leagues/lg1/matches", params={"limit": 10})
+        assert resp.status_code == 200
+        assert resp.json()["next_cursor"] is None
+
+    def test_invalid_type_returns_422(self):
+        resp = self.client.get("/leagues/lg1/matches", params={"type": "invalid"})
+        assert resp.status_code == 422
+
+    def test_invalid_cursor_returns_400(self):
+        resp = self.client.get(
+            "/leagues/lg1/matches", params={"cursor": "not-valid!!!"}
+        )
+        assert resp.status_code == 400
+
+    def test_404_when_league_not_found(self):
+        self.leagues_repo.get_by_id.return_value = None
+        resp = self.client.get("/leagues/nonexistent/matches")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "League not found"
+
+    def test_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/leagues/lg1/matches")
+        assert resp.status_code == 401
+
+    def test_non_member_returns_403(self):
+        self.role_service.is_league_member.return_value = False
+        resp = self.client.get("/leagues/lg1/matches")
+        assert resp.status_code == 403
+
+    def test_limit_forwarded_plus_one(self):
+        resp = self.client.get("/leagues/lg1/matches", params={"limit": 5})
+        assert resp.status_code == 200
+        call_kwargs = self.matches_repo.list_upcoming_for_league.call_args
+        # Second positional arg or keyword 'limit'
+        called_limit = call_kwargs.kwargs.get("limit") or call_kwargs.args[1]
+        assert called_limit == 6  # limit + 1
