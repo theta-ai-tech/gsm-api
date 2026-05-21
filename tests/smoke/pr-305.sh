@@ -13,9 +13,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 API="${API_BASE_URL:-http://127.0.0.1:8305}"
 FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 
-# League IDs from seed_data.py
-OPEN_LEAGUE="tennis-local-2025"       # status: OPEN  — happy path
-ACTIVE_LEAGUE="padel-local-2025"      # status: ACTIVE — wrong-status 409
+# Temporary league created at test start — fully self-contained, no seeded state dependency
+SMOKE_LEAGUE="smoke-test-join-305"
+
+# Seeded league with ACTIVE status — used for wrong-status 409 test
+ACTIVE_LEAGUE="padel-local-2025"
 
 # ── Venv resolution ─────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
@@ -46,6 +48,18 @@ assert_eq() {
   fi
 }
 
+# ── Setup: create a temporary OPEN league in the emulator ───────────────────
+echo "Setup: creating temporary OPEN league '$SMOKE_LEAGUE' in emulator..."
+SETUP_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+  "$FIRESTORE/leagues/$SMOKE_LEAGUE?updateMask.fieldPaths=name&updateMask.fieldPaths=sport&updateMask.fieldPaths=status&updateMask.fieldPaths=ownerUid&updateMask.fieldPaths=maxPlayers&updateMask.fieldPaths=currentPlayers&updateMask.fieldPaths=region" \
+  -H "Content-Type: application/json" \
+  -d '{"fields":{"name":{"stringValue":"Smoke Test Join League 305"},"sport":{"stringValue":"padel"},"status":{"stringValue":"open"},"ownerUid":{"stringValue":"user_alice"},"maxPlayers":{"integerValue":"10"},"currentPlayers":{"integerValue":"0"},"region":{"stringValue":"athens"}}}')
+if [ "$SETUP_RESP" != "200" ]; then
+  echo "ABORT: Failed to create smoke league in emulator (HTTP $SETUP_RESP). Is the Firestore emulator running?"
+  exit 1
+fi
+echo "  Smoke league created (HTTP $SETUP_RESP)."
+
 # ── Token acquisition ───────────────────────────────────────────────────────
 TOKEN=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" user_ignatios -t 2>/dev/null)
 if [ -z "$TOKEN" ]; then
@@ -53,6 +67,7 @@ if [ -z "$TOKEN" ]; then
   exit 1
 fi
 
+echo ""
 echo "Smoke tests — PR #305: POST /leagues/{leagueId}/join"
 echo "────────────────────────────────────────────────────"
 
@@ -60,9 +75,9 @@ echo "────────────────────────�
 echo ""
 echo "Test 1: Happy path — join OPEN league"
 RESP=$(curl -s -o /tmp/pr305_join.json -w "%{http_code}" \
-  -X POST "$API/leagues/$OPEN_LEAGUE/join" \
+  -X POST "$API/leagues/$SMOKE_LEAGUE/join" \
   -H "Authorization: Bearer $TOKEN")
-assert_eq "POST /leagues/$OPEN_LEAGUE/join returns 201" "$RESP" "201"
+assert_eq "POST /leagues/$SMOKE_LEAGUE/join returns 201" "$RESP" "201"
 
 ROLE=$(jq -r '.role // "null"' /tmp/pr305_join.json)
 assert_eq "response.role = player" "$ROLE" "player"
@@ -80,7 +95,7 @@ assert_eq "response.joined_at is present" "$([ "$JOINED_AT" != "null" ] && echo 
 echo ""
 echo "Test 2: Already a member → 409"
 RESP2=$(curl -s -o /tmp/pr305_dup.json -w "%{http_code}" \
-  -X POST "$API/leagues/$OPEN_LEAGUE/join" \
+  -X POST "$API/leagues/$SMOKE_LEAGUE/join" \
   -H "Authorization: Bearer $TOKEN")
 assert_eq "duplicate join returns 409" "$RESP2" "409"
 
@@ -116,25 +131,18 @@ assert_eq "409 detail mentions status" \
 echo ""
 echo "Test 5: No auth → 401"
 RESP5=$(curl -s -o /dev/null -w "%{http_code}" \
-  -X POST "$API/leagues/$OPEN_LEAGUE/join")
+  -X POST "$API/leagues/$SMOKE_LEAGUE/join")
 assert_eq "missing auth returns 401" "$RESP5" "401"
 
 # ── Teardown ────────────────────────────────────────────────────────────────
-# Remove user_ignatios from tennis-local-2025 and decrement currentPlayers
-# so re-runs are idempotent.
+# Delete the temporary smoke league and its members subcollection entry.
 echo ""
-echo "Teardown: removing test member from $OPEN_LEAGUE..."
+echo "Teardown: deleting temporary smoke league '$SMOKE_LEAGUE'..."
+curl -s -o /dev/null -X DELETE \
+  "$FIRESTORE/leagues/$SMOKE_LEAGUE/members/user_ignatios" || true
 DEL_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-  "$FIRESTORE/leagues/$OPEN_LEAGUE/members/user_ignatios")
-if [ "$DEL_RESP" = "200" ]; then
-  # Member was deleted — atomically decrement currentPlayers
-  curl -s -X POST \
-    "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents:commit" \
-    -H "Content-Type: application/json" \
-    -d "{\"writes\":[{\"transform\":{\"document\":\"projects/gsm-dev-f70d0/databases/(default)/documents/leagues/$OPEN_LEAGUE\",\"fieldTransforms\":[{\"fieldPath\":\"currentPlayers\",\"increment\":{\"integerValue\":\"-1\"}}]}}]}" \
-    > /dev/null || true
-fi
-echo "  Teardown complete (DELETE=$DEL_RESP)."
+  "$FIRESTORE/leagues/$SMOKE_LEAGUE")
+echo "  Teardown complete (DELETE league HTTP=$DEL_RESP)."
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo ""

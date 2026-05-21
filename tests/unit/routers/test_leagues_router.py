@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.repos import get_league_service, get_leagues_repo
-from app.deps import get_current_user
+from app.deps import get_current_user, get_role_service
 from app.main import app
 from app.models.enums import (
     LeagueMemberStatusEnum,
@@ -19,7 +19,7 @@ from app.models.enums import (
     LeagueStatusEnum,
     SportEnum,
 )
-from app.models.league import League, LeagueMember
+from app.models.league import League, LeagueMember, StandingsEntry
 from app.security import CurrentUser
 from app.services.league_service import LeagueService
 
@@ -71,6 +71,7 @@ def _make_league(
     sport: SportEnum = SportEnum.PADEL,
     status: LeagueStatusEnum = LeagueStatusEnum.OPEN,
     start_date: datetime | None = datetime(2026, 6, 1, tzinfo=timezone.utc),
+    owner_uid: str = "owner1",
     **kwargs,
 ) -> League:
     return League(
@@ -78,7 +79,7 @@ def _make_league(
         name=name,
         sport=sport,
         status=status,
-        owner_uid="owner1",
+        owner_uid=owner_uid,
         start_date=start_date,
         **kwargs,
     )
@@ -342,4 +343,195 @@ class TestPostLeagueJoin:
         app.dependency_overrides.pop(get_current_user, None)
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.post("/leagues/lg1/join")
+        assert resp.status_code == 401
+
+
+class TestLeagueMemberEndpoints:
+    @pytest.fixture()
+    def _override_role_service_admin(self):
+        mock_rs = Mock()
+        mock_rs.get_league_owner_uid.return_value = (
+            _UID  # owner shortcut → always passes
+        )
+        app.dependency_overrides[get_role_service] = lambda: mock_rs
+        yield mock_rs
+        app.dependency_overrides.pop(get_role_service, None)
+
+    @pytest.fixture()
+    def client_admin(self, _override_auth, _override_role_service_admin):
+        return TestClient(app)
+
+    def test_add_member_returns_501(self, client_admin: TestClient):
+        resp = client_admin.post("/leagues/lg1/members")
+        assert resp.status_code == 501
+
+    def test_remove_member_returns_501(self, client_admin: TestClient):
+        resp = client_admin.delete("/leagues/lg1/members/user_other")
+        assert resp.status_code == 501
+
+    def test_add_member_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post("/leagues/lg1/members")
+        assert resp.status_code == 401
+
+    def test_remove_member_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.delete("/leagues/lg1/members/user_other")
+        assert resp.status_code == 401
+
+
+def _make_standings_entry(
+    uid: str = "u1", rank: int = 1, wins: int = 2, losses: int = 1
+) -> StandingsEntry:
+    return StandingsEntry(
+        rank=rank, uid=uid, display_name=uid, wins=wins, losses=losses
+    )
+
+
+class TestGetLeagueStandings:
+    @pytest.fixture(autouse=True)
+    def _setup(self, _override_auth):
+        mock_role_svc = Mock()
+        mock_role_svc.is_league_member.return_value = True
+        mock_role_svc.get_league_member_role.return_value = None
+
+        mock_leagues = Mock(
+            spec_set=[
+                "list_by_filter",
+                "get_by_id",
+                "list_members",
+                "get_member_count",
+                "increment_member_count",
+            ]
+        )
+        mock_leagues.get_by_id.return_value = _make_league("lg1")
+
+        mock_league_svc = Mock()
+        mock_league_svc.get_standings.return_value = [
+            _make_standings_entry("u1", rank=1, wins=3, losses=1),
+            _make_standings_entry("u2", rank=2, wins=1, losses=2),
+        ]
+
+        app.dependency_overrides[get_role_service] = lambda: mock_role_svc
+        app.dependency_overrides[get_leagues_repo] = lambda: mock_leagues
+        app.dependency_overrides[get_league_service] = lambda: mock_league_svc
+
+        self.mock_role_svc = mock_role_svc
+        self.mock_leagues = mock_leagues
+        self.mock_league_svc = mock_league_svc
+
+        yield
+
+        app.dependency_overrides.pop(get_role_service, None)
+        app.dependency_overrides.pop(get_leagues_repo, None)
+        app.dependency_overrides.pop(get_league_service, None)
+
+    def test_returns_200_with_standings(self):
+        c = TestClient(app)
+        resp = c.get("/leagues/lg1/standings")
+        assert resp.status_code == 200
+        assert resp.json()["league_id"] == "lg1"
+
+    def test_response_shape(self):
+        c = TestClient(app)
+        resp = c.get("/leagues/lg1/standings")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "league_id" in body
+        assert "standings" in body
+        assert isinstance(body["standings"], list)
+        entry = body["standings"][0]
+        assert set(entry.keys()) == {
+            "rank",
+            "uid",
+            "display_name",
+            "wins",
+            "losses",
+            "tier_ring",
+        }
+
+    def test_returns_empty_standings_for_no_members(self):
+        self.mock_league_svc.get_standings.return_value = []
+        c = TestClient(app)
+        resp = c.get("/leagues/lg1/standings")
+        assert resp.status_code == 200
+        assert resp.json()["standings"] == []
+
+    def test_returns_404_when_league_not_found(self):
+        self.mock_leagues.get_by_id.return_value = None
+        c = TestClient(app)
+        resp = c.get("/leagues/no_such_league/standings")
+        assert resp.status_code == 404
+
+    def test_returns_403_when_not_a_member(self):
+        self.mock_role_svc.is_league_member.return_value = False
+        self.mock_role_svc.get_league_member_role.return_value = None
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/leagues/lg1/standings")
+        assert resp.status_code == 403
+
+    def test_returns_401_when_no_auth(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/leagues/lg1/standings")
+        assert resp.status_code == 401
+        # Restore auth for other tests
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+            uid=_UID, email="test@gsm.local"
+        )
+
+
+class TestGetLeagueDetail:
+    def test_returns_200_with_full_league(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            "padel-local-2025", "Padel Local"
+        )
+        resp = client.get("/leagues/padel-local-2025")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["league_id"] == "padel-local-2025"
+        assert body["name"] == "Padel Local"
+
+    def test_response_includes_all_league_fields(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            "lg-full",
+            season="2025-summer",
+            owner_uid="owner42",
+            end_date=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            meta={"info": "extra"},
+        )
+        resp = client.get("/leagues/lg-full")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Fields present in League but NOT in LeagueBrowseCard
+        assert body["season"] == "2025-summer"
+        assert body["owner_uid"] == "owner42"
+        assert body["end_date"] is not None
+        assert body["meta"] == {"info": "extra"}
+
+    def test_returns_404_when_league_not_found(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = None
+        resp = client.get("/leagues/nonexistent-league")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "League not found"
+
+    def test_get_by_id_called_with_correct_league_id(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league("tennis-local-2025")
+        client.get("/leagues/tennis-local-2025")
+        mock_leagues_repo.get_by_id.assert_called_once_with("tennis-local-2025")
+
+    def test_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/leagues/padel-local-2025")
         assert resp.status_code == 401
