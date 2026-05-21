@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.repos import get_leagues_repo
-from app.deps import get_current_user
+from app.deps import get_current_user, get_role_service
 from app.main import app
 from app.models.enums import LeagueStatusEnum, SportEnum
 from app.models.league import League
@@ -255,4 +255,40 @@ class TestGetLeaguesAuth:
         app.dependency_overrides.pop(get_current_user, None)
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.get("/leagues")
+        assert resp.status_code == 401
+
+
+class TestLeagueMemberEndpoints:
+    @pytest.fixture()
+    def _override_role_service_admin(self):
+        mock_rs = Mock()
+        mock_rs.get_league_owner_uid.return_value = (
+            _UID  # owner shortcut → always passes
+        )
+        app.dependency_overrides[get_role_service] = lambda: mock_rs
+        yield mock_rs
+        app.dependency_overrides.pop(get_role_service, None)
+
+    @pytest.fixture()
+    def client_admin(self, _override_auth, _override_role_service_admin):
+        return TestClient(app)
+
+    def test_add_member_returns_501(self, client_admin: TestClient):
+        resp = client_admin.post("/leagues/lg1/members")
+        assert resp.status_code == 501
+
+    def test_remove_member_returns_501(self, client_admin: TestClient):
+        resp = client_admin.delete("/leagues/lg1/members/user_other")
+        assert resp.status_code == 501
+
+    def test_add_member_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post("/leagues/lg1/members")
+        assert resp.status_code == 401
+
+    def test_remove_member_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.delete("/leagues/lg1/members/user_other")
         assert resp.status_code == 401

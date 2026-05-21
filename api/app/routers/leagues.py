@@ -13,7 +13,7 @@ from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
 from app.models.league import League, LeagueBrowseCard
 from app.repos.leagues_repo import LeaguesRepo
-from app.security import CurrentUser
+from app.security import CurrentUser, require_league_member
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
 
@@ -86,3 +86,23 @@ def list_leagues(
         leagues=[_league_to_browse_card(lg) for lg in page],
         next_cursor=next_cursor,
     )
+
+
+@router.post(
+    "/{league_id}/members",
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def add_league_member(league_id: str) -> dict:
+    # TODO(LG-future): wire to LeagueMemberRepo.add_member() once implemented
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
+
+@router.delete(
+    "/{league_id}/members/{uid}",
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def remove_league_member(league_id: str, uid: str) -> None:
+    # TODO(LG-future): wire to LeagueMemberRepo.remove_member() once implemented
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
