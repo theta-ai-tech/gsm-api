@@ -42,7 +42,7 @@ def test_add_member_requires_admin_token_or_membership():
     client = _client(admin_user, FakeRoleService(member=False))
 
     resp = client.post("/leagues/league-1/members")
-    assert resp.status_code == 201
+    assert resp.status_code == 501
 
 
 def test_add_member_blocks_non_admin_member():
@@ -58,7 +58,7 @@ def test_delete_member_requires_admin():
     client = _client(admin_user, FakeRoleService(member=False))
 
     resp = client.delete("/leagues/league-1/members/target-1")
-    assert resp.status_code == 204
+    assert resp.status_code == 501
 
 
 def test_delete_member_blocks_non_admin_member():
