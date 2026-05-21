@@ -10,12 +10,18 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies.repos import get_leagues_repo
+from app.dependencies.repos import get_league_service, get_leagues_repo
 from app.deps import get_current_user
 from app.main import app
-from app.models.enums import LeagueStatusEnum, SportEnum
-from app.models.league import League
+from app.models.enums import (
+    LeagueMemberStatusEnum,
+    LeagueRoleEnum,
+    LeagueStatusEnum,
+    SportEnum,
+)
+from app.models.league import League, LeagueMember
 from app.security import CurrentUser
+from app.services.league_service import LeagueService
 
 _UID = "user_test"
 
@@ -27,6 +33,14 @@ def _override_auth():
     )
     yield
     app.dependency_overrides.pop(get_current_user, None)
+
+
+@pytest.fixture()
+def mock_league_service():
+    svc = Mock(spec=LeagueService)
+    app.dependency_overrides[get_league_service] = lambda: svc
+    yield svc
+    app.dependency_overrides.pop(get_league_service, None)
 
 
 @pytest.fixture()
@@ -255,4 +269,77 @@ class TestGetLeaguesAuth:
         app.dependency_overrides.pop(get_current_user, None)
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.get("/leagues")
+        assert resp.status_code == 401
+
+
+class TestPostLeagueJoin:
+    def _make_member(self) -> LeagueMember:
+        return LeagueMember(
+            uid=_UID,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+            stats=None,
+        )
+
+    def test_happy_path_returns_201(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.return_value = self._make_member()
+        resp = client.post("/leagues/lg1/join")
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["uid"] == _UID
+        assert body["role"] == "player"
+        assert body["status"] == "active"
+        assert body["stats"] is None
+
+    def test_league_not_found_returns_404(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.side_effect = ValueError(
+            "League 'lg_x' not found"
+        )
+        resp = client.post("/leagues/lg_x/join")
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"]
+
+    def test_already_member_returns_409(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.side_effect = ValueError(
+            "User 'uid1' is already a member of league 'lg1'"
+        )
+        resp = client.post("/leagues/lg1/join")
+        assert resp.status_code == 409
+
+    def test_league_full_returns_409(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.side_effect = ValueError(
+            "League 'lg1' is at full capacity"
+        )
+        resp = client.post("/leagues/lg1/join")
+        assert resp.status_code == 409
+
+    def test_wrong_status_returns_409(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.side_effect = ValueError(
+            "Cannot join league with status 'active'; must be OPEN or UPCOMING"
+        )
+        resp = client.post("/leagues/lg1/join")
+        assert resp.status_code == 409
+
+    def test_delegates_uid_from_auth(
+        self, client: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.join_league.return_value = self._make_member()
+        client.post("/leagues/lg1/join")
+        mock_league_service.join_league.assert_called_once_with("lg1", _UID)
+
+    def test_no_auth_returns_401(self, mock_league_service: Mock):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post("/leagues/lg1/join")
         assert resp.status_code == 401
