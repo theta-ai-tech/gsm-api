@@ -86,3 +86,15 @@ def list_leagues(
         leagues=[_league_to_browse_card(lg) for lg in page],
         next_cursor=next_cursor,
     )
+
+
+@router.get("/{league_id}", response_model=League)
+def get_league(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+) -> League:
+    league = leagues_repo.get_by_id(league_id)
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    return league

@@ -136,6 +136,49 @@ curl -s \
 
 ---
 
+## `GET /leagues/{league_id}`
+
+### Purpose
+Returns the full `League` detail object for a given league ID.
+
+### Auth
+Required (Firebase Bearer token).
+
+### Path parameters
+- `league_id` — string identifier of the league
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-local-2025
+```
+
+### Example success response (`200`)
+```json
+{
+  "league_id": "padel-local-2025",
+  "name": "Padel Local 2025",
+  "sport": "padel",
+  "season": "2025",
+  "status": "open",
+  "owner_uid": "user_ignatios",
+  "region": "athens",
+  "max_players": 16,
+  "current_players": 4,
+  "start_date": "2025-06-01T00:00:00+00:00",
+  "end_date": null,
+  "tier": "intermediate",
+  "meta": null
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `404` league not found
+
+---
+
 ## `POST /leagues/{league_id}/members` (placeholder)
 
 ### Purpose
