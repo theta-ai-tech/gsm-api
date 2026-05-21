@@ -8,6 +8,8 @@ from app.models import (
     LeaderboardSnapshot,
     League,
     LeagueMember,
+    LeagueMemberStatusEnum,
+    LeagueRoleEnum,
     LeagueSummary,
     LeagueStatusEnum,
     LevelEnum,
@@ -261,7 +263,7 @@ LEAGUE_TENNIS_LOCAL = League(
     owner_uid=USER_ALICE.uid,
     region="thessaloniki",
     max_players=16,
-    current_players=5,
+    current_players=2,
     start_date=utc(2025, 4, 1),
     end_date=utc(2025, 6, 30),
     tier="intermediate",
@@ -277,7 +279,7 @@ LEAGUE_TENNIS_COMPLETED = League(
     owner_uid=USER_ALICE.uid,
     region="thessaloniki",
     max_players=8,
-    current_players=8,
+    current_players=2,
     start_date=utc(2024, 9, 1),
     end_date=utc(2024, 11, 30),
     tier="advanced",
@@ -285,6 +287,58 @@ LEAGUE_TENNIS_COMPLETED = League(
 )
 
 SAMPLE_LEAGUES = [LEAGUE_PADEL_LOCAL, LEAGUE_TENNIS_LOCAL, LEAGUE_TENNIS_COMPLETED]
+
+# --- League members (leagues/{leagueId}/members/{uid}) ---
+SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
+    "padel-local-2025": [
+        LeagueMember(
+            uid=USER_IGNATIOS.uid,
+            role=LeagueRoleEnum.ADMIN,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2025, 8, 15),
+        ),
+        LeagueMember(
+            uid=USER_ALICE.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2025, 8, 20),
+        ),
+        LeagueMember(
+            uid=USER_BOB.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2025, 8, 22),
+        ),
+    ],
+    "tennis-local-2025": [
+        LeagueMember(
+            uid=USER_ALICE.uid,
+            role=LeagueRoleEnum.ADMIN,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2025, 3, 15),
+        ),
+        LeagueMember(
+            uid=USER_IGNATIOS.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2025, 3, 20),
+        ),
+    ],
+    "tennis-completed-2024": [
+        LeagueMember(
+            uid=USER_ALICE.uid,
+            role=LeagueRoleEnum.ADMIN,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2024, 8, 15),
+        ),
+        LeagueMember(
+            uid=USER_IGNATIOS.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2024, 8, 20),
+        ),
+    ],
+}
 
 PRIMARY_USER_UID = USER_IGNATIOS.uid
 PRIMARY_LEAGUE_ID = LEAGUE_PADEL_LOCAL.league_id

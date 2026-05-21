@@ -114,3 +114,15 @@ def get_league_standings(
 ) -> StandingsResponse:
     standings = league_service.get_standings(league_id)
     return StandingsResponse(league_id=league_id, standings=standings)
+
+
+@router.get("/{league_id}", response_model=League)
+def get_league(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+) -> League:
+    league = leagues_repo.get_by_id(league_id)
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    return league

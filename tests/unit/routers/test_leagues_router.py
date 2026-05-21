@@ -57,6 +57,7 @@ def _make_league(
     sport: SportEnum = SportEnum.PADEL,
     status: LeagueStatusEnum = LeagueStatusEnum.OPEN,
     start_date: datetime | None = datetime(2026, 6, 1, tzinfo=timezone.utc),
+    owner_uid: str = "owner1",
     **kwargs,
 ) -> League:
     return League(
@@ -64,7 +65,7 @@ def _make_league(
         name=name,
         sport=sport,
         status=status,
-        owner_uid="owner1",
+        owner_uid=owner_uid,
         start_date=start_date,
         **kwargs,
     )
@@ -357,3 +358,57 @@ class TestGetLeagueStandings:
         app.dependency_overrides[get_current_user] = lambda: CurrentUser(
             uid=_UID, email="test@gsm.local"
         )
+
+
+class TestGetLeagueDetail:
+    def test_returns_200_with_full_league(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            "padel-local-2025", "Padel Local"
+        )
+        resp = client.get("/leagues/padel-local-2025")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["league_id"] == "padel-local-2025"
+        assert body["name"] == "Padel Local"
+
+    def test_response_includes_all_league_fields(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            "lg-full",
+            season="2025-summer",
+            owner_uid="owner42",
+            end_date=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            meta={"info": "extra"},
+        )
+        resp = client.get("/leagues/lg-full")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Fields present in League but NOT in LeagueBrowseCard
+        assert body["season"] == "2025-summer"
+        assert body["owner_uid"] == "owner42"
+        assert body["end_date"] is not None
+        assert body["meta"] == {"info": "extra"}
+
+    def test_returns_404_when_league_not_found(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = None
+        resp = client.get("/leagues/nonexistent-league")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "League not found"
+
+    def test_get_by_id_called_with_correct_league_id(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        mock_leagues_repo.get_by_id.return_value = _make_league("tennis-local-2025")
+        client.get("/leagues/tennis-local-2025")
+        mock_leagues_repo.get_by_id.assert_called_once_with("tennis-local-2025")
+
+    def test_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.get("/leagues/padel-local-2025")
+        assert resp.status_code == 401
