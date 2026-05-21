@@ -22,7 +22,7 @@ if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   VENV_DIR="$REPO_ROOT/.venv"
 else
   MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree / {print ; exit}')
+    | awk '/^worktree / {print $2 ; exit}')
   VENV_DIR="$MAIN_WT/.venv"
 fi
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
@@ -120,19 +120,21 @@ RESP5=$(curl -s -o /dev/null -w "%{http_code}" \
 assert_eq "missing auth returns 401" "$RESP5" "401"
 
 # ── Teardown ────────────────────────────────────────────────────────────────
-# Remove user_ignatios from tennis-local-2025 members so re-runs are idempotent
+# Remove user_ignatios from tennis-local-2025 and decrement currentPlayers
+# so re-runs are idempotent.
 echo ""
 echo "Teardown: removing test member from $OPEN_LEAGUE..."
-curl -s -X DELETE \
-  "$FIRESTORE/leagues/$OPEN_LEAGUE/members/user_ignatios" > /dev/null || true
-
-# Reset currentPlayers count back (decrement by 1)
-curl -s -X PATCH \
-  "$FIRESTORE/leagues/$OPEN_LEAGUE?updateMask.fieldPaths=currentPlayers" \
-  -H "Content-Type: application/json" \
-  -d '{"fields":{"currentPlayers":{"integerValue":"5"}}}' > /dev/null || true
-
-echo "  Teardown complete."
+DEL_RESP=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+  "$FIRESTORE/leagues/$OPEN_LEAGUE/members/user_ignatios")
+if [ "$DEL_RESP" = "200" ]; then
+  # Member was deleted — atomically decrement currentPlayers
+  curl -s -X POST \
+    "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents:commit" \
+    -H "Content-Type: application/json" \
+    -d "{\"writes\":[{\"transform\":{\"document\":\"projects/gsm-dev-f70d0/databases/(default)/documents/leagues/$OPEN_LEAGUE\",\"fieldTransforms\":[{\"fieldPath\":\"currentPlayers\",\"increment\":{\"integerValue\":\"-1\"}}]}}]}" \
+    > /dev/null || true
+fi
+echo "  Teardown complete (DELETE=$DEL_RESP)."
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo ""
