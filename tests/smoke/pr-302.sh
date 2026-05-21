@@ -12,7 +12,7 @@ SCRIPTS_DIR="$(cd "$(dirname "$0")/../../scripts" && pwd)"
 echo "=== PR #302 Smoke Tests: League member endpoints ==="
 
 # Get a token for user_ignatios (not an admin of any league in seed data)
-TOKEN=$("$SCRIPTS_DIR/get_emu_token.sh" user_ignatios)
+TOKEN=$("$SCRIPTS_DIR/get_emu_token.sh" user_ignatios -t)
 
 # --- Test 1: POST /leagues/{league_id}/members without auth → 401 ---
 echo ""
