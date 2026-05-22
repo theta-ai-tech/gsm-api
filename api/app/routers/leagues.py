@@ -7,15 +7,16 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies.repos import get_leagues_repo, get_matches_repo
+from app.dependencies.repos import get_league_service, get_leagues_repo, get_matches_repo
 from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
-from app.models.league import League, LeagueBrowseCard
+from app.models.league import League, LeagueBrowseCard, LeagueMember, StandingsEntry
 from app.models.match import Match
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
-from app.security import CurrentUser, require_membership
+from app.security import CurrentUser, require_league_member, require_membership
+from app.services.league_service import LeagueService
 from app.services.role_service import RoleService
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
@@ -31,7 +32,9 @@ class LeagueMatchesResponse(GsmBaseModel):
     next_cursor: str | None = None
 
 
-# --- League browse cursor helpers ---
+class StandingsResponse(GsmBaseModel):
+    league_id: str
+    standings: list[StandingsEntry]
 
 
 def _league_to_browse_card(league: League) -> LeagueBrowseCard:
@@ -148,6 +151,55 @@ def list_leagues(
         leagues=[_league_to_browse_card(lg) for lg in page],
         next_cursor=next_cursor,
     )
+
+
+@router.post(
+    "/{league_id}/join",
+    response_model=LeagueMember,
+    status_code=status.HTTP_201_CREATED,
+)
+def join_league(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    league_service: LeagueService = Depends(get_league_service),
+) -> LeagueMember:
+    try:
+        return league_service.join_league(league_id, current_user.uid)
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
+
+
+@router.post(
+    "/{league_id}/members",
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def add_league_member(league_id: str) -> dict:
+    # TODO(LG-future): wire to LeagueMemberRepo.add_member() once implemented
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
+
+@router.delete(
+    "/{league_id}/members/{uid}",
+    status_code=status.HTTP_501_NOT_IMPLEMENTED,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def remove_league_member(league_id: str, uid: str) -> None:
+    # TODO(LG-future): wire to LeagueMemberRepo.remove_member() once implemented
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Not implemented")
+
+
+@router.get("/{league_id}/standings", response_model=StandingsResponse)
+def get_league_standings(
+    league_id: str,
+    _auth: None = Depends(_require_league_member_or_404),
+    league_service: LeagueService = Depends(get_league_service),
+) -> StandingsResponse:
+    standings = league_service.get_standings(league_id)
+    return StandingsResponse(league_id=league_id, standings=standings)
 
 
 @router.get("/{league_id}/matches", response_model=LeagueMatchesResponse)
