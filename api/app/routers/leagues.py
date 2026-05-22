@@ -11,7 +11,7 @@ from app.dependencies.repos import get_league_service, get_leagues_repo
 from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
-from app.models.league import League, LeagueBrowseCard, StandingsEntry
+from app.models.league import League, LeagueBrowseCard, LeagueMember, StandingsEntry
 from app.repos.leagues_repo import LeaguesRepo
 from app.security import CurrentUser, require_league_member, require_membership
 from app.services.league_service import LeagueService
@@ -93,6 +93,25 @@ def list_leagues(
         leagues=[_league_to_browse_card(lg) for lg in page],
         next_cursor=next_cursor,
     )
+
+
+@router.post(
+    "/{league_id}/join",
+    response_model=LeagueMember,
+    status_code=status.HTTP_201_CREATED,
+)
+def join_league(
+    league_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    league_service: LeagueService = Depends(get_league_service),
+) -> LeagueMember:
+    try:
+        return league_service.join_league(league_id, current_user.uid)
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
 
 
 @router.post(
