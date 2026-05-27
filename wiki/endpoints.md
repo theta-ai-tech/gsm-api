@@ -136,6 +136,227 @@ curl -s \
 
 ---
 
+## `GET /leagues`
+
+### Purpose
+Browse leagues with optional filters and cursor-based pagination. Returns `LeagueBrowseCard` summaries.
+
+### Auth
+Required (Firebase Bearer token).
+
+### Query parameters
+| Param | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `region` | string | No | — | Filter by named region (e.g. `"athens"`) |
+| `sport` | `tennis \| padel \| pickleball` | No | — | Filter by sport |
+| `status` | `open \| active \| upcoming \| completed` | No | `open` | Filter by league status |
+| `limit` | int (1–50) | No | 20 | Max leagues to return per page |
+| `cursor` | string | No | — | Opaque pagination token from previous response |
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/leagues?region=athens&sport=padel&status=open&limit=10"
+```
+
+### Example success response (`200`)
+```json
+{
+  "leagues": [
+    {
+      "league_id": "padel-local-2025",
+      "name": "Padel Local 2025",
+      "sport": "padel",
+      "status": "open",
+      "region": "athens",
+      "tier": "intermediate",
+      "max_players": 16,
+      "current_players": 4,
+      "start_date": "2025-06-01T00:00:00+00:00"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### Behavior
+- Pagination uses cursor-based approach with opaque tokens (base64-encoded). Treat `next_cursor` as opaque — do not parse it.
+- `next_cursor` is `null` when there are no more pages.
+- Returns `200` with `leagues: []` when no results match — never `404`.
+
+### Common error responses
+- `400` invalid cursor token
+- `401` missing/invalid token
+- `422` validation error (invalid `sport` or `status` value, `limit` out of range)
+
+---
+
+## `GET /leagues/{league_id}/standings`
+
+### Purpose
+Returns the current standings table for a league, sorted by wins (desc), losses (asc), net wins (desc), then name (asc). Uses dense ranking (tied players share a rank; next rank is +1, not +gap).
+
+### Auth
+Required (Firebase Bearer token). Caller must be a member of the league.
+
+### Path parameters
+- `league_id` — string identifier of the league
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-local-2025/standings
+```
+
+### Example success response (`200`)
+```json
+{
+  "league_id": "padel-local-2025",
+  "standings": [
+    {
+      "rank": 1,
+      "uid": "user_ignatios",
+      "display_name": "user_ignatios",
+      "wins": 5,
+      "losses": 1,
+      "tier_ring": null
+    },
+    {
+      "rank": 2,
+      "uid": "user_sam",
+      "display_name": "user_sam",
+      "wins": 3,
+      "losses": 2,
+      "tier_ring": null
+    }
+  ]
+}
+```
+
+### Notes
+- `display_name` currently falls back to `uid` — `displayName` is not yet stored in member docs (MVP limitation).
+- `tier_ring` is always `null` for MVP.
+
+### Common error responses
+- `401` missing/invalid token
+- `403` caller is not a league member
+- `404` league not found
+
+---
+
+## `POST /leagues/{league_id}/join`
+
+### Purpose
+Self-serve join flow. Adds the authenticated user as a `player` member of the league. No request body required.
+
+### Auth
+Required (Firebase Bearer token).
+
+### Path parameters
+- `league_id` — string identifier of the league
+
+### Request body
+None.
+
+### Example call
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-local-2025/join
+```
+
+### Example success response (`201`)
+```json
+{
+  "uid": "user_ignatios",
+  "role": "player",
+  "status": "active",
+  "joined_at": "2026-05-27T10:00:00+00:00",
+  "stats": null
+}
+```
+
+### Behavior
+- Checks are performed transactionally:
+  1. League must exist.
+  2. League status must be `open` or `upcoming`.
+  3. Caller must not already be a member.
+  4. League must not be at full capacity (`currentPlayers >= maxPlayers`, if both are set).
+- On success: creates `leagues/{leagueId}/members/{uid}` doc and increments `currentPlayers` on the league doc in one Firestore transaction.
+
+### Common error responses
+- `401` missing/invalid token
+- `404` league not found
+- `409` already a member, league not open/upcoming, or league at full capacity
+
+---
+
+## `GET /leagues/{league_id}/matches`
+
+### Purpose
+List upcoming or completed matches for a league. Requires league membership.
+
+### Auth
+Required (Firebase Bearer token). Caller must be a member of the league.
+
+### Path parameters
+- `league_id` — string identifier of the league
+
+### Query parameters
+| Param | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | `upcoming \| completed` | No | `upcoming` | Which match bucket to return |
+| `limit` | int (1–50) | No | 10 | Max matches per page |
+| `cursor` | string | No | — | Opaque pagination token from previous response |
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/leagues/padel-local-2025/matches?type=upcoming&limit=5"
+```
+
+### Example success response (`200`)
+```json
+{
+  "matches": [
+    {
+      "match_id": "match_123",
+      "sport": "padel",
+      "status": "scheduled",
+      "scheduled_at": "2026-06-10T18:00:00+00:00",
+      "finished_at": null,
+      "league_id": "padel-local-2025",
+      "court_id": null,
+      "participants": [
+        {"uid": "user_ignatios", "team": 1, "role": "player", "result": null},
+        {"uid": "user_sam", "team": 2, "role": "player", "result": null}
+      ],
+      "participant_uids": ["user_ignatios", "user_sam"],
+      "result_by_user": null,
+      "score": null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### Behavior
+- `type=upcoming`: ordered by `scheduledAt` ASC.
+- `type=completed`: ordered by `finishedAt` DESC.
+- Cursor tokens are opaque (base64-encoded). Treat `next_cursor` as opaque — do not parse it.
+- Returns `200` with `matches: []` when no matches — never `404`.
+
+### Common error responses
+- `400` invalid cursor token
+- `401` missing/invalid token
+- `403` caller is not a league member
+- `404` league not found
+
+---
+
 ## `GET /leagues/{league_id}`
 
 ### Purpose
@@ -179,10 +400,10 @@ curl -s \
 
 ---
 
-## `POST /leagues/{league_id}/members` (placeholder)
+## `POST /leagues/{league_id}/members`
 
 ### Purpose
-Planned member add endpoint (currently stubbed).
+Add a member to a league (admin operation). Not yet implemented.
 
 ### Auth
 Required.
@@ -194,30 +415,20 @@ Requires league admin permission via `require_league_member("admin")`:
 - has membership doc role `admin`.
 
 ### Current behavior
-- Returns HTTP `201` with a placeholder payload.
-- Does not yet create Firestore membership docs.
+- Returns HTTP `501 Not Implemented`.
+- Member creation is planned for a future sprint.
 
-### Example call
-```bash
-curl -s -X POST \
-  -H "Authorization: Bearer $ID_TOKEN" \
-  http://localhost:8000/leagues/league_1/members
-```
-
-### Example response (`201`)
-```json
-{
-  "league_id": "league_1",
-  "requested_by": "user_admin"
-}
-```
+### Common error responses
+- `401` missing/invalid token
+- `403` not league admin
+- `501` not implemented
 
 ---
 
-## `DELETE /leagues/{league_id}/members/{uid}` (placeholder)
+## `DELETE /leagues/{league_id}/members/{uid}`
 
 ### Purpose
-Planned member remove endpoint (currently stubbed).
+Remove a member from a league (admin operation). Not yet implemented.
 
 ### Auth
 Required.
@@ -226,18 +437,13 @@ Required.
 Requires league admin permission via `require_league_member("admin")`.
 
 ### Current behavior
-- Returns HTTP `204` in route declaration, with placeholder body currently returned by handler.
-- Does not yet delete membership docs.
+- Returns HTTP `501 Not Implemented`.
+- Member removal is planned for a future sprint.
 
-### Example call
-```bash
-curl -i -X DELETE \
-  -H "Authorization: Bearer $ID_TOKEN" \
-  http://localhost:8000/leagues/league_1/members/user_123
-```
-
-### Example response intent
-- HTTP `204` (no content) once fully implemented.
+### Common error responses
+- `401` missing/invalid token
+- `403` not league admin
+- `501` not implemented
 
 ---
 

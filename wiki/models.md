@@ -24,8 +24,10 @@ This summarizes the shared value objects, enums, and resource models introduced 
 - `PrivateUserProfile`: extends public with email, phone, preferences, upcoming/completed matches, recent journal, cursors (only for self).
 
 ## Leagues
-- `League`: id, name, sport, season, status, owner_uid, optional meta.
+- `League`: id, name, sport, season, status, owner_uid, region, max_players, current_players, start_date, end_date, tier, optional meta.
 - `LeagueMember`: uid, role, status, joined_at, optional stats.
+- `LeagueBrowseCard`: Lightweight summary for browse lists — league_id, name, sport, status, region, tier, max_players, current_players, start_date. Used in `GET /leagues` response.
+- `StandingsEntry`: One row in a standings table — rank (int, dense), uid, display_name (falls back to uid in MVP), wins, losses, tier_ring (null in MVP). Used in `GET /leagues/{leagueId}/standings` response.
 
 ## Matches
 - `MatchParticipant`: uid, optional team number, role, optional result.
