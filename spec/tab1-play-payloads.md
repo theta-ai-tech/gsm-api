@@ -84,6 +84,42 @@ User has an active availability broadcast. Offers queue up and are included in t
 }
 ```
 
+### Doubles variant (find_fourth broadcast)
+
+```json
+{
+  "mode": "BROADCAST_ACTIVE",
+  "serverTime": "2026-02-03T10:00:00Z",
+  "primary": {
+    "broadcastId": "broadcast_dbl_abc",
+    "matchId": null,
+    "activeOfferIds": []
+  },
+  "payload": {
+    "broadcast_id": "broadcast_dbl_abc",
+    "sport": "padel",
+    "match_type": "doubles",
+    "broadcast_type": "find_fourth",
+    "partner_uid": "user_partner_1",
+    "partner_name": "Chris",
+    "availability": "today",
+    "court_status": "have_court",
+    "court_location": "Flisvos Padel Academy",
+    "venue_ref": {
+      "venueId": "venue_flisvos",
+      "placeId": "ChIJFlisvos",
+      "name": "Flisvos Padel Academy",
+      "coordinates": {"lat": 37.93, "lng": 23.68}
+    },
+    "expires_at": "2026-02-03T16:00:00Z",
+    "created_at": "2026-02-03T08:00:00Z",
+    "pending_offers": []
+  },
+  "annotations": {},
+  "uiEvents": []
+}
+```
+
 ---
 
 ## OUTGOING_OFFER_PENDING
@@ -182,6 +218,50 @@ A confirmed upcoming match is the primary focus. Discovery UI is replaced by the
 }
 ```
 
+### Doubles variant
+
+`match_type` is `doubles` and `participants` contains 4 entries — 2 per team. Use `participants`
+for rendering team labels; `opponent` still carries the lead opponent for singles-style "vs."
+display.
+
+```json
+{
+  "mode": "MATCH_SCHEDULED",
+  "serverTime": "2026-02-03T12:00:00Z",
+  "primary": {
+    "broadcastId": null,
+    "matchId": "match_dbl_999",
+    "activeOfferIds": []
+  },
+  "payload": {
+    "matchId": "match_dbl_999",
+    "sport": "padel",
+    "match_type": "doubles",
+    "scheduledAt": "2026-02-03T18:00:00Z",
+    "venue_ref": {
+      "venueId": "venue_flisvos",
+      "placeId": "ChIJFlisvos",
+      "name": "Flisvos Padel Academy",
+      "coordinates": {"lat": 37.93, "lng": 23.68}
+    },
+    "opponent": {
+      "uid": "user_456",
+      "name": "Sam",
+      "profileUrl": null,
+      "ranking": {"sport": "padel", "pts": 1100}
+    },
+    "participants": [
+      {"uid": "user_123", "name": "Alex", "team": "A", "role": "player"},
+      {"uid": "user_partner_1", "name": "Chris", "team": "A", "role": "player"},
+      {"uid": "user_456", "name": "Sam", "team": "B", "role": "player"},
+      {"uid": "user_789", "name": "Jordan", "team": "B", "role": "player"}
+    ]
+  },
+  "annotations": {},
+  "uiEvents": []
+}
+```
+
 ---
 
 ## POST_MATCH_LOG_AVAILABLE
@@ -210,6 +290,11 @@ Match time has passed. User can submit their result via the score dial.
   "uiEvents": []
 }
 ```
+
+### Doubles fields
+
+For doubles matches, the payload also includes `match_type: "doubles"` and a `participants` list
+(same shape as MATCH_SCHEDULED). The base envelope is otherwise identical.
 
 ---
 
@@ -242,6 +327,11 @@ User has submitted their result and is waiting for the opponent to confirm.
 }
 ```
 
+### Doubles fields
+
+For doubles matches, the payload also includes `match_type: "doubles"` and a `participants` list
+(same shape as MATCH_SCHEDULED). The base envelope is otherwise identical.
+
 ---
 
 ## POST_MATCH_CONFIRM_REQUIRED
@@ -272,6 +362,11 @@ Opponent submitted their result first. This user must confirm or reject.
   "uiEvents": []
 }
 ```
+
+### Doubles fields
+
+For doubles matches, the payload also includes `match_type: "doubles"` and a `participants` list
+(same shape as MATCH_SCHEDULED). The base envelope is otherwise identical.
 
 ---
 
