@@ -55,15 +55,25 @@ user profiles and league data. To make authenticated API calls you need an emula
 
 ### Auth token
 
-```bash
-# Option 1 — helper script (generates a fresh emulator token)
-./scripts/get_emu_token.sh
+The helper script defaults to `user_1`; always pass the seeded UID explicitly so the token matches the Firestore data:
 
-# Option 2 — direct Auth emulator call
+```bash
+# Option 1 — helper script (authenticates as a seeded user)
+TOKEN=$(./scripts/get_emu_token.sh user_ignatios -t)
+
+# Option 2 — direct Auth emulator call (authenticates as user_ignatios)
+# The "Authorization: Bearer owner" header lets the emulator create a user
+# with a specific UID that matches the seeded Firestore document.
 TOKEN=$(curl -s -X POST \
   "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key" \
   -H "Content-Type: application/json" \
-  -d '{"email":"demo@test.com","password":"demo123","returnSecureToken":true}' \
+  -H "Authorization: Bearer owner" \
+  -d '{"localId":"user_ignatios","email":"user_ignatios@gsm.local","password":"test_pass_123"}' \
+  > /dev/null && \
+  curl -s -X POST \
+  "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user_ignatios@gsm.local","password":"test_pass_123","returnSecureToken":true}' \
   | jq -r '.idToken')
 ```
 
@@ -75,15 +85,16 @@ Use the token in API calls: `-H "Authorization: Bearer $TOKEN"`
 
 | Scenario | Data | Endpoint(s) |
 |----------|------|-------------|
-| Browse play matches | `match-upcoming-1`, `match-upcoming-2` (SCHEDULED 2030) | `GET /play/matches` |
-| Score confirmation flow | `match_pending` (PENDING_CONFIRMATION tennis, Alice vs Ignatios) | `POST /play/matches/match_pending/confirm` |
-| Completed match history | `match-completed-1`, `match-completed-2` (padel) | `GET /play/matches` |
-| League browse / join | `padel-local-2025` (ACTIVE), `tennis-local-2025` (OPEN) | `GET /leagues`, `POST /leagues/{id}/join` |
-| Completed league | `tennis-completed-2024` | `GET /leagues/{id}` |
-| Rankings / leaderboard | Athens padel leaderboard | `GET /improve/leaderboard` |
-| Venue list | 16 Athens venues | `GET /venues` |
+| View play state (upcoming matches) | `user_ignatios` | `GET /me/state` |
+| Score confirmation flow | `match_pending` (PENDING_CONFIRMATION tennis, Alice vs Ignatios) | `POST /matches/match_pending/verify-score` |
+| League browse | `padel-local-2025` (ACTIVE), `tennis-local-2025` (OPEN) | `GET /leagues` |
+| League detail | `padel-local-2025` | `GET /leagues/padel-local-2025` |
+| League join | `tennis-local-2025` (OPEN, 2/16 members) | `POST /leagues/tennis-local-2025/join` |
+| Completed league | `tennis-completed-2024` | `GET /leagues/tennis-completed-2024` |
+| Rankings / leaderboard | Athens padel leaderboard | `GET /me/lab/leaderboard?sport=padel` |
+| Venue list | 16 Athens venues | `GET /venues?sport=padel` |
 
-> `match_pending` uses an **underscore**, not a hyphen.
+> `match_pending` uses an **underscore**, not a hyphen. `GET /venues` requires the `sport` query parameter.
 
 ---
 
