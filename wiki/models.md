@@ -4,7 +4,7 @@ This summarizes the shared value objects, enums, and resource models introduced 
 
 ## Enums
 - Sports & levels: `SportEnum` (`tennis`, `padel`, `pickleball`), `LevelEnum` (`beginner`, `intermediate`, `advanced`, `pro`).
-- Matches & leagues: `MatchStatusEnum` (`scheduled`, `pending_confirmation`, `completed`, `disputed`, `cancelled`), `MatchResultEnum` (`W`, `L`, `D`), `LeagueStatusEnum` (`active`, `completed`, `upcoming`), `LeagueRoleEnum` (`player`, `admin`, `captain`), `LeagueMemberStatusEnum` (`active`, `left`, `banned`), `ParticipantRoleEnum` (`player`, `referee`).
+- Matches & leagues: `MatchStatusEnum` (`scheduled`, `pending_confirmation`, `completed`, `disputed`, `cancelled`), `MatchResultEnum` (`W`, `L`, `D`), `LeagueStatusEnum` (`active`, `completed`, `upcoming`, `open`), `LeagueRoleEnum` (`player`, `admin`, `captain`), `LeagueMemberStatusEnum` (`active`, `left`, `banned`), `ParticipantRoleEnum` (`player`, `referee`).
 - Journal: `JournalVisibilityEnum` (`private`, `friends`).
 - Home tab router: `PlayTabStateEnum` (`DISCOVERY`, `BROADCAST_ACTIVE`, `OUTGOING_OFFER_PENDING`, `INCOMING_OFFER_PENDING`, `MATCH_SCHEDULED`, `POST_MATCH_LOG_AVAILABLE`, `POST_MATCH_WAITING_OPPONENT`, `POST_MATCH_CONFIRM_REQUIRED`, `MATCH_DISPUTED`).
 - Broadcasts: `BroadcastStatusEnum` (`active`, `expired`, `cancelled`, `matched`), `AvailabilityEnum` (`today`, `tomorrow`, `weekend`), `CourtStatusEnum` (`have_court`, `need_court`).

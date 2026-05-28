@@ -331,8 +331,8 @@ curl -s \
       "league_id": "padel-local-2025",
       "court_id": null,
       "participants": [
-        {"uid": "user_ignatios", "team": 1, "role": "player", "result": null},
-        {"uid": "user_sam", "team": 2, "role": "player", "result": null}
+        {"uid": "user_ignatios", "team": null, "role": "player", "result": null},
+        {"uid": "user_sam", "team": null, "role": "player", "result": null}
       ],
       "participant_uids": ["user_ignatios", "user_sam"],
       "result_by_user": null,
