@@ -95,7 +95,7 @@ Used in offer/broadcast payloads to show opponent skill level.
   "location": {
     "area": 101,
     "geo": {"lat": 37.98, "lng": 23.73},
-    "radiusKm": 10.0
+    "radius_km": 10.0
   }
 }
 ```
@@ -112,7 +112,7 @@ Field rules:
 - `expires_at`: ISO 8601 datetime, must be in the future.
 - `location.area`: integer area key or `null`.
 - `location.geo`: `{lat, lng}` or `null`.
-- `location.radiusKm`: float or `null`.
+- `location.radius_km`: float or `null`.
 
 Doubles rules:
 - `find_fourth` requires `match_type=doubles`.
@@ -157,7 +157,7 @@ Request:
     "coordinates": {"lat": 37.93, "lng": 23.68}
   },
   "expires_at": "2026-02-03T16:00:00Z",
-  "location": {"area": 102, "geo": null, "radiusKm": null}
+  "location": {"area": 102, "geo": null, "radius_km": null}
 }
 ```
 

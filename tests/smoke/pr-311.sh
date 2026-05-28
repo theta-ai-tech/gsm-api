@@ -71,6 +71,7 @@ assert_contains "venueRef not echoed limitation noted" "$CONTRACTS" "venueRef\|v
 assert_contains "Offer expiry limitation noted" "$CONTRACTS" "5.min\|5 min\|expiry\|expir"
 assert_contains "venues/search Google Places key limitation noted" "$CONTRACTS" "Google Places\|Places API"
 assert_contains "verify-score naming clarification present" "$CONTRACTS" "result.*confirm\|confirm.*result\|result/confirm"
+assert_contains "broadcast location uses radius_km not radiusKm" "$CONTRACTS" '"radius_km"'
 
 echo ""
 echo "── wiki/endpoints.md ─────────────────────────────────────────────────────────"
@@ -96,6 +97,10 @@ assert_contains "MATCH_SCHEDULED doubles variant with participants" "$PAYLOADS" 
 assert_contains "MATCH_SCHEDULED participants has team A" "$PAYLOADS" "\"team\": \"A\"\|team.*A"
 assert_contains "MATCH_SCHEDULED participants has team B" "$PAYLOADS" "\"team\": \"B\"\|team.*B"
 assert_contains "POST_MATCH_* doubles fields noted" "$PAYLOADS" "Doubles fields"
+assert_contains "tab1-play-payloads uses server_time not serverTime" "$PAYLOADS" '"server_time"'
+assert_contains "tab1-play-payloads uses broadcast_id not broadcastId" "$PAYLOADS" '"broadcast_id"'
+assert_contains "tab1-play-payloads uses submitted_score not submittedScore" "$PAYLOADS" '"submitted_score"'
+assert_contains "tab1-play-payloads uses p1_games not p1Games" "$PAYLOADS" '"p1_games"'
 
 echo ""
 echo "──────────────────────────────────────────────────────────────────────────────"

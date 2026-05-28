@@ -12,15 +12,15 @@ Default browse state. No active broadcast, offer, or match.
 ```json
 {
   "mode": "DISCOVERY",
-  "serverTime": "2026-02-03T10:00:00Z",
+  "server_time": "2026-02-03T10:00:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": null,
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": null,
+    "active_offer_ids": []
   },
   "payload": {},
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -33,11 +33,11 @@ User has an active availability broadcast. Offers queue up and are included in t
 ```json
 {
   "mode": "BROADCAST_ACTIVE",
-  "serverTime": "2026-02-03T10:00:00Z",
+  "server_time": "2026-02-03T10:00:00Z",
   "primary": {
-    "broadcastId": "broadcast_abc",
-    "matchId": null,
-    "activeOfferIds": ["offer_1", "offer_2"]
+    "broadcast_id": "broadcast_abc",
+    "match_id": null,
+    "active_offer_ids": ["offer_1", "offer_2"]
   },
   "payload": {
     "broadcast_id": "broadcast_abc",
@@ -58,29 +58,29 @@ User has an active availability broadcast. Offers queue up and are included in t
     "created_at": "2026-02-03T08:00:00Z",
     "pending_offers": [
       {
-        "offerId": "offer_1",
-        "fromUid": "user_456",
-        "fromName": "Sam",
-        "fromRanking": {"sport": "tennis", "pts": 1100},
-        "proposedTime": "2026-02-03T18:00:00Z",
+        "offer_id": "offer_1",
+        "from_uid": "user_456",
+        "from_name": "Sam",
+        "from_ranking": {"sport": "tennis", "pts": 1100},
+        "proposed_time": "2026-02-03T18:00:00Z",
         "message": "Up for a game?",
-        "expiresAt": "2026-02-03T10:05:00Z",
-        "createdAt": "2026-02-03T10:00:00Z"
+        "expires_at": "2026-02-03T10:05:00Z",
+        "created_at": "2026-02-03T10:00:00Z"
       },
       {
-        "offerId": "offer_2",
-        "fromUid": "user_789",
-        "fromName": "Jamie",
-        "fromRanking": {"sport": "tennis", "pts": 950},
-        "proposedTime": "2026-02-03T17:00:00Z",
+        "offer_id": "offer_2",
+        "from_uid": "user_789",
+        "from_name": "Jamie",
+        "from_ranking": {"sport": "tennis", "pts": 950},
+        "proposed_time": "2026-02-03T17:00:00Z",
         "message": null,
-        "expiresAt": "2026-02-03T10:04:00Z",
-        "createdAt": "2026-02-03T09:59:00Z"
+        "expires_at": "2026-02-03T10:04:00Z",
+        "created_at": "2026-02-03T09:59:00Z"
       }
     ]
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -89,11 +89,11 @@ User has an active availability broadcast. Offers queue up and are included in t
 ```json
 {
   "mode": "BROADCAST_ACTIVE",
-  "serverTime": "2026-02-03T10:00:00Z",
+  "server_time": "2026-02-03T10:00:00Z",
   "primary": {
-    "broadcastId": "broadcast_dbl_abc",
-    "matchId": null,
-    "activeOfferIds": []
+    "broadcast_id": "broadcast_dbl_abc",
+    "match_id": null,
+    "active_offer_ids": []
   },
   "payload": {
     "broadcast_id": "broadcast_dbl_abc",
@@ -116,7 +116,7 @@ User has an active availability broadcast. Offers queue up and are included in t
     "pending_offers": []
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -129,26 +129,26 @@ User sent a challenge and is waiting for the recipient to respond.
 ```json
 {
   "mode": "OUTGOING_OFFER_PENDING",
-  "serverTime": "2026-02-03T10:05:00Z",
+  "server_time": "2026-02-03T10:05:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": null,
-    "activeOfferIds": ["offer_123"]
+    "broadcast_id": null,
+    "match_id": null,
+    "active_offer_ids": ["offer_123"]
   },
   "payload": {
-    "offerId": "offer_123",
-    "toUid": "user_789",
-    "toName": "Jamie",
-    "toRanking": {"sport": "tennis", "pts": 950},
+    "offer_id": "offer_123",
+    "to_uid": "user_789",
+    "to_name": "Jamie",
+    "to_ranking": {"sport": "tennis", "pts": 950},
     "sport": "tennis",
-    "proposedTime": "2026-02-03T18:00:00Z",
-    "courtLocation": "Central Court, Athens",
+    "proposed_time": "2026-02-03T18:00:00Z",
+    "court_location": "Central Court, Athens",
     "message": "Let's play!",
-    "expiresAt": "2026-02-03T10:10:00Z",
-    "createdAt": "2026-02-03T10:05:00Z"
+    "expires_at": "2026-02-03T10:10:00Z",
+    "created_at": "2026-02-03T10:05:00Z"
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -161,26 +161,26 @@ User received a direct challenge (no active broadcast) and must respond.
 ```json
 {
   "mode": "INCOMING_OFFER_PENDING",
-  "serverTime": "2026-02-03T10:01:00Z",
+  "server_time": "2026-02-03T10:01:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": null,
-    "activeOfferIds": ["offer_456"]
+    "broadcast_id": null,
+    "match_id": null,
+    "active_offer_ids": ["offer_456"]
   },
   "payload": {
-    "offerId": "offer_456",
-    "fromUid": "user_456",
-    "fromName": "Sam",
-    "fromRanking": {"sport": "tennis", "pts": 1100},
+    "offer_id": "offer_456",
+    "from_uid": "user_456",
+    "from_name": "Sam",
+    "from_ranking": {"sport": "tennis", "pts": 1100},
     "sport": "tennis",
-    "proposedTime": "2026-02-03T18:00:00Z",
-    "courtLocation": "Central Court, Athens",
+    "proposed_time": "2026-02-03T18:00:00Z",
+    "court_location": "Central Court, Athens",
     "message": "Up for a game?",
-    "expiresAt": "2026-02-03T10:06:00Z",
-    "createdAt": "2026-02-03T10:01:00Z"
+    "expires_at": "2026-02-03T10:06:00Z",
+    "created_at": "2026-02-03T10:01:00Z"
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -193,28 +193,28 @@ A confirmed upcoming match is the primary focus. Discovery UI is replaced by the
 ```json
 {
   "mode": "MATCH_SCHEDULED",
-  "serverTime": "2026-02-03T12:00:00Z",
+  "server_time": "2026-02-03T12:00:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_789",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_789",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_789",
+    "match_id": "match_789",
     "sport": "tennis",
-    "scheduledAt": "2026-02-03T18:00:00Z",
-    "courtId": "court_4",
-    "courtName": "Central Court",
-    "courtGeo": {"lat": 37.9838, "lng": 23.7275},
+    "scheduled_at": "2026-02-03T18:00:00Z",
+    "court_id": "court_4",
+    "court_name": "Central Court",
+    "court_geo": {"lat": 37.9838, "lng": 23.7275},
     "opponent": {
       "uid": "user_456",
       "name": "Sam",
-      "profileUrl": "https://example.com/sam.png",
+      "profile_url": "https://example.com/sam.png",
       "ranking": {"sport": "tennis", "pts": 1100}
     }
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -227,17 +227,17 @@ display.
 ```json
 {
   "mode": "MATCH_SCHEDULED",
-  "serverTime": "2026-02-03T12:00:00Z",
+  "server_time": "2026-02-03T12:00:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_dbl_999",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_dbl_999",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_dbl_999",
+    "match_id": "match_dbl_999",
     "sport": "padel",
     "match_type": "doubles",
-    "scheduledAt": "2026-02-03T18:00:00Z",
+    "scheduled_at": "2026-02-03T18:00:00Z",
     "venue_ref": {
       "venueId": "venue_flisvos",
       "placeId": "ChIJFlisvos",
@@ -247,7 +247,7 @@ display.
     "opponent": {
       "uid": "user_456",
       "name": "Sam",
-      "profileUrl": null,
+      "profile_url": null,
       "ranking": {"sport": "padel", "pts": 1100}
     },
     "participants": [
@@ -258,7 +258,7 @@ display.
     ]
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -271,23 +271,23 @@ Match time has passed. User can submit their result via the score dial.
 ```json
 {
   "mode": "POST_MATCH_LOG_AVAILABLE",
-  "serverTime": "2026-02-03T18:35:00Z",
+  "server_time": "2026-02-03T18:35:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_789",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_789",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_789",
+    "match_id": "match_789",
     "sport": "tennis",
-    "scheduledAt": "2026-02-03T18:00:00Z",
+    "scheduled_at": "2026-02-03T18:00:00Z",
     "opponent": {
       "uid": "user_456",
       "name": "Sam"
     }
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -305,17 +305,17 @@ User has submitted their result and is waiting for the opponent to confirm.
 ```json
 {
   "mode": "POST_MATCH_WAITING_OPPONENT",
-  "serverTime": "2026-02-03T20:10:00Z",
+  "server_time": "2026-02-03T20:10:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_789",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_789",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_789",
-    "submittedScore": {
-      "sets": [{"p1Games": 6, "p2Games": 4}, {"p1Games": 6, "p2Games": 3}],
-      "winnerUid": "user_123"
+    "match_id": "match_789",
+    "submitted_score": {
+      "sets": [{"p1_games": 6, "p2_games": 4}, {"p1_games": 6, "p2_games": 3}],
+      "winner_uid": "user_123"
     },
     "opponent": {
       "uid": "user_456",
@@ -323,7 +323,7 @@ User has submitted their result and is waiting for the opponent to confirm.
     }
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -341,17 +341,17 @@ Opponent submitted their result first. This user must confirm or reject.
 ```json
 {
   "mode": "POST_MATCH_CONFIRM_REQUIRED",
-  "serverTime": "2026-02-03T20:15:00Z",
+  "server_time": "2026-02-03T20:15:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_789",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_789",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_789",
-    "opponentScore": {
-      "sets": [{"p1Games": 6, "p2Games": 4}, {"p1Games": 6, "p2Games": 3}],
-      "winnerUid": "user_456"
+    "match_id": "match_789",
+    "opponent_score": {
+      "sets": [{"p1_games": 6, "p2_games": 4}, {"p1_games": 6, "p2_games": 3}],
+      "winner_uid": "user_456"
     },
     "opponent": {
       "uid": "user_456",
@@ -359,7 +359,7 @@ Opponent submitted their result first. This user must confirm or reject.
     }
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -377,21 +377,21 @@ Conflicting post-match submissions. Requires dispute resolution.
 ```json
 {
   "mode": "MATCH_DISPUTED",
-  "serverTime": "2026-02-03T20:20:00Z",
+  "server_time": "2026-02-03T20:20:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": "match_789",
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": "match_789",
+    "active_offer_ids": []
   },
   "payload": {
-    "matchId": "match_789",
-    "myScore": {
-      "sets": [{"p1Games": 6, "p2Games": 4}, {"p1Games": 6, "p2Games": 3}],
-      "winnerUid": "user_123"
+    "match_id": "match_789",
+    "my_score": {
+      "sets": [{"p1_games": 6, "p2_games": 4}, {"p1_games": 6, "p2_games": 3}],
+      "winner_uid": "user_123"
     },
-    "opponentScore": {
-      "sets": [{"p1Games": 4, "p2Games": 6}, {"p1Games": 6, "p2Games": 3}, {"p1Games": 7, "p2Games": 5}],
-      "winnerUid": "user_456"
+    "opponent_score": {
+      "sets": [{"p1_games": 4, "p2_games": 6}, {"p1_games": 6, "p2_games": 3}, {"p1_games": 7, "p2_games": 5}],
+      "winner_uid": "user_456"
     },
     "opponent": {
       "uid": "user_456",
@@ -399,6 +399,6 @@ Conflicting post-match submissions. Requires dispute resolution.
     }
   },
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
