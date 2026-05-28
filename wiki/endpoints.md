@@ -734,10 +734,10 @@ Required. The caller must be a participant in the match.
   "winner_uid": "user_abc",
   "score": {
     "sets": [
-      {"p1Games": 6, "p2Games": 4},
-      {"p1Games": 6, "p2Games": 3}
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
     ],
-    "winnerUid": "user_abc"
+    "winner_uid": "user_abc"
   },
   "walkover": false
 }
@@ -749,10 +749,10 @@ Required. The caller must be a participant in the match.
   "winner_team": "A",
   "score": {
     "sets": [
-      {"p1Games": 6, "p2Games": 4},
-      {"p1Games": 6, "p2Games": 3}
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
     ],
-    "winnerUid": ""
+    "winner_uid": ""
   },
   "walkover": false
 }

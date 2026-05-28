@@ -686,7 +686,7 @@ collection until moderated.
    Places API key. In the emulator and dev environments it returns `503 Service Unavailable`.
    The iOS client must handle `503` gracefully and fall back to `GET /venues` for curated results.
 
-6. **Vestigial court fields in `MATCH_SCHEDULED`:** `courtId`, `courtName`, and `courtGeo` in the
+6. **Vestigial court fields in `MATCH_SCHEDULED`:** `court_id`, `court_name`, and `court_geo` in the
    `MATCH_SCHEDULED` payload are legacy fields kept for backwards compatibility. The canonical
    court/venue info is in `venue_ref`. New clients should read `venue_ref` and ignore the
    individual court fields.

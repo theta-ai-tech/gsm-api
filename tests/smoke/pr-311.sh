@@ -85,6 +85,22 @@ assert_contains "verify-score two-call flow documented" "$ENDPOINTS" "pending_co
 assert_contains "verify-score singles request example" "$ENDPOINTS" "winner_uid"
 assert_contains "verify-score doubles request example" "$ENDPOINTS" "winner_team"
 assert_contains "verify-score scoring payload documented" "$ENDPOINTS" "scoring"
+assert_contains "verify-score uses snake_case p1_games (not p1Games)" "$ENDPOINTS" '"p1_games"'
+assert_contains "verify-score uses snake_case winner_uid in sets (not winnerUid)" "$ENDPOINTS" '"winner_uid"'
+assert_not_contains() {
+  local name="$1" file="$2" pattern="$3"
+  if grep -q "$pattern" "$file" 2>/dev/null; then
+    echo "  ✗ $name"
+    echo "    forbidden pattern found: $pattern"
+    echo "    file: $file"
+    ((FAIL++)) || true
+  else
+    echo "  ✓ $name"
+    ((PASS++)) || true
+  fi
+}
+assert_not_contains "verify-score does NOT use camelCase p1Games" "$ENDPOINTS" '"p1Games"'
+assert_not_contains "verify-score does NOT use camelCase winnerUid in score sets" "$ENDPOINTS" '"winnerUid"'
 
 echo ""
 echo "── spec/tab1-play-payloads.md ────────────────────────────────────────────────"
