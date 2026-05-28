@@ -352,6 +352,8 @@ Purpose: scheduled and completed match records; supports user and league match q
 | scheduled | completed | Participants submit/confirm result. |
 | scheduled | cancelled | Organizer or league admin cancels. |
 | pending_confirmation | completed | Opponent confirms result. |
+| pending_confirmation | disputed | Opponent disputes submitted result. |
+| completed | disputed | Result challenged after completion. |
 
 ### matches/{matchId} (scheduled)
 ```json
@@ -394,37 +396,6 @@ Purpose: scheduled and completed match records; supports user and league match q
   }
 }
 ```
-
-## Collection: leagues
-Path: `leagues/{leagueId}`
-
-### leagues/{leagueId}
-```json
-{
-  "name": "Athens Spring Ladder",
-  "sport": "tennis",
-  "season": "2026-spring",
-  "status": "active",
-  "ownerUid": "user_admin",
-  "meta": {"surface": "clay"}
-}
-```
-
-## Subcollection: leagues/{leagueId}/members
-Path: `leagues/{leagueId}/members/{uid}`
-
-### leagues/{leagueId}/members/{uid}
-```json
-{
-  "uid": "user_123",
-  "role": "player",
-  "status": "active",
-  "joinedAt": "2026-01-15T12:00:00Z",
-  "stats": {"wins": 3, "losses": 1}
-}
-```
-| pending_confirmation | disputed | Opponent disputes submitted result. |
-| completed | disputed | Result challenged after completion. |
 
 ### scheduledAt / finishedAt semantics
 - `scheduledAt` is present for `scheduled`, `pending_confirmation`, and `completed` matches.
