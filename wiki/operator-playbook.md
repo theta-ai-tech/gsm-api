@@ -33,8 +33,8 @@ make emu-all
 make seed-emu          # Seeds all collections: users, matches, leagues, venues, …
 make api-dev-emu-auth  # Start API
 
-# Terminal 3 — get an emulator auth token for API calls
-./scripts/get_emu_token.sh
+# Terminal 3 — get an emulator auth token for the seeded user_ignatios
+TOKEN=$(./scripts/get_emu_token.sh user_ignatios -t)
 ```
 
 `make seed-emu` is idempotent — running it twice is safe (upserts by document ID).
