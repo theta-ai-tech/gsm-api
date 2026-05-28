@@ -47,6 +47,16 @@ echo "── spec/api-launch-contracts.md ────────────�
 assert_file_exists "api-launch-contracts.md exists" "$CONTRACTS"
 assert_contains "POST /me/broadcast documented" "$CONTRACTS" "POST /me/broadcast"
 assert_contains "POST /me/offers documented" "$CONTRACTS" "POST /me/offers"
+assert_contains "POST /me/offers uses snake_case to_uid" "$CONTRACTS" '"to_uid"'
+assert_contains "POST /me/offers uses snake_case proposed_time" "$CONTRACTS" '"proposed_time"'
+assert_contains "POST /me/offers response uses snake_case offer_id" "$CONTRACTS" '"offer_id"'
+assert_contains "POST /me/offers/{id}/accept response uses snake_case match_id" "$CONTRACTS" '"match_id"'
+assert_contains "GET /me/state envelope uses snake_case server_time" "$CONTRACTS" '"server_time"'
+assert_contains "GET /me/state envelope uses snake_case active_offer_ids" "$CONTRACTS" '"active_offer_ids"'
+assert_contains "GET /me/state has match_type query param" "$CONTRACTS" "match_type"
+assert_contains "availability enum has tomorrow" "$CONTRACTS" '"tomorrow"'
+assert_contains "availability enum has weekend" "$CONTRACTS" '"weekend"'
+assert_contains "MatchScore uses snake_case p1_games" "$CONTRACTS" '"p1_games"'
 assert_contains "POST /me/offers/{offerId}/accept documented" "$CONTRACTS" "accept"
 assert_contains "POST /matches/{matchId}/verify-score documented" "$CONTRACTS" "verify-score"
 assert_contains "GET /me/state documented" "$CONTRACTS" "GET /me/state"

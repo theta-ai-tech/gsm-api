@@ -34,14 +34,14 @@ Used in `verify-score` requests and in post-match state payloads.
 ```json
 {
   "sets": [
-    {"p1Games": 6, "p2Games": 4},
-    {"p1Games": 6, "p2Games": 3}
+    {"p1_games": 6, "p2_games": 4},
+    {"p1_games": 6, "p2_games": 3}
   ],
-  "winnerUid": "user_abc"
+  "winner_uid": "user_abc"
 }
 ```
 
-For doubles results `winnerUid` is an empty string `""` — use `winner_team` on the request instead.
+For doubles results `winner_uid` is an empty string `""` — use `winner_team` on the request instead.
 
 ### SportRanking
 
@@ -105,7 +105,7 @@ Field rules:
 - `broadcast_type`: `"find_opponent"` | `"find_fourth"`, default `"find_opponent"`.
 - `partner_uid`: `null` for singles; required for `doubles + find_opponent`; optional for
   `doubles + find_fourth`.
-- `availability`: `"today"` | `"this_week"`.
+- `availability`: `"today"` | `"tomorrow"` | `"weekend"`.
 - `court_status`: `"have_court"` | `"need_court"`.
 - `court_location`: free-text string or `null`.
 - `venue_ref`: only stored when `court_status=have_court`; ignored for `need_court`.
@@ -197,14 +197,14 @@ Response (`201`):
 
 ```json
 {
-  "toUid": "user_789",
+  "to_uid": "user_789",
   "sport": "tennis",
   "match_type": "singles",
   "partner_uid": null,
-  "proposedTime": "2026-02-03T18:00:00Z",
-  "courtLocation": "Central Court, Athens",
-  "venueRef": null,
-  "sourceBroadcastId": null,
+  "proposed_time": "2026-02-03T18:00:00Z",
+  "court_location": "Central Court, Athens",
+  "venue_ref": null,
+  "source_broadcast_id": null,
   "message": "Up for a game?"
 }
 ```
@@ -212,29 +212,29 @@ Response (`201`):
 Field rules:
 - `match_type`: `"singles"` | `"doubles"`, default `"singles"`.
 - `partner_uid`: `null` for singles; required for doubles.
-- `courtLocation`: optional free-text.
-- `venueRef`: optional `VenueRef` object or `null`.
-- `sourceBroadcastId`: optional — links to an originating broadcast.
+- `court_location`: optional free-text.
+- `venue_ref`: optional `VenueRef` object or `null`.
+- `source_broadcast_id`: optional — links to an originating broadcast.
 - `message`: optional, max 300 chars.
 
 #### Response (`201`, SendOfferResponse)
 
 ```json
 {
-  "offerId": "offer_123",
-  "toUid": "user_789",
-  "toName": "Jamie",
+  "offer_id": "offer_123",
+  "to_uid": "user_789",
+  "to_name": "Jamie",
   "sport": "tennis",
   "match_type": "singles",
   "partner_uid": null,
-  "proposedTime": "2026-02-03T18:00:00Z",
+  "proposed_time": "2026-02-03T18:00:00Z",
   "status": "pending",
-  "expiresAt": "2026-02-03T10:10:00Z",
-  "createdAt": "2026-02-03T10:05:00Z"
+  "expires_at": "2026-02-03T10:10:00Z",
+  "created_at": "2026-02-03T10:05:00Z"
 }
 ```
 
-Note: `venueRef` and `sourceBroadcastId` are stored but NOT echoed in the response (see Known
+Note: `venue_ref` and `source_broadcast_id` are stored but NOT echoed in the response (see Known
 Limitations).
 
 #### Doubles example
@@ -243,13 +243,13 @@ Request:
 
 ```json
 {
-  "toUid": "user_789",
+  "to_uid": "user_789",
   "sport": "padel",
   "match_type": "doubles",
   "partner_uid": "user_partner_1",
-  "proposedTime": "2026-02-03T18:00:00Z",
-  "courtLocation": "Flisvos Padel Academy",
-  "venueRef": {
+  "proposed_time": "2026-02-03T18:00:00Z",
+  "court_location": "Flisvos Padel Academy",
+  "venue_ref": {
     "venueId": "venue_flisvos",
     "placeId": "ChIJFlisvos",
     "name": "Flisvos Padel Academy",
@@ -263,16 +263,16 @@ Response (`201`):
 
 ```json
 {
-  "offerId": "offer_dbl_456",
-  "toUid": "user_789",
-  "toName": "Jamie",
+  "offer_id": "offer_dbl_456",
+  "to_uid": "user_789",
+  "to_name": "Jamie",
   "sport": "padel",
   "match_type": "doubles",
   "partner_uid": "user_partner_1",
-  "proposedTime": "2026-02-03T18:00:00Z",
+  "proposed_time": "2026-02-03T18:00:00Z",
   "status": "pending",
-  "expiresAt": "2026-02-03T10:10:00Z",
-  "createdAt": "2026-02-03T10:05:00Z"
+  "expires_at": "2026-02-03T10:10:00Z",
+  "created_at": "2026-02-03T10:05:00Z"
 }
 ```
 
@@ -289,7 +289,7 @@ Response (`201`):
 
 ### POST /me/offers/{offerId}/accept
 
-**Auth:** Required. Caller must be the offer recipient (`offer.toUid`).
+**Auth:** Required. Caller must be the offer recipient (`offer.to_uid`).
 
 #### Request body
 
@@ -299,14 +299,14 @@ None.
 
 ```json
 {
-  "offerId": "offer_456",
+  "offer_id": "offer_456",
   "status": "accepted",
-  "matchId": "match_789",
-  "scheduledAt": "2026-02-03T18:00:00Z"
+  "match_id": "match_789",
+  "scheduled_at": "2026-02-03T18:00:00Z"
 }
 ```
 
-Note: does not return full match details — only `matchId` and `scheduledAt` (see Known
+Note: does not return full match details — only `match_id` and `scheduled_at` (see Known
 Limitations). Use `GET /me/state` to retrieve the full `MATCH_SCHEDULED` payload.
 
 #### Key error codes
@@ -350,10 +350,10 @@ Provide exactly one of `winner_uid` (singles) or `winner_team` (doubles).
   "winner_uid": "user_abc",
   "score": {
     "sets": [
-      {"p1Games": 6, "p2Games": 4},
-      {"p1Games": 6, "p2Games": 3}
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
     ],
-    "winnerUid": "user_abc"
+    "winner_uid": "user_abc"
   },
   "walkover": false
 }
@@ -366,10 +366,10 @@ Provide exactly one of `winner_uid` (singles) or `winner_team` (doubles).
   "winner_team": "A",
   "score": {
     "sets": [
-      {"p1Games": 6, "p2Games": 4},
-      {"p1Games": 6, "p2Games": 3}
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
     ],
-    "winnerUid": ""
+    "winner_uid": ""
   },
   "walkover": false
 }
@@ -486,24 +486,30 @@ first call and on `pending_confirmation` responses. `winner_delta`/`loser_delta`
 
 **Auth:** Required.
 
-#### Request
+#### Query parameters
 
-No body. No query parameters.
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `match_type` | `singles\|doubles` | No | Filters the DISCOVERY feed by broadcast type. Silently ignored in all other modes. |
+
+#### Request body
+
+None.
 
 #### Response envelope (`200`)
 
 ```json
 {
   "mode": "DISCOVERY",
-  "serverTime": "2026-02-03T10:00:00Z",
+  "server_time": "2026-02-03T10:00:00Z",
   "primary": {
-    "broadcastId": null,
-    "matchId": null,
-    "activeOfferIds": []
+    "broadcast_id": null,
+    "match_id": null,
+    "active_offer_ids": []
   },
   "payload": {},
   "annotations": {},
-  "uiEvents": []
+  "ui_events": []
 }
 ```
 
@@ -664,12 +670,12 @@ collection until moderated.
    match moves to `disputed`, but there is no API endpoint for dispute resolution at MVP.
    Disputed matches require admin intervention via the Firebase console.
 
-2. **`POST /me/offers` response — omitted fields:** `venueRef` and `sourceBroadcastId` are stored
-   on the offer document but are NOT echoed back in the `SendOfferResponse`. The iOS client should
-   not rely on reading these from the offer creation response.
+2. **`POST /me/offers` response — omitted fields:** `venue_ref` and `source_broadcast_id` are
+   stored on the offer document but are NOT echoed back in the `SendOfferResponse`. The iOS client
+   should not rely on reading these from the offer creation response.
 
 3. **`POST /me/offers/{id}/accept` — partial response:** The accept response returns only
-   `offerId`, `status`, `matchId`, and `scheduledAt`. Full match participant details (names,
+   `offer_id`, `status`, `match_id`, and `scheduled_at`. Full match participant details (names,
    rankings, venue) are not returned. Use `GET /me/state` (mode `MATCH_SCHEDULED`) to get the
    full logistics card.
 
