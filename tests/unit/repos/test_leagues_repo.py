@@ -109,6 +109,36 @@ class TestLeaguesRepoListByFilter:
         assert len(results) == 1
         mock_query.start_after.assert_called_once()
 
+    def test_list_by_filter_by_sport(
+        self, leagues_repo, mock_firestore_client, sample_league_doc
+    ):
+        mock_doc = Mock()
+        mock_doc.id = "padel-local-2025"
+        mock_doc.to_dict.return_value = sample_league_doc
+        mock_query = self._make_mock_query([mock_doc])
+        mock_firestore_client.collection.return_value = mock_query
+
+        results = leagues_repo.list_by_filter(sport=SportEnum.PADEL)
+
+        assert len(results) == 1
+        mock_query.where.assert_called_once_with("sport", "==", SportEnum.PADEL.value)
+
+    def test_list_by_filter_by_status(
+        self, leagues_repo, mock_firestore_client, sample_league_doc
+    ):
+        mock_doc = Mock()
+        mock_doc.id = "padel-local-2025"
+        mock_doc.to_dict.return_value = sample_league_doc
+        mock_query = self._make_mock_query([mock_doc])
+        mock_firestore_client.collection.return_value = mock_query
+
+        results = leagues_repo.list_by_filter(status=LeagueStatusEnum.ACTIVE)
+
+        assert len(results) == 1
+        mock_query.where.assert_called_once_with(
+            "status", "==", LeagueStatusEnum.ACTIVE.value
+        )
+
     def test_list_by_filter_empty_result(self, leagues_repo, mock_firestore_client):
         mock_query = self._make_mock_query([])
         mock_firestore_client.collection.return_value = mock_query
