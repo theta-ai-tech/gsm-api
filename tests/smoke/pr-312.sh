@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Smoke tests for PR #275: SMK-2 venue flow and score confirmation (#275)
+# Smoke tests for PR #312: SMK-2 venue flow and score confirmation (#275)
 # Generated: 2026-05-28
-# Usage: API_BASE_URL=http://127.0.0.1:8275 bash tests/smoke/pr-275.sh
+# Usage: API_BASE_URL=http://127.0.0.1:8312 bash tests/smoke/pr-312.sh
 #
 # Requires: make emu-all + make api-dev-emu-auth running (separate terminals).
 # Seeds venues, region_config, tier_config, and users via tools.seed_firestore.
@@ -17,7 +17,7 @@ set -uo pipefail
 PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-API="${API_BASE_URL:-http://127.0.0.1:8275}"
+API="${API_BASE_URL:-http://127.0.0.1:8312}"
 PROJECT="${GOOGLE_CLOUD_PROJECT:-gsm-dev-f70d0}"
 FIRESTORE="http://127.0.0.1:8082/v1/projects/$PROJECT/databases/(default)/documents"
 
@@ -300,5 +300,5 @@ assert_eq "Section 4: final match doc venueRef.venueId=athens_tennis_club" \
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo "Smoke tests PR #275: $PASS passed, $FAIL failed"
+echo "Smoke tests PR #312: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
