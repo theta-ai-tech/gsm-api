@@ -65,6 +65,8 @@ def seed_all(client: firestore.Client) -> None:
     for league in SAMPLE_LEAGUES:
         doc_ref = client.collection("leagues").document(league.league_id)
         doc_ref.set(league_to_firestore_doc(league))
+        for existing in doc_ref.collection("members").stream():
+            existing.reference.delete()
         for member in SAMPLE_LEAGUE_MEMBERS.get(league.league_id, []):
             member_ref = doc_ref.collection("members").document(member.uid)
             member_ref.set(league_member_to_firestore_doc(member))
