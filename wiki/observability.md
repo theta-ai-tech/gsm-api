@@ -22,3 +22,8 @@
 
 ## CI Coverage
 - GitHub Actions CI runs the unit test suite, which includes auth regression tests, health/readiness tests, and observability-focused tests (request id + timing middleware behavior).***
+
+## Funnel Telemetry Events
+Structured analytics events for the matchmaking funnel (broadcast → offer → match → score) are
+defined in [wiki/telemetry.md](telemetry.md). Implementation uses the `log_analytics_event`
+helper in `api/app/logging.py`, which emits JSON-serialized payloads to Cloud Logging.
