@@ -50,7 +50,7 @@ Every telemetry event carries the following fields:
 | `match_type` | string | optional | `singles` or `doubles`. Derive from broadcast `broadcast_type` where match doesn't exist yet: `find_opponent` → `singles`, `find_fourth` → `doubles`. |
 | `region` | string | optional | Region identifier (e.g. `athens`). Derived from `location.area` via `config/regions`. Log `null` if lookup is not available in the hot path. |
 | `venue_present` | boolean | optional | `true` if a court/venue was specified (`courtStatus == "have_court"` with `courtLocation`, or a `courtId` on the match). |
-| `broadcast_id` | string | conditional | Present for broadcast and offer events. |
+| `broadcast_id` | string | conditional | Present for broadcast, offer, and match scheduling events. |
 | `offer_id` | string | conditional | Present for offer and match scheduling events. |
 | `match_id` | string | conditional | Present for match and score events. |
 
@@ -112,6 +112,7 @@ Emitted immediately after a match document is created (same transaction as `offe
 | `match_type` | match `match_type` field |
 | `region` | derived from context (or null) |
 | `venue_present` | `courtId` or `courtLocation` is set on the match |
+| `broadcast_id` | the broadcast the offer was sent against (`offer.broadcastId`); null for direct challenges |
 | `offer_id` | offer that created the match |
 | `match_id` | new match document ID |
 
