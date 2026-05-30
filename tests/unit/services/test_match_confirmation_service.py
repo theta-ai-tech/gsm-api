@@ -1993,3 +1993,121 @@ class TestGetRegionForUser:
         # area_code=0 is used as a sentinel for "missing area" in user preferences;
         # it must not be treated as a valid area code even if "0" is in the mapping.
         assert get_region_for_user(0, self._REGION_CONFIG) is None
+
+
+# ---------------------------------------------------------------------------
+# Tests: notification intent emission
+# ---------------------------------------------------------------------------
+
+
+from app.models.enums import MatchTypeEnum, PlayNotificationIntentTypeEnum  # noqa: E402
+from app.repos.notification_intent_repo import NotificationIntentRepo  # noqa: E402
+
+
+def _make_service_with_notif_repo(
+    match: Match | None = None,
+    notification_intent_repo: NotificationIntentRepo | None = None,
+) -> tuple[MatchConfirmationService, MagicMock]:
+    """Build a MatchConfirmationService wired with a mock Firestore client.
+
+    Returns (service, mock_client).
+    """
+    mock_matches_repo = Mock(spec=MatchesRepo)
+    mock_matches_repo.get_by_id.return_value = match or _make_match()
+
+    mock_users_repo = Mock(spec=UsersRepo)
+
+    mock_ph_repo = Mock(spec=PointHistoryRepo)
+
+    mock_tier_config_repo = Mock(spec=TierConfigRepo)
+    mock_tier_config_repo.get.return_value = _tier_config()
+
+    mock_client = MagicMock()
+
+    service = MatchConfirmationService(
+        mock_matches_repo,
+        mock_users_repo,
+        mock_ph_repo,
+        mock_tier_config_repo,
+        mock_client,
+        notification_intent_repo=notification_intent_repo,
+    )
+    return service, mock_client
+
+
+def _make_doubles_match(
+    status: MatchStatusEnum = MatchStatusEnum.SCHEDULED,
+) -> Match:
+    """Build a 4-player doubles match fixture."""
+    return Match(
+        match_id=MATCH_ID,
+        sport=SPORT,
+        status=status,
+        match_type=MatchTypeEnum.DOUBLES,
+        participant_uids=["u1", "u2", "u3", "u4"],
+        participants=[
+            MatchParticipant(uid="u1", role="player", team="A"),
+            MatchParticipant(uid="u2", role="player", team="A"),
+            MatchParticipant(uid="u3", role="player", team="B"),
+            MatchParticipant(uid="u4", role="player", team="B"),
+        ],
+    )
+
+
+class TestNotificationIntentEmission:
+    """Verify that the correct notification intents are emitted by verify_score."""
+
+    def test_singles_first_submission_emits_score_confirm_for_non_submitter(self):
+        """_first_submission must emit SCORE_CONFIRM_REQUIRED for the non-submitting player."""
+        mock_notif_repo = Mock(spec=NotificationIntentRepo)
+        service, _ = _make_service_with_notif_repo(
+            notification_intent_repo=mock_notif_repo
+        )
+
+        service.verify_score(
+            WINNER_UID,
+            MATCH_ID,
+            VerifyScoreRequest(winner_uid=WINNER_UID),
+        )
+
+        mock_notif_repo.add_intent.assert_called_once()
+        intent = mock_notif_repo.add_intent.call_args[0][0]
+        assert intent.type == PlayNotificationIntentTypeEnum.SCORE_CONFIRM_REQUIRED
+        assert intent.target_uid == LOSER_UID
+        assert intent.match_id == MATCH_ID
+
+    def test_singles_first_submission_no_intent_repo_does_not_raise(self):
+        """Service constructed without notification_intent_repo must not raise."""
+        service, _ = _make_service_with_notif_repo(notification_intent_repo=None)
+
+        # Must not raise
+        service.verify_score(
+            WINNER_UID,
+            MATCH_ID,
+            VerifyScoreRequest(winner_uid=WINNER_UID),
+        )
+
+    def test_doubles_first_submission_emits_score_confirm_for_non_submitters(self):
+        """_first_submission_doubles emits SCORE_CONFIRM_REQUIRED for the 3 non-submitters."""
+        mock_notif_repo = Mock(spec=NotificationIntentRepo)
+        match = _make_doubles_match()
+        service, _ = _make_service_with_notif_repo(
+            match=match, notification_intent_repo=mock_notif_repo
+        )
+
+        # u1 is on team A and submits
+        service.verify_score(
+            "u1",
+            MATCH_ID,
+            VerifyScoreRequest(winner_team="A"),
+        )
+
+        assert mock_notif_repo.add_intent.call_count == 3
+        intents = [c[0][0] for c in mock_notif_repo.add_intent.call_args_list]
+        for intent in intents:
+            assert intent.type == PlayNotificationIntentTypeEnum.SCORE_CONFIRM_REQUIRED
+            assert intent.match_id == MATCH_ID
+        target_uids = {i.target_uid for i in intents}
+        # The submitter (u1) must NOT receive the intent
+        assert "u1" not in target_uids
+        assert target_uids == {"u2", "u3", "u4"}
