@@ -4,7 +4,7 @@ This summarizes the shared value objects, enums, and resource models introduced 
 
 ## Enums
 - Sports & levels: `SportEnum` (`tennis`, `padel`, `pickleball`), `LevelEnum` (`beginner`, `intermediate`, `advanced`, `pro`).
-- Matches & leagues: `MatchStatusEnum` (`scheduled`, `pending_confirmation`, `completed`, `disputed`, `cancelled`), `MatchResultEnum` (`W`, `L`, `D`), `LeagueStatusEnum` (`active`, `completed`, `upcoming`), `LeagueRoleEnum` (`player`, `admin`, `captain`), `LeagueMemberStatusEnum` (`active`, `left`, `banned`), `ParticipantRoleEnum` (`player`, `referee`).
+- Matches & leagues: `MatchStatusEnum` (`scheduled`, `pending_confirmation`, `completed`, `disputed`, `cancelled`), `MatchResultEnum` (`W`, `L`, `D`), `LeagueStatusEnum` (`active`, `completed`, `upcoming`, `open`), `LeagueRoleEnum` (`player`, `admin`, `captain`), `LeagueMemberStatusEnum` (`active`, `left`, `banned`), `ParticipantRoleEnum` (`player`, `referee`).
 - Journal: `JournalVisibilityEnum` (`private`, `friends`).
 - Home tab router: `PlayTabStateEnum` (`DISCOVERY`, `BROADCAST_ACTIVE`, `OUTGOING_OFFER_PENDING`, `INCOMING_OFFER_PENDING`, `MATCH_SCHEDULED`, `POST_MATCH_LOG_AVAILABLE`, `POST_MATCH_WAITING_OPPONENT`, `POST_MATCH_CONFIRM_REQUIRED`, `MATCH_DISPUTED`).
 - Broadcasts: `BroadcastStatusEnum` (`active`, `expired`, `cancelled`, `matched`), `AvailabilityEnum` (`today`, `tomorrow`, `weekend`), `CourtStatusEnum` (`have_court`, `need_court`).
@@ -24,8 +24,10 @@ This summarizes the shared value objects, enums, and resource models introduced 
 - `PrivateUserProfile`: extends public with email, phone, preferences, upcoming/completed matches, recent journal, cursors (only for self).
 
 ## Leagues
-- `League`: id, name, sport, season, status, owner_uid, optional meta.
+- `League`: id, name, sport, season, status, owner_uid, region, max_players, current_players, start_date, end_date, tier, optional meta.
 - `LeagueMember`: uid, role, status, joined_at, optional stats.
+- `LeagueBrowseCard`: Lightweight summary for browse lists — league_id, name, sport, status, region, tier, max_players, current_players, start_date. Used in `GET /leagues` response.
+- `StandingsEntry`: One row in a standings table — rank (int, dense), uid, display_name (falls back to uid in MVP), wins, losses, tier_ring (null in MVP). Used in `GET /leagues/{leagueId}/standings` response.
 
 ## Matches
 - `MatchParticipant`: uid, optional team number, role, optional result.
