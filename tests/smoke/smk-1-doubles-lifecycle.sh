@@ -88,7 +88,7 @@ seed_charlie() {
         "rankings": {"mapValue": {"fields": {
           "padel": {"mapValue": {"fields": {
             "pts": {"integerValue": "1000"},
-            "tier": {"stringValue": "AMATEUR"}
+            "tier": {"stringValue": "amateur"}
           }}}
         }}}
       }
