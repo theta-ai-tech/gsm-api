@@ -24,8 +24,11 @@ from app.models.enums import (
     MatchTypeEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
+    PlayNotificationIntentTypeEnum,
     PlayTabStateEnum,
 )
+from app.models.notification import PlayNotificationIntent
+from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.models import compute_participant_pair
 from app.models.match import Match
 from app.models.play import (
@@ -100,12 +103,22 @@ class PlayService:
         matches_repo: MatchesRepo,
         offers_repo: OffersRepo,
         firestore_client: firestore.Client,
+        notification_intent_repo: NotificationIntentRepo | None = None,
     ):
         self.users_repo = users_repo
         self.broadcasts_repo = broadcasts_repo
         self.matches_repo = matches_repo
         self.offers_repo = offers_repo
         self.client = firestore_client
+        self.notification_intent_repo = notification_intent_repo
+
+    def _emit_notification_intent(self, intent: PlayNotificationIntent) -> None:
+        if self.notification_intent_repo is None:
+            return
+        try:
+            self.notification_intent_repo.add_intent(intent)
+        except Exception:
+            logger.exception("Failed to write notification intent (non-fatal)")
 
     def _build_opponent_summary(self, uid: str, match: Match) -> OpponentSummary:
         """Build an :class:`OpponentSummary` for a participant in ``match``.
@@ -842,6 +855,19 @@ class PlayService:
 
         offer_id = send_offer_txn(transaction)
 
+        self._emit_notification_intent(
+            PlayNotificationIntent(
+                type=PlayNotificationIntentTypeEnum.INCOMING_OFFER,
+                target_uid=request.to_uid,
+                title="New match offer",
+                body=f"{sender_name} wants to play with you",
+                offer_id=offer_id,
+                broadcast_id=request.source_broadcast_id,
+                dedupe_key=f"incoming_offer:{offer_id}",
+                created_at=now,
+            )
+        )
+
         return SendOfferResponse(
             offer_id=offer_id,
             to_uid=request.to_uid,
@@ -1077,6 +1103,19 @@ class PlayService:
                 )
 
         accept_offer_txn(transaction)
+
+        for p_uid in participant_uids_to_update:
+            self._emit_notification_intent(
+                PlayNotificationIntent(
+                    type=PlayNotificationIntentTypeEnum.MATCH_SCHEDULED,
+                    target_uid=p_uid,
+                    title="Match confirmed!",
+                    body=f"Your match is on {offer.proposed_time.strftime('%b %d at %H:%M')} UTC",
+                    match_id=match_id,
+                    dedupe_key=f"match_scheduled:{match_id}:{p_uid}",
+                    created_at=now,
+                )
+            )
 
         return OfferActionResponse(
             offer_id=offer_id,

@@ -8,12 +8,14 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from app.dependencies.repos import (
     get_firestore_client,
     get_matches_repo,
+    get_notification_intent_repo,
     get_point_history_repo,
     get_region_config_repo,
     get_ticker_repo,
     get_tier_config_repo,
     get_users_repo,
 )
+from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.deps import get_current_user
 from app.models.match import VerifyScoreRequest, VerifyScoreResponse
 from app.repos.matches_repo import MatchesRepo
@@ -35,6 +37,7 @@ def get_match_confirmation_service(
     tier_config_repo: TierConfigRepo = Depends(get_tier_config_repo),
     ticker_repo: TickerRepo = Depends(get_ticker_repo),
     region_config_repo: RegionConfigRepo = Depends(get_region_config_repo),
+    notification_intent_repo: NotificationIntentRepo = Depends(get_notification_intent_repo),
     firestore_client: firestore.Client = Depends(get_firestore_client),
 ) -> MatchConfirmationService:
     return MatchConfirmationService(
@@ -45,6 +48,7 @@ def get_match_confirmation_service(
         firestore_client,
         ticker_repo=ticker_repo,
         region_config_repo=region_config_repo,
+        notification_intent_repo=notification_intent_repo,
     )
 
 
