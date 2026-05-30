@@ -16,6 +16,7 @@ from typing import Any
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.constants import DISCOVERY_FEED_DEFAULT_LIMIT
+from app.logging import log_analytics_event
 from app.models.enums import (
     BroadcastStatusEnum,
     BroadcastTypeEnum,
@@ -601,6 +602,18 @@ class PlayService:
 
         broadcast_id = create_broadcast_txn(transaction)
 
+        log_analytics_event(
+            logger,
+            event="broadcast_created",
+            uid=uid,
+            created_at=now.isoformat() + "Z",
+            sport=request.sport.value,
+            match_type=request.match_type.value,
+            venue_present=(request.court_status == CourtStatusEnum.HAVE_COURT),
+            broadcast_id=broadcast_id,
+            region=None,
+        )
+
         return CreateBroadcastResponse(
             broadcast_id=broadcast_id,
             sport=request.sport,
@@ -842,6 +855,31 @@ class PlayService:
 
         offer_id = send_offer_txn(transaction)
 
+        log_analytics_event(
+            logger,
+            event="offer_sent",
+            uid=from_uid,
+            created_at=now.isoformat() + "Z",
+            sport=request.sport.value,
+            match_type=request.match_type.value,
+            venue_present=(request.court_location is not None),
+            broadcast_id=request.source_broadcast_id,
+            offer_id=offer_id,
+            region=None,
+        )
+        log_analytics_event(
+            logger,
+            event="offer_received",
+            uid=request.to_uid,
+            created_at=now.isoformat() + "Z",
+            sport=request.sport.value,
+            match_type=request.match_type.value,
+            venue_present=(request.court_location is not None),
+            broadcast_id=request.source_broadcast_id,
+            offer_id=offer_id,
+            region=None,
+        )
+
         return SendOfferResponse(
             offer_id=offer_id,
             to_uid=request.to_uid,
@@ -1077,6 +1115,19 @@ class PlayService:
                 )
 
         accept_offer_txn(transaction)
+
+        log_analytics_event(
+            logger,
+            event="offer_accepted",
+            uid=uid,
+            created_at=now.isoformat() + "Z",
+            sport=offer.sport.value,
+            match_type=offer.match_type.value,
+            venue_present=(offer.court_location is not None),
+            offer_id=offer_id,
+            match_id=match_id,
+            region=None,
+        )
 
         return OfferActionResponse(
             offer_id=offer_id,

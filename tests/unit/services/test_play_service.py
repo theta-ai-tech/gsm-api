@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 
@@ -2445,3 +2445,278 @@ class TestCancelOffer:
 
         with pytest.raises(ValueError, match="not the sender"):
             play_service.cancel_offer("charlie", "offer123")
+
+
+class TestTelemetryEvents:
+    """OBS-2: verify telemetry events emitted from broadcast/offer lifecycle methods."""
+
+    def _setup_mock_transactional(self, play_service_module):
+        """Patch firestore.transactional to bypass the decorator."""
+        original = play_service_module.firestore.transactional
+
+        def mock_transactional(func):
+            return func
+
+        play_service_module.firestore.transactional = mock_transactional
+        return original
+
+    def test_broadcast_created_emits_telemetry(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """broadcast_created event emitted with correct fields (HAVE_COURT → venue_present=True)."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.HAVE_COURT,
+                court_location="Central Park",
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.create_broadcast("alice", request)
+
+            mock_emit.assert_called_once_with(
+                ANY,
+                event="broadcast_created",
+                uid="alice",
+                created_at=ANY,
+                sport="tennis",
+                match_type="singles",
+                venue_present=True,
+                broadcast_id="broadcast123",
+                region=None,
+            )
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_broadcast_created_venue_present_false_when_need_court(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """NEED_COURT → venue_present=False."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                court_location=None,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.create_broadcast("alice", request)
+
+            _args, kwargs = mock_emit.call_args
+            assert kwargs["venue_present"] is False
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_broadcast_created_doubles(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """Doubles broadcast → match_type='doubles' in event."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.PADEL,
+                match_type=MatchTypeEnum.DOUBLES,
+                broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+                partner_uid="bob",
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.NEED_COURT,
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.create_broadcast("alice", request)
+
+            _args, kwargs = mock_emit.call_args
+            assert kwargs["match_type"] == "doubles"
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_send_offer_emits_offer_sent_and_received(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """send_offer emits offer_sent (from sender) then offer_received (for recipient)."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {"name": "Bob", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+        ]
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "offer123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.TENNIS,
+                proposed_time=now + timedelta(hours=2),
+                court_location=None,
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.send_offer("alice", request)
+
+            assert mock_emit.call_count == 2
+            first_call = mock_emit.call_args_list[0]
+            second_call = mock_emit.call_args_list[1]
+            assert first_call[1]["event"] == "offer_sent"
+            assert first_call[1]["uid"] == "alice"
+            assert first_call[1]["offer_id"] == "offer123"
+            assert second_call[1]["event"] == "offer_received"
+            assert second_call[1]["uid"] == "bob"
+            assert second_call[1]["offer_id"] == "offer123"
+            assert first_call[1]["sport"] == second_call[1]["sport"] == "tennis"
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_send_offer_venue_present_when_court_location_set(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """court_location set → venue_present=True on both offer_sent and offer_received."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.side_effect = [
+            {"name": "Alice", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+            {"name": "Bob", "rankings": {}, "playTab": {"state": "DISCOVERY"}},
+        ]
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "offer123"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = SendOfferRequest(
+                to_uid="bob",
+                sport=SportEnum.TENNIS,
+                proposed_time=now + timedelta(hours=2),
+                court_location="Central Park",
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.send_offer("alice", request)
+
+            for c in mock_emit.call_args_list:
+                assert c[1]["venue_present"] is True
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_accept_offer_emits_offer_accepted(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """accept_offer emits offer_accepted with correct uid, offer_id, match_id."""
+        now = datetime.now(timezone.utc)
+        mock_offer = Offer(
+            offer_id="offer123",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            source_broadcast_id=None,
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.accept_offer("bob", "offer123")
+
+            mock_emit.assert_called_once_with(
+                ANY,
+                event="offer_accepted",
+                uid="bob",
+                created_at=ANY,
+                sport="tennis",
+                match_type="singles",
+                venue_present=False,
+                offer_id="offer123",
+                match_id="match_offer123",
+                region=None,
+            )
+        finally:
+            play_service_module.firestore.transactional = original
