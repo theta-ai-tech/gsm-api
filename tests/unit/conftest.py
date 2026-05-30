@@ -52,6 +52,13 @@ class _StubUsersRepo:
 app.dependency_overrides[get_users_repo] = lambda: _StubUsersRepo()
 
 
+@pytest.fixture(autouse=True)
+def _restore_dependency_overrides():
+    previous = dict(app.dependency_overrides)
+    yield
+    app.dependency_overrides = previous
+
+
 @pytest.fixture(scope="session")
 def client():
     return TestClient(app)
