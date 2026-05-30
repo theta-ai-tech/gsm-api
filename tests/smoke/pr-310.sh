@@ -43,29 +43,22 @@ echo ""
 echo "Running LG-15 integration tests (PR #310) ..."
 echo ""
 
-TEST_OUTPUT=$(
-  PYTHONPATH="$REPO_ROOT/api" \
-  FIRESTORE_EMULATOR_HOST="$FIRESTORE_HOST" \
-  FIREBASE_AUTH_EMULATOR_HOST="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}" \
-  GOOGLE_CLOUD_PROJECT="$PROJECT" \
-  FIREBASE_PROJECT_ID="$PROJECT" \
-  CORS_ORIGIN="http://localhost:3000" \
-  "$VENV_DIR/bin/pytest" \
-    "$REPO_ROOT/tests/integration/test_leagues_integration.py" \
-    -v --tb=short -p no:warnings 2>&1
-)
+PYTHONPATH="$REPO_ROOT/api" \
+FIRESTORE_EMULATOR_HOST="$FIRESTORE_HOST" \
+FIREBASE_AUTH_EMULATOR_HOST="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}" \
+GOOGLE_CLOUD_PROJECT="$PROJECT" \
+FIREBASE_PROJECT_ID="$PROJECT" \
+CORS_ORIGIN="http://localhost:3000" \
+"$VENV_DIR/bin/pytest" \
+  "$REPO_ROOT/tests/integration/test_leagues_integration.py" \
+  -v --tb=short -p no:warnings 2>&1 | tee /tmp/pr-310-pytest.log
+PYTEST_EXIT=${PIPESTATUS[0]}
 
-echo "$TEST_OUTPUT"
-
-# ── Parse pytest results ──────────────────────────────────────────────────
-PASSED=$(echo "$TEST_OUTPUT" | grep -E "^\.claude.*PASSED" | wc -l | tr -d ' ')
-FAILED=$(echo "$TEST_OUTPUT" | grep -E "^\.claude.*FAILED" | wc -l | tr -d ' ')
-ERROR=$(echo "$TEST_OUTPUT" | grep -E "^\.claude.*ERROR" | wc -l | tr -d ' ')
-
-PASS=$PASSED
-FAIL=$((FAILED + ERROR))
+# ── Parse pytest results (for reporting only) ─────────────────────────────
+PASS=$(grep -c " PASSED" /tmp/pr-310-pytest.log || true)
+FAIL=$(grep -c " FAILED\| ERROR" /tmp/pr-310-pytest.log || true)
 
 # ── Summary ──────────────────────────────────────────────────────────────
 echo ""
 echo "Smoke tests PR #310: $PASS passed, $FAIL failed"
-[ "$FAIL" -eq 0 ] && exit 0 || exit 1
+exit "$PYTEST_EXIT"
