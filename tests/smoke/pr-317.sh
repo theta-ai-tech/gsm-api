@@ -15,6 +15,29 @@ API="${API_BASE_URL:-http://127.0.0.1:8317}"
 FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 LOG_FILE="${LOG_FILE:-/tmp/gsm-api-pr-317.log}"
 
+# ── Log config for INFO-level app events ─────────────────────────────────────
+# The default uvicorn log config keeps the root logger at WARNING, so
+# log_analytics_event() INFO messages wouldn't appear without this override.
+cat > /tmp/uvicorn_log_config_317.json << 'LOGCFG'
+{
+    "version": 1, "disable_existing_loggers": false,
+    "formatters": {
+        "default": {"()": "uvicorn.logging.DefaultFormatter", "fmt": "%(levelprefix)s %(message)s", "use_colors": null},
+        "access": {"()": "uvicorn.logging.AccessFormatter", "fmt": "%(levelprefix)s %(client_addr)s - \"%(request_line)s\" %(status_code)s"}
+    },
+    "handlers": {
+        "default": {"formatter": "default", "class": "logging.StreamHandler", "stream": "ext://sys.stderr"},
+        "access": {"formatter": "access", "class": "logging.StreamHandler", "stream": "ext://sys.stdout"}
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": false},
+        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": false},
+        "app": {"handlers": ["default"], "level": "INFO", "propagate": false}
+    }
+}
+LOGCFG
+
 # ── Venv resolution ──────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   VENV_DIR="$REPO_ROOT/.venv"
@@ -113,7 +136,7 @@ EXPIRES=$(date -u -v+2H '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -d '+2 hour
 BROADCAST_RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/me/broadcast" \
   -H "Authorization: Bearer $TOKEN_ALICE" \
   -H "Content-Type: application/json" \
-  -d "{\"sport\":\"tennis\",\"availability\":\"today\",\"courtStatus\":\"have_court\",\"courtLocation\":\"Test Court Athens\",\"expiresAt\":\"$EXPIRES\",\"location\":{\"area\":10001}}")
+  -d "{\"sport\":\"tennis\",\"availability\":\"today\",\"court_status\":\"have_court\",\"court_location\":\"Test Court Athens\",\"expires_at\":\"$EXPIRES\",\"location\":{\"area\":10001}}")
 
 HTTP_CODE=$(echo "$BROADCAST_RESP" | tail -1)
 BROADCAST_BODY=$(echo "$BROADCAST_RESP" | head -1)
@@ -137,12 +160,12 @@ FUTURE_TIME=$(date -u -v+3H '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -d '+3 
 OFFER_RESP=$(curl -s -w "\n%{http_code}" -X POST "$API/me/offers" \
   -H "Authorization: Bearer $TOKEN_BOB" \
   -H "Content-Type: application/json" \
-  -d "{\"toUid\":\"user_alice\",\"sport\":\"tennis\",\"proposedTime\":\"$FUTURE_TIME\",\"courtLocation\":\"Test Court Athens\",\"sourceBroadcastId\":\"$BROADCAST_ID\"}")
+  -d "{\"to_uid\":\"user_alice\",\"sport\":\"tennis\",\"proposed_time\":\"$FUTURE_TIME\",\"court_location\":\"Test Court Athens\",\"source_broadcast_id\":\"$BROADCAST_ID\"}")
 
 HTTP_CODE=$(echo "$OFFER_RESP" | tail -1)
 OFFER_BODY=$(echo "$OFFER_RESP" | head -1)
 
-assert_eq "offer sent — HTTP 200" "$HTTP_CODE" "200"
+assert_eq "offer sent — HTTP 201" "$HTTP_CODE" "201"
 OFFER_ID=$(echo "$OFFER_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('offer_id',''))" 2>/dev/null || echo "")
 assert_contains "offer response has offer_id" "$OFFER_BODY" "offer_id"
 
