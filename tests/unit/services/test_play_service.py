@@ -2720,3 +2720,44 @@ class TestTelemetryEvents:
             )
         finally:
             play_service_module.firestore.transactional = original
+
+    def test_telemetry_created_at_is_utc_z_format(
+        self, play_service, mock_users_repo, mock_firestore_client
+    ):
+        """created_at must be RFC3339 UTC with 'Z' suffix only, not '+00:00Z'."""
+        now = datetime.now(timezone.utc)
+        mock_users_repo.get_user_doc.return_value = {
+            "name": "Alice",
+            "rankings": {},
+            "playTab": {"state": "DISCOVERY"},
+        }
+        mock_doc_ref = Mock()
+        mock_doc_ref.id = "broadcast_fmt"
+        mock_firestore_client.collection.return_value.document.return_value = (
+            mock_doc_ref
+        )
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            request = CreateBroadcastRequest(
+                sport=SportEnum.TENNIS,
+                availability=AvailabilityEnum.TODAY,
+                court_status=CourtStatusEnum.HAVE_COURT,
+                court_location="Court A",
+                expires_at=now + timedelta(hours=2),
+                location=BroadcastLocation(area=10001),
+            )
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.create_broadcast("alice", request)
+
+            _, kwargs = mock_emit.call_args
+            created_at = kwargs["created_at"]
+            assert isinstance(created_at, str)
+            assert created_at.endswith("Z"), f"expected 'Z' suffix, got: {created_at!r}"
+            assert "+00:00" not in created_at, (
+                f"must not contain '+00:00', got: {created_at!r}"
+            )
+        finally:
+            play_service_module.firestore.transactional = original
