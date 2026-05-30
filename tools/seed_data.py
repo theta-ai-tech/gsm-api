@@ -19,6 +19,7 @@ from app.models import (
     MatchResultEnum,
     MatchScore,
     MatchStatusEnum,
+    MatchTypeEnum,
     ParticipantRoleEnum,
     PerSportLevels,
     PerSportRankings,
@@ -66,12 +67,12 @@ USER_IGNATIOS = PrivateUserProfile(
     rankings=PerSportRankings(
         padel=SportRanking(
             sport=SportEnum.PADEL,
-            pts=980,
+            pts=1020,
             global_ranking=120,
             tier=TierEnum.AMATEUR,
             registration_tier=TierEnum.AMATEUR,
             last_updated=utc(2026, 2, 20, 14, 0),
-            personal_best=980,
+            personal_best=1020,
             current_streak=2,
             best_streak=2,
         ),
@@ -234,7 +235,50 @@ USER_BOB = PrivateUserProfile(
     },
 )
 
-SAMPLE_USERS = [USER_IGNATIOS, USER_ALICE, USER_BOB]
+USER_DIANA = PrivateUserProfile(
+    uid="user_diana",
+    name="Diana",
+    email="diana@example.com",
+    phone=None,
+    profile_url=None,
+    rankings=PerSportRankings(
+        padel=SportRanking(
+            sport=SportEnum.PADEL,
+            pts=710,
+            global_ranking=None,
+            tier=TierEnum.AMATEUR,
+            registration_tier=TierEnum.AMATEUR,
+            last_updated=utc(2020, 6, 1, 18, 0),
+            personal_best=710,
+            current_streak=1,
+            best_streak=1,
+        ),
+    ),
+    preferences=UserPreferences(
+        area=101,
+        levels=PerSportLevels(padel=LevelEnum.INTERMEDIATE),
+        sports=[SportEnum.PADEL],
+    ),
+    leagues_active=[],
+    leagues_completed=[],
+    upcoming_matches=[],
+    completed_matches=[],
+    journal_recent=[],
+    cursors=None,
+    skill_dna={
+        "padel": SportSkillDna(
+            serve=SkillAxisData(positive=3, negative=2, score=60),
+            power=SkillAxisData(positive=4, negative=1, score=80),
+            net_play=SkillAxisData(positive=3, negative=2, score=60),
+            stamina=SkillAxisData(positive=4, negative=1, score=80),
+            mental=SkillAxisData(positive=3, negative=1, score=75),
+            total_reflections=4,
+            last_updated=utc(2020, 6, 1, 18, 0),
+        ),
+    },
+)
+
+SAMPLE_USERS = [USER_IGNATIOS, USER_ALICE, USER_BOB, USER_DIANA]
 
 # --- Leagues ---
 # Sample leagues referencing the users above.
@@ -247,7 +291,7 @@ LEAGUE_PADEL_LOCAL = League(
     owner_uid=USER_IGNATIOS.uid,
     region="athens",
     max_players=12,
-    current_players=3,
+    current_players=4,
     start_date=utc(2025, 9, 1),
     end_date=utc(2025, 11, 30),
     tier="intermediate",
@@ -308,6 +352,12 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 8, 22),
+        ),
+        LeagueMember(
+            uid=USER_DIANA.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 1, 10),
         ),
     ],
     "tennis-local-2025": [
@@ -467,12 +517,65 @@ MATCH_COMPLETED_2 = Match(
     participant_pair=compute_participant_pair([USER_ALICE.uid, USER_IGNATIOS.uid]),
 )
 
+MATCH_UPCOMING_DOUBLES = Match(
+    match_id="match-upcoming-doubles",
+    sport=SportEnum.PADEL,
+    status=MatchStatusEnum.SCHEDULED,
+    match_type=MatchTypeEnum.DOUBLES,
+    scheduled_at=utc(2030, 3, 1, 10, 0),
+    league_id=LEAGUE_PADEL_LOCAL.league_id,
+    court_id="court-3",
+    score=None,
+    result_by_user=None,
+    participants=[
+        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team="A"),
+        MatchParticipant(uid=USER_DIANA.uid, role=ParticipantRoleEnum.PLAYER, team="A"),
+        MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team="B"),
+        MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team="B"),
+    ],
+    participant_uids=[USER_IGNATIOS.uid, USER_DIANA.uid, USER_ALICE.uid, USER_BOB.uid],
+    participant_pair=None,
+)
+
+MATCH_COMPLETED_DOUBLES = Match(
+    match_id="match-completed-doubles",
+    sport=SportEnum.PADEL,
+    status=MatchStatusEnum.COMPLETED,
+    match_type=MatchTypeEnum.DOUBLES,
+    scheduled_at=utc(2020, 6, 1, 16, 0),
+    finished_at=utc(2020, 6, 1, 18, 0),
+    league_id=LEAGUE_PADEL_LOCAL.league_id,
+    score=MatchScore(
+        sets=[
+            SetScore(p1_games=6, p2_games=4),
+            SetScore(p1_games=7, p2_games=5),
+        ],
+        winner_team="A",
+    ),
+    result_by_user={
+        USER_IGNATIOS.uid: MatchResultEnum.WIN,
+        USER_DIANA.uid: MatchResultEnum.WIN,
+        USER_ALICE.uid: MatchResultEnum.LOSS,
+        USER_BOB.uid: MatchResultEnum.LOSS,
+    },
+    participants=[
+        MatchParticipant(uid=USER_IGNATIOS.uid, role=ParticipantRoleEnum.PLAYER, team="A"),
+        MatchParticipant(uid=USER_DIANA.uid, role=ParticipantRoleEnum.PLAYER, team="A"),
+        MatchParticipant(uid=USER_ALICE.uid, role=ParticipantRoleEnum.PLAYER, team="B"),
+        MatchParticipant(uid=USER_BOB.uid, role=ParticipantRoleEnum.PLAYER, team="B"),
+    ],
+    participant_uids=[USER_IGNATIOS.uid, USER_DIANA.uid, USER_ALICE.uid, USER_BOB.uid],
+    participant_pair=None,
+)
+
 SAMPLE_MATCHES = [
     MATCH_UPCOMING_1,
     MATCH_UPCOMING_2,
     MATCH_PENDING,
     MATCH_COMPLETED_1,
     MATCH_COMPLETED_2,
+    MATCH_UPCOMING_DOUBLES,
+    MATCH_COMPLETED_DOUBLES,
 ]
 
 # --- Journal entries ---
@@ -575,6 +678,20 @@ POINT_HISTORY_IGNATIOS: list[PointHistoryEntry] = [
         opponent_pts_before=850,
         league_id=LEAGUE_PADEL_LOCAL.league_id,
         created_at=utc(2026, 2, 20, 14, 0),
+        tier_before=TierEnum.AMATEUR,
+        tier_after=TierEnum.AMATEUR,
+    ),
+    PointHistoryEntry(
+        entry_id="ph_ignatios_padel_dbl_1",
+        sport=SportEnum.PADEL,
+        pts=1020,
+        delta=40,
+        reason=PointHistoryReasonEnum.MATCH_DOUBLES_WIN,
+        match_id="match-completed-doubles",
+        opponent_uid=USER_ALICE.uid,
+        opponent_pts_before=820,
+        league_id=LEAGUE_PADEL_LOCAL.league_id,
+        created_at=utc(2020, 6, 1, 18, 0),
         tier_before=TierEnum.AMATEUR,
         tier_after=TierEnum.AMATEUR,
     ),
@@ -684,10 +801,28 @@ POINT_HISTORY_BOB: list[PointHistoryEntry] = [
     ),
 ]
 
+POINT_HISTORY_DIANA: list[PointHistoryEntry] = [
+    PointHistoryEntry(
+        entry_id="ph_diana_padel_dbl_1",
+        sport=SportEnum.PADEL,
+        pts=710,
+        delta=35,
+        reason=PointHistoryReasonEnum.MATCH_DOUBLES_WIN,
+        match_id="match-completed-doubles",
+        opponent_uid=USER_BOB.uid,
+        opponent_pts_before=540,
+        league_id=LEAGUE_PADEL_LOCAL.league_id,
+        created_at=utc(2020, 6, 1, 18, 0),
+        tier_before=TierEnum.AMATEUR,
+        tier_after=TierEnum.AMATEUR,
+    ),
+]
+
 SAMPLE_POINT_HISTORY: list[tuple[str, list[PointHistoryEntry]]] = [
     (USER_IGNATIOS.uid, POINT_HISTORY_IGNATIOS),
     (USER_ALICE.uid, POINT_HISTORY_ALICE),
     (USER_BOB.uid, POINT_HISTORY_BOB),
+    (USER_DIANA.uid, POINT_HISTORY_DIANA),
 ]
 
 # --- Skill taxonomy ---
@@ -909,7 +1044,21 @@ SCOUTING_BOB = ScoutingProfile(
     ),
 )
 
-SAMPLE_SCOUTING_PROFILES = [SCOUTING_IGNATIOS, SCOUTING_ALICE, SCOUTING_BOB]
+SCOUTING_DIANA = ScoutingProfile(
+    uid="user_diana",
+    padel=ScoutingSportData(
+        weak={},
+        strong={
+            "power": ScoutingTagCount(count=2, last_reported=utc(2020, 6, 1)),
+            "stamina": ScoutingTagCount(count=2, last_reported=utc(2020, 6, 1)),
+        },
+        total_reports=2,
+        unique_reporters=2,
+        last_updated=utc(2020, 6, 1),
+    ),
+)
+
+SAMPLE_SCOUTING_PROFILES = [SCOUTING_IGNATIOS, SCOUTING_ALICE, SCOUTING_BOB, SCOUTING_DIANA]
 
 # --- Ticker events (ticker/{auto-id}) ---
 # Sample ticker events for all Tab 4 (Local Pulse) event types.
@@ -1039,3 +1188,32 @@ SAMPLE_TICKER_EVENTS = [
         direction="down",
     ),
 ]
+
+# --- Demo scenario index ---
+# Run `make seed-emu` to populate. Reference for what each seeded entity supports.
+#
+# Singles happy path:
+#   match-completed-1: user_ignatios (WIN, padel, +35 pts) vs user_bob (LOSS)
+#   match-completed-2: user_alice (WIN, padel) vs user_ignatios (LOSS)
+#
+# Doubles happy path:
+#   match-completed-doubles: team A (user_ignatios + user_diana) WIN vs team B (user_alice + user_bob) LOSS
+#   match-upcoming-doubles: same teams, SCHEDULED 2030-03-01, padel-local-2025
+#
+# Pending confirmation (score logging demo):
+#   match_pending: user_alice submitted WIN (tennis), user_ignatios has not confirmed
+#
+# Venue browse:
+#   GET /venues?sport=padel  → 16 Athens venues
+#   GET /venues?sport=tennis → Athens tennis clubs
+#
+# Venue suggestion review:
+#   venueSuggestions collection has 2 pending entries (seeded in seed_firestore.py)
+#
+# League browse / join:
+#   GET /leagues?sport=padel&status=active → padel-local-2025 (athens, 4/12 members)
+#   POST /leagues/padel-local-2025/join    → any user not yet a member can join
+#
+# Rankings / progression:
+#   GET /me/lab/dashboard/padel as user_ignatios → 6 point history entries (incl. doubles), full skill DNA
+#   GET /me/lab/dashboard/tennis as user_alice   → 3 point history entries, skill DNA

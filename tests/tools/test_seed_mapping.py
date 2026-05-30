@@ -8,6 +8,7 @@ from app.models import (
     MatchResultEnum,
     MatchScore,
     MatchStatusEnum,
+    MatchTypeEnum,
     ParticipantRoleEnum,
     PerSportLevels,
     PerSportRankings,
@@ -80,6 +81,35 @@ def test_match_mapping_includes_score_and_participants():
     assert doc["participants"][0]["uid"] == "u1"
     assert doc["score"]["sets"][0]["p1Games"] == 6
     assert doc["participantUids"] == ["u1", "u2"]
+
+
+def test_doubles_match_mapping():
+    match = Match(
+        match_id="dbl1",
+        sport=SportEnum.PADEL,
+        status=MatchStatusEnum.COMPLETED,
+        match_type=MatchTypeEnum.DOUBLES,
+        participants=[
+            MatchParticipant(uid="u1", role=ParticipantRoleEnum.PLAYER, team="A"),
+            MatchParticipant(uid="u2", role=ParticipantRoleEnum.PLAYER, team="A"),
+            MatchParticipant(uid="u3", role=ParticipantRoleEnum.PLAYER, team="B"),
+            MatchParticipant(uid="u4", role=ParticipantRoleEnum.PLAYER, team="B"),
+        ],
+        participant_uids=["u1", "u2", "u3", "u4"],
+        participant_pair=None,
+        result_by_user={
+            "u1": MatchResultEnum.WIN,
+            "u2": MatchResultEnum.WIN,
+            "u3": MatchResultEnum.LOSS,
+            "u4": MatchResultEnum.LOSS,
+        },
+        score=MatchScore(sets=[SetScore(p1_games=6, p2_games=4)], winner_team="A"),
+    )
+    doc = match_to_firestore_doc(match)
+    assert doc["matchType"] == "doubles"
+    assert doc["participants"][0]["team"] == "A"
+    assert doc["participants"][2]["team"] == "B"
+    assert doc["participantPair"] is None
 
 
 def test_journal_mapping_basic():
