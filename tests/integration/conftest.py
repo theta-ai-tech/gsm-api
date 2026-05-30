@@ -43,6 +43,15 @@ def seeded_firestore(firestore_client: firestore.Client) -> firestore.Client:
 
 
 @pytest.fixture(autouse=True)
+def _restore_dependency_overrides():
+    from app.main import app
+
+    previous = dict(app.dependency_overrides)
+    yield
+    app.dependency_overrides = previous
+
+
+@pytest.fixture(autouse=True)
 def _cleanup(db, request):
     if request.node.get_closest_marker("seeded"):
         yield
