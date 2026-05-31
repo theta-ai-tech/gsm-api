@@ -1153,6 +1153,19 @@ class PlayService:
             match_id=match_id,
             region=None,
         )
+        log_analytics_event(
+            logger,
+            event="match_scheduled",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=offer.sport.value,
+            match_type=offer.match_type.value,
+            venue_present=(offer.court_location is not None or venue_ref is not None),
+            broadcast_id=offer.source_broadcast_id,
+            offer_id=offer_id,
+            match_id=match_id,
+            region=None,
+        )
         for p_uid in participant_uids_to_update:
             self._emit_notification_intent(
                 PlayNotificationIntent(

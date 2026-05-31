@@ -20,6 +20,11 @@ from app.security import CurrentUser, require_self
 from app.settings import get_settings
 from app.dependencies.repos import get_users_repo
 
+# Ensure app-level loggers (including log_analytics_event) write to stdout.
+# Uvicorn configures only its own loggers; without this the root logger has
+# no handler and logger.info() calls are silently dropped in all environments.
+logging.basicConfig(level=logging.INFO, force=True)
+
 app = FastAPI(title="GSM API", version="0.1.0")
 
 # Include routers
