@@ -40,9 +40,9 @@ echo ""
 
 echo "--- Diana user ---"
 DIANA=$(curl -sf "${BASE_URL}/users/user_diana")
-check "Diana displayName" "$(echo "$DIANA" | jq -r '.fields.displayName.stringValue')" "Diana"
-check "Diana area" "$(echo "$DIANA" | jq -r '.fields.area.integerValue')" "101"
-check "Diana sport" "$(echo "$DIANA" | jq -r '.fields.preferredSport.stringValue')" "padel"
+check "Diana name" "$(echo "$DIANA" | jq -r '.fields.name.stringValue')" "Diana"
+check "Diana area" "$(echo "$DIANA" | jq -r '.fields.preferences.mapValue.fields.area.integerValue')" "101"
+check "Diana sport" "$(echo "$DIANA" | jq -r '.fields.preferences.mapValue.fields.sports.arrayValue.values[0].stringValue')" "padel"
 check "Diana ranking pts" "$(echo "$DIANA" | jq -r '.fields.rankings.mapValue.fields.padel.mapValue.fields.pts.integerValue')" "710"
 
 echo ""
