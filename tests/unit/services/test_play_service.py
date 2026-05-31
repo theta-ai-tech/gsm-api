@@ -2706,7 +2706,8 @@ class TestTelemetryEvents:
             with patch("app.services.play_service.log_analytics_event") as mock_emit:
                 play_service.accept_offer("bob", "offer123")
 
-            mock_emit.assert_called_once_with(
+            assert mock_emit.call_count == 2
+            mock_emit.assert_any_call(
                 ANY,
                 event="offer_accepted",
                 uid="bob",
@@ -2714,6 +2715,75 @@ class TestTelemetryEvents:
                 sport="tennis",
                 match_type="singles",
                 venue_present=False,
+                offer_id="offer123",
+                match_id="match_offer123",
+                region=None,
+            )
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_accept_offer_emits_match_scheduled(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """accept_offer emits match_scheduled with broadcast_id, offer_id, match_id."""
+        now = datetime.now(timezone.utc)
+        mock_offer = Offer(
+            offer_id="offer123",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            source_broadcast_id="broadcast_abc",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "pendingIncomingOfferIds": ["offer123"],
+                },
+            },
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer123",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.accept_offer("bob", "offer123")
+
+            mock_emit.assert_any_call(
+                ANY,
+                event="match_scheduled",
+                uid="bob",
+                created_at=ANY,
+                sport="tennis",
+                match_type="singles",
+                venue_present=False,
+                broadcast_id="broadcast_abc",
                 offer_id="offer123",
                 match_id="match_offer123",
                 region=None,

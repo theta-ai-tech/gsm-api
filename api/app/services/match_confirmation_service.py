@@ -28,6 +28,7 @@ from typing import Any, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
+from app.logging import log_analytics_event
 from app.models.common import MatchScore
 from app.models.enums import (
     MatchResultEnum,
@@ -295,6 +296,17 @@ class MatchConfirmationService:
 
         _txn(transaction)
 
+        log_analytics_event(
+            logger,
+            event="score_submitted",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
+
         for p_uid in team_by_uid:
             if p_uid == uid:
                 continue
@@ -375,7 +387,6 @@ class MatchConfirmationService:
         team_by_uid: dict[str, str | None],
         now: datetime,
     ) -> VerifyScoreResponse:
-        del match  # unused; kept for parity with completion path
         match_ref = self.client.collection("matches").document(match_id)
         transaction = self.client.transaction()
 
@@ -399,6 +410,17 @@ class MatchConfirmationService:
                 )
 
         _txn(transaction)
+
+        log_analytics_event(
+            logger,
+            event="match_disputed",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
 
         return VerifyScoreResponse(
             match_id=match_id,
@@ -679,6 +701,17 @@ class MatchConfirmationService:
 
         _scoring_txn(self.client.transaction())
 
+        log_analytics_event(
+            logger,
+            event="score_confirmed",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
+
         winners = result_holder["winners"]
         losers = result_holder["losers"]
         winner_results = result_holder["winner_results"]
@@ -815,6 +848,18 @@ class MatchConfirmationService:
             txn.update(match_ref, updates)
 
         _txn(transaction)
+
+        log_analytics_event(
+            logger,
+            event="score_submitted",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
+
         # NOTE: singles play-tab state transitions on first submission are
         # intentionally left unchanged to preserve the legacy contract — the
         # POST_MATCH_* states are wired up only for doubles in DBL-5.
@@ -862,7 +907,7 @@ class MatchConfirmationService:
         stored_winner_uid = match.score.winner_uid if match.score else None
 
         if stored_winner_uid is not None and stored_winner_uid != winner_uid:
-            return self._dispute(uid, match_id, winner_uid, loser_uid, request)
+            return self._dispute(uid, match_id, match, winner_uid, loser_uid, request, now)
 
         return self._complete_with_scoring(
             uid, match_id, match, request, winner_uid, loser_uid, now
@@ -872,9 +917,11 @@ class MatchConfirmationService:
         self,
         uid: str,
         match_id: str,
+        match: Match,
         winner_uid: str,
         loser_uid: str,
         request: VerifyScoreRequest,
+        now: datetime,
     ) -> VerifyScoreResponse:
         caller_result = MatchResultEnum.WIN if uid == winner_uid else MatchResultEnum.LOSS
         match_ref = self.client.collection("matches").document(match_id)
@@ -892,6 +939,17 @@ class MatchConfirmationService:
             )
 
         _txn(transaction)
+
+        log_analytics_event(
+            logger,
+            event="match_disputed",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
 
         return VerifyScoreResponse(
             match_id=match_id,
@@ -1100,6 +1158,17 @@ class MatchConfirmationService:
                 ph_repo.add_entry_in_transaction(txn, loser_uid, loser_entry)
 
         _scoring_txn(self.client.transaction())
+
+        log_analytics_event(
+            logger,
+            event="score_confirmed",
+            uid=uid,
+            created_at=now.replace(tzinfo=None).isoformat() + "Z",
+            sport=match.sport.value,
+            match_type=match.match_type.value,
+            venue_present=(match.court_id is not None or match.venue_ref is not None),
+            match_id=match_id,
+        )
 
         scoring = result_holder["scoring"]
 
