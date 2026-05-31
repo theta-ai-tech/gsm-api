@@ -140,7 +140,7 @@ BROADCAST=$(curl -s -X POST "$API/me/broadcast" \
   -d '{
     "sport": "tennis",
     "availability": "today",
-    "court_status": "need_court",
+    "court_status": "have_court",
     "expires_at": "2099-01-01T00:00:00Z",
     "location": {"area": 10001},
     "venue_ref": {
