@@ -35,7 +35,7 @@ echo ""
 # Seed the data first
 echo "--- Seeding Firestore emulator ---"
 FIRESTORE_EMULATOR_HOST="$EMULATOR_HOST" GOOGLE_CLOUD_PROJECT="$PROJECT" \
-  python tools/seed_firestore.py
+  python -m tools.seed_firestore
 echo ""
 
 echo "--- Diana user ---"
