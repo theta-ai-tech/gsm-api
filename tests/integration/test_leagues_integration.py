@@ -132,7 +132,7 @@ class TestGetLeagueDetail:
         assert body["region"] == "athens"
         assert body["status"] == "active"
         assert body["max_players"] == 12
-        assert body["current_players"] == 3
+        assert body["current_players"] == 4
         assert body["owner_uid"] == "user_ignatios"
         assert body["start_date"] is not None
         assert body["season"] == "Autumn 2025"
@@ -174,7 +174,7 @@ class TestGetLeagueStandings:
         body = resp.json()
         assert body["league_id"] == "padel-local-2025"
         standings = body["standings"]
-        assert len(standings) == 3  # user_ignatios, user_alice, user_bob
+        assert len(standings) == 4  # user_ignatios, user_alice, user_bob, user_diana
         for entry in standings:
             assert set(entry.keys()) == {
                 "rank",

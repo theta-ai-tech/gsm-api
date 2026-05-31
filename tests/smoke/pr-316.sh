@@ -39,7 +39,7 @@ FIRESTORE_EMULATOR_HOST="$EMULATOR_HOST" GOOGLE_CLOUD_PROJECT="$PROJECT" \
 echo ""
 
 echo "--- Diana user ---"
-DIANA=$(curl -sf "${BASE_URL}/users/diana-uid-001")
+DIANA=$(curl -sf "${BASE_URL}/users/user_diana")
 check "Diana displayName" "$(echo "$DIANA" | jq -r '.fields.displayName.stringValue')" "Diana"
 check "Diana area" "$(echo "$DIANA" | jq -r '.fields.area.integerValue')" "101"
 check "Diana sport" "$(echo "$DIANA" | jq -r '.fields.preferredSport.stringValue')" "padel"
@@ -47,8 +47,8 @@ check "Diana ranking pts" "$(echo "$DIANA" | jq -r '.fields.rankings.mapValue.fi
 
 echo ""
 echo "--- Diana league membership ---"
-DIANA_MEMBER=$(curl -sf "${BASE_URL}/leagues/padel-local-2025/members/diana-uid-001")
-check "Diana league role" "$(echo "$DIANA_MEMBER" | jq -r '.fields.role.stringValue')" "member"
+DIANA_MEMBER=$(curl -sf "${BASE_URL}/leagues/padel-local-2025/members/user_diana")
+check "Diana league role" "$(echo "$DIANA_MEMBER" | jq -r '.fields.role.stringValue')" "player"
 
 echo ""
 echo "--- Upcoming doubles match ---"
@@ -76,7 +76,7 @@ check "Venue suggestion 2 status" "$(echo "$VS2" | jq -r '.fields.status.stringV
 
 echo ""
 echo "--- Point history for Diana ---"
-PH=$(curl -sf "${BASE_URL}/pointHistory/diana-uid-001/entries/ph_diana_padel_dbl_1")
+PH=$(curl -sf "${BASE_URL}/users/user_diana/pointHistory/ph_diana_padel_dbl_1")
 check "Diana PH reason" "$(echo "$PH" | jq -r '.fields.reason.stringValue')" "match_doubles_win"
 check "Diana PH pts" "$(echo "$PH" | jq -r '.fields.pts.integerValue')" "710"
 

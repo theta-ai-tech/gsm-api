@@ -110,6 +110,7 @@ def test_doubles_match_mapping():
     assert doc["participants"][0]["team"] == "A"
     assert doc["participants"][2]["team"] == "B"
     assert doc["participantPair"] is None
+    assert doc["score"]["winnerTeam"] == "A"
 
 
 def test_journal_mapping_basic():
