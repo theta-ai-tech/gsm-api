@@ -4,6 +4,7 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.deps import get_settings
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.repos.journal_repo import JournalRepo
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
@@ -80,6 +81,10 @@ def get_venue_repo() -> VenueRepo:
 
 def get_venue_suggestions_repo() -> VenueSuggestionsRepo:
     return VenueSuggestionsRepo(get_firestore_client())
+
+
+def get_notification_intent_repo() -> NotificationIntentRepo:
+    return NotificationIntentRepo(get_firestore_client())
 
 
 def get_league_service() -> LeagueService:

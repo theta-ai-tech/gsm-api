@@ -140,3 +140,9 @@ class PointHistoryReasonEnum(StrEnum):
     MATCH_DOUBLES_LOSS = "match_doubles_loss"
     ADMIN_ADJUSTMENT = "admin_adjustment"
     TIER_REBALANCE = "tier_rebalance"
+
+
+class PlayNotificationIntentTypeEnum(StrEnum):
+    INCOMING_OFFER = "incoming_offer"
+    MATCH_SCHEDULED = "match_scheduled"
+    SCORE_CONFIRM_REQUIRED = "score_confirm_required"

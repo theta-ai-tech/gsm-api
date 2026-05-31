@@ -33,11 +33,14 @@ from app.models.enums import (
     MatchResultEnum,
     MatchStatusEnum,
     MatchTypeEnum,
+    PlayNotificationIntentTypeEnum,
     PlayTabStateEnum,
     PointHistoryReasonEnum,
     TierEnum,
     TickerEventTypeEnum,
 )
+from app.models.notification import PlayNotificationIntent
+from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.models.match import (
     Match,
     ScoringBreakdown,
@@ -128,6 +131,7 @@ class MatchConfirmationService:
         firestore_client: firestore.Client,
         ticker_repo: TickerRepo | None = None,
         region_config_repo: RegionConfigRepo | None = None,
+        notification_intent_repo: NotificationIntentRepo | None = None,
     ):
         self.matches_repo = matches_repo
         self.users_repo = users_repo
@@ -136,6 +140,7 @@ class MatchConfirmationService:
         self.client = firestore_client
         self.ticker_repo = ticker_repo
         self.region_config_repo = region_config_repo
+        self.notification_intent_repo = notification_intent_repo
 
     # -------------------------------------------------------------------------
     # Public API
@@ -289,6 +294,21 @@ class MatchConfirmationService:
                 )
 
         _txn(transaction)
+
+        for p_uid in team_by_uid:
+            if p_uid == uid:
+                continue
+            self._emit_notification_intent(
+                PlayNotificationIntent(
+                    type=PlayNotificationIntentTypeEnum.SCORE_CONFIRM_REQUIRED,
+                    target_uid=p_uid,
+                    title="Score submitted",
+                    body="Confirm the match result",
+                    match_id=match_id,
+                    dedupe_key=f"score_confirm_required:{match_id}:{p_uid}",
+                    created_at=now,
+                )
+            )
 
         return VerifyScoreResponse(
             match_id=match_id,
@@ -799,6 +819,19 @@ class MatchConfirmationService:
         # intentionally left unchanged to preserve the legacy contract — the
         # POST_MATCH_* states are wired up only for doubles in DBL-5.
 
+        non_submitter_uid = next(p for p in match.participant_uids if p != uid)
+        self._emit_notification_intent(
+            PlayNotificationIntent(
+                type=PlayNotificationIntentTypeEnum.SCORE_CONFIRM_REQUIRED,
+                target_uid=non_submitter_uid,
+                title="Score submitted",
+                body="Confirm the match result",
+                match_id=match_id,
+                dedupe_key=f"score_confirm_required:{match_id}:{non_submitter_uid}",
+                created_at=now,
+            )
+        )
+
         return VerifyScoreResponse(
             match_id=match_id,
             status=MatchStatusEnum.PENDING_CONFIRMATION,
@@ -1157,6 +1190,17 @@ class MatchConfirmationService:
         )
 
     # -------------------------------------------------------------------------
+    # Notification intents (fire-and-forget)
+    # -------------------------------------------------------------------------
+
+    def _emit_notification_intent(self, intent: PlayNotificationIntent) -> None:
+        if self.notification_intent_repo is None:
+            return
+        try:
+            self.notification_intent_repo.add_intent(intent)
+        except Exception:
+            logger.exception("Failed to write notification intent (non-fatal)")
+
     # Upset ticker event (fire-and-forget)
     # -------------------------------------------------------------------------
 

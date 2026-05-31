@@ -9,9 +9,11 @@ from app.dependencies.repos import (
     get_broadcasts_repo,
     get_firestore_client,
     get_matches_repo,
+    get_notification_intent_repo,
     get_offers_repo,
     get_users_repo,
 )
+from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.models.enums import MatchTypeEnum
 from app.models.play import (
     CreateBroadcastRequest,
@@ -38,9 +40,17 @@ def get_play_service(
     matches_repo: MatchesRepo = Depends(get_matches_repo),
     offers_repo: OffersRepo = Depends(get_offers_repo),
     firestore_client: firestore.Client = Depends(get_firestore_client),
+    notification_intent_repo: NotificationIntentRepo = Depends(get_notification_intent_repo),
 ) -> PlayService:
     """Dependency to get PlayService instance."""
-    return PlayService(users_repo, broadcasts_repo, matches_repo, offers_repo, firestore_client)
+    return PlayService(
+        users_repo,
+        broadcasts_repo,
+        matches_repo,
+        offers_repo,
+        firestore_client,
+        notification_intent_repo=notification_intent_repo,
+    )
 
 
 # ===== GET /me/state =====

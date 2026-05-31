@@ -806,6 +806,65 @@ Required (Firebase Bearer ID token).
 ---
 
 
+## `GET /venues/search`
+
+### Purpose
+Free-text venue search combining curated Firestore venues with Google Places Autocomplete.
+Returns up to 5 results for use in the "set location" flow during broadcast creation.
+
+### Auth
+Required (Firebase Bearer ID token).
+
+### Query parameters
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `q` | string (1–200 chars) | Yes | Search query (venue name or location text) |
+| `lat` | float (-90 to 90) | No | Caller's latitude for location bias |
+| `lng` | float (-180 to 180) | No | Caller's longitude for location bias |
+
+### Behavior
+- Curated venues from the `venues` Firestore collection are prefix-matched on `name` and returned first.
+- Google Places Autocomplete is called with `q` (and optional lat/lng bias).
+- Results are merged: curated first, then Google Places, deduped by `placeId`.
+- Returns at most 5 results total.
+- Curated venues have a `venueId` populated; Google-only results have `venueId: null`.
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/venues/search?q=padel+glyfada&lat=37.87&lng=23.75"
+```
+
+### Example response (`200`)
+```json
+{
+  "results": [
+    {
+      "venueId": "venue_flisvos",
+      "placeId": "ChIJFlisvos",
+      "name": "Flisvos Padel Academy",
+      "coordinates": {"lat": 37.93, "lng": 23.68}
+    },
+    {
+      "venueId": null,
+      "placeId": "ChIJGoogleResult",
+      "name": "Glyfada Padel Club",
+      "coordinates": {"lat": 37.88, "lng": 23.74}
+    }
+  ]
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `422` validation error (q empty, lat/lng out of range)
+- `502` upstream Google Places error
+- `503` Google Places API key not configured (emulator / dev environments)
+
+---
+
+
 ## `POST /venues/suggest`
 
 ### Purpose
@@ -849,6 +908,138 @@ Validation:
 ### Common error responses
 - `401` missing/invalid token
 - `422` validation error (missing/invalid fields)
+
+---
+
+
+## `POST /matches/{match_id}/verify-score`
+
+### Purpose
+Submit or confirm a match result. This single endpoint drives both the initial result
+submission and the opponent's confirmation step.
+
+**Note on naming:** earlier planning docs referred to these flows as `POST /matches/{id}/result`
+(first call) and `POST /matches/{id}/confirm` (second call). They are implemented as a single
+endpoint that handles both based on the current match status.
+
+### Auth
+Required. The caller must be a participant in the match.
+
+### Two-call flow
+| Call | Match status before | Match status after | Scoring written? |
+|------|--------------------|--------------------|-----------------|
+| 1st (submit result) | `scheduled` | `pending_confirmation` | No |
+| 2nd (agree) | `pending_confirmation` | `completed` | Yes |
+| 2nd (disagree) | `pending_confirmation` | `disputed` | No |
+
+### Request body
+
+**Singles match:**
+```json
+{
+  "winner_uid": "user_abc",
+  "score": {
+    "sets": [
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
+    ],
+    "winner_uid": "user_abc"
+  },
+  "walkover": false
+}
+```
+
+**Doubles match:**
+```json
+{
+  "winner_team": "A",
+  "score": {
+    "sets": [
+      {"p1_games": 6, "p2_games": 4},
+      {"p1_games": 6, "p2_games": 3}
+    ],
+    "winner_uid": ""
+  },
+  "walkover": false
+}
+```
+
+Rules:
+- Provide exactly one of `winner_uid` (singles) or `winner_team` (doubles `"A"` or `"B"`).
+- `score` is optional but strongly recommended.
+- `walkover: true` skips scoring — all deltas are 0, `score` may be null.
+
+### Example response — first call (`200`, match → `pending_confirmation`)
+```json
+{
+  "match_id": "match_789",
+  "status": "pending_confirmation",
+  "winner_uid": "user_abc",
+  "loser_uid": "user_xyz",
+  "winner_team": null,
+  "loser_team": null,
+  "winner_delta": 0,
+  "loser_delta": 0,
+  "winner_new_pts": 0,
+  "loser_new_pts": 0,
+  "scoring": null
+}
+```
+
+### Example response — second call, agreed (`200`, match → `completed`)
+```json
+{
+  "match_id": "match_789",
+  "status": "completed",
+  "winner_uid": "user_abc",
+  "loser_uid": "user_xyz",
+  "winner_team": null,
+  "loser_team": null,
+  "winner_delta": 35,
+  "loser_delta": -20,
+  "winner_new_pts": 855,
+  "loser_new_pts": 780,
+  "scoring": {
+    "sport": "tennis",
+    "your_pts_before": 820,
+    "your_pts_after": 855,
+    "delta": 35,
+    "breakdown": {
+      "base_win": 25,
+      "upset_bonus": 10,
+      "elo_bonus": 0,
+      "penalty": 0
+    },
+    "tier_before": "intermediate",
+    "tier_after": "intermediate",
+    "tier_crossed": false
+  }
+}
+```
+
+### Doubles response example — completed
+```json
+{
+  "match_id": "match_dbl_999",
+  "status": "completed",
+  "winner_uid": "",
+  "loser_uid": "",
+  "winner_team": "A",
+  "loser_team": "B",
+  "winner_delta": 28,
+  "loser_delta": -18,
+  "winner_new_pts": 848,
+  "loser_new_pts": 762,
+  "scoring": { "..." : "see singles example for full shape" }
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `403` caller is not a participant in this match
+- `404` match not found
+- `409` invalid state transition (e.g. match already completed, walkover on non-scheduled match)
+- `500` server misconfiguration (missing tier config)
 
 ---
 
