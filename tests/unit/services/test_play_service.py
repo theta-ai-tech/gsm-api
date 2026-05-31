@@ -2751,6 +2751,11 @@ class TestTelemetryEvents:
             match_id=None,
         )
         mock_offers_repo.get_by_id.return_value = mock_offer
+        # Source broadcast exists but has no venue_ref → venue_present=False
+        mock_source_broadcast = Mock()
+        mock_source_broadcast.venue_ref = None
+        mock_source_broadcast.partner_uid = None
+        mock_broadcasts_repo.get_by_id.return_value = mock_source_broadcast
         mock_users_repo.get_user_doc.side_effect = [
             {
                 "name": "Bob",
@@ -2788,6 +2793,77 @@ class TestTelemetryEvents:
                 match_id="match_offer123",
                 region=None,
             )
+        finally:
+            play_service_module.firestore.transactional = original
+
+    def test_match_scheduled_venue_present_true_when_broadcast_has_venue_ref(
+        self,
+        play_service,
+        mock_offers_repo,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_firestore_client,
+    ):
+        """venue_present=True when source broadcast carries a venue_ref (no court_location)."""
+        now = datetime.now(timezone.utc)
+        mock_offer = Offer(
+            offer_id="offer_vr",
+            from_uid="alice",
+            from_name="Alice",
+            from_ranking=None,
+            to_uid="bob",
+            to_name="Bob",
+            to_ranking=None,
+            sport=SportEnum.TENNIS,
+            proposed_time=now + timedelta(hours=1),
+            court_location=None,
+            venue_ref=None,
+            source_broadcast_id="broadcast_vr",
+            message=None,
+            status=OfferStatusEnum.PENDING,
+            expires_at=now + timedelta(minutes=5),
+            created_at=now - timedelta(minutes=1),
+            match_id=None,
+        )
+        mock_broadcast = Mock()
+        mock_broadcast.venue_ref = Mock()  # truthy — simulates a resolved venue_ref
+        mock_broadcast.partner_uid = None
+        mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
+        mock_offers_repo.get_by_id.return_value = mock_offer
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Bob",
+                "playTab": {
+                    "state": "INCOMING_OFFER_PENDING",
+                    "pendingIncomingOfferIds": ["offer_vr"],
+                },
+            },
+            {
+                "name": "Alice",
+                "playTab": {
+                    "state": "OUTGOING_OFFER_PENDING",
+                    "activeOutgoingOfferId": "offer_vr",
+                },
+            },
+        ]
+
+        import app.services.play_service as play_service_module
+
+        original = self._setup_mock_transactional(play_service_module)
+        try:
+            with patch("app.services.play_service.log_analytics_event") as mock_emit:
+                play_service.accept_offer("bob", "offer_vr")
+
+            match_scheduled_call = next(
+                (
+                    call
+                    for call in mock_emit.call_args_list
+                    if call.kwargs.get("event") == "match_scheduled"
+                ),
+                None,
+            )
+            assert match_scheduled_call is not None, "match_scheduled event not emitted"
+            assert match_scheduled_call.kwargs["venue_present"] is True
         finally:
             play_service_module.firestore.transactional = original
 

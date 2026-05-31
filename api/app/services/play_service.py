@@ -1160,7 +1160,7 @@ class PlayService:
             created_at=now.replace(tzinfo=None).isoformat() + "Z",
             sport=offer.sport.value,
             match_type=offer.match_type.value,
-            venue_present=(offer.court_location is not None),
+            venue_present=(offer.court_location is not None or venue_ref is not None),
             broadcast_id=offer.source_broadcast_id,
             offer_id=offer_id,
             match_id=match_id,
