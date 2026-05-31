@@ -219,6 +219,7 @@ def _match_score_to_dict(score: MatchScore | None) -> Dict[str, Any] | None:
     return {
         "sets": [_set_score_to_dict(s) for s in score.sets],
         "winnerUid": score.winner_uid,
+        "winnerTeam": score.winner_team,
         "retired": score.retired,
     }
 

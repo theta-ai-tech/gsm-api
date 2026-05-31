@@ -26,6 +26,7 @@ from tools.seed_data import (
     SKILL_TAXONOMY,
     TIER_AVERAGES,
     TIER_CONFIG,
+    utc,
 )
 from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
@@ -129,6 +130,31 @@ def seed_all(client: firestore.Client) -> None:
         doc_ref = client.collection("venues").document(venue.venue_id)
         doc_ref.set(venue_summary_to_firestore_doc(venue))
 
+    # Venue suggestions — pending moderation queue for demo/review flow
+    _venue_suggestions = [
+        {
+            "name": "Kifissia Padel Club",
+            "coordinates": {"lat": 38.0733, "lng": 23.8142},
+            "sport": "padel",
+            "notes": "New padel courts in Kifissia, 4 courts, indoor",
+            "suggestedBy": "user_ignatios",
+            "createdAt": utc(2026, 3, 20, 10, 0),
+            "status": "pending",
+        },
+        {
+            "name": "Maroussi Sports Center",
+            "coordinates": {"lat": 38.0567, "lng": 23.8091},
+            "sport": "tennis",
+            "notes": None,
+            "suggestedBy": "user_alice",
+            "createdAt": utc(2026, 3, 22, 14, 30),
+            "status": "pending",
+        },
+    ]
+    for i, suggestion in enumerate(_venue_suggestions):
+        doc_ref = client.collection("venueSuggestions").document(f"suggestion-seed-{i + 1}")
+        doc_ref.set(suggestion)
+
 
 def main() -> None:
     args = _parse_args()
@@ -169,6 +195,7 @@ def main() -> None:
         f"{len(SAMPLE_SCOUTING_PROFILES)} scouting profiles, "
         f"{len(SAMPLE_TICKER_EVENTS)} ticker events, "
         f"{len(SAMPLE_VENUES)} venues, "
+        f"2 venue suggestions, "
         f"1 tier config, "
         f"1 skill taxonomy, "
         f"1 tier averages, "
