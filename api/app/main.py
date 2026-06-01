@@ -13,6 +13,7 @@ from app.routers.clubhouse import router as clubhouse_router
 from app.routers.improve import router as improve_router
 from app.routers.lab import router as lab_router
 from app.routers.matches import router as matches_router
+from app.routers.onboarding import router as onboarding_router
 from app.routers.play import router as play_router
 from app.routers.leagues import router as leagues_router
 from app.routers.venues import router as venues_router
@@ -28,6 +29,7 @@ logging.basicConfig(level=logging.INFO, force=True)
 app = FastAPI(title="GSM API", version="0.1.0")
 
 # Include routers
+app.include_router(onboarding_router)
 app.include_router(play_router)
 app.include_router(improve_router)
 app.include_router(lab_router)

@@ -58,6 +58,7 @@ from app.models.scouting import ScoutingProfile, ScoutingSportData, ScoutingTagC
 from app.models.skill_dna import SkillAxisData, SportSkillDna
 from app.models.skill_taxonomy import SkillTaxonomy
 from app.models.notification import PlayNotificationIntent
+from app.models.onboarding import RegisterMeRequest
 from app.models.ticker import TickerEvent
 from app.models.tier import TierConfig, TierThreshold
 from app.models.region_config import RegionConfig
@@ -157,6 +158,8 @@ __all__ = [
     "TickerEvent",
     # notification
     "PlayNotificationIntent",
+    # onboarding
+    "RegisterMeRequest",
     # region config
     "RegionConfig",
     # tier

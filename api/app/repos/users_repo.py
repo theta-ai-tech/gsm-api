@@ -31,6 +31,10 @@ class UsersRepo(RepoBase):
             return [], []
         return profile.leagues_active, profile.leagues_completed
 
+    def create_profile(self, uid: str, doc: dict) -> None:
+        """Write a new user document. Caller must verify non-existence first."""
+        self.client.collection("users").document(uid).set(doc)
+
     def update_play_tab(self, uid: str, updates: dict) -> None:
         """
         Update the playTab map on the user document.
