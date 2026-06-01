@@ -21,7 +21,7 @@ if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   VENV_DIR="$REPO_ROOT/.venv"
 else
   MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree / {print; exit}')
+    | awk '/^worktree / {print $2; exit}')
   VENV_DIR="$MAIN_WT/.venv"
 fi
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
