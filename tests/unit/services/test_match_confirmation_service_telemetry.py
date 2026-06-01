@@ -196,6 +196,14 @@ def _make_service(match: Match) -> tuple[MatchConfirmationService, MagicMock]:
                 ref = MagicMock(name=f"{coll}/{doc_id}")
                 if coll == "users":
                     ref.get.return_value = _make_user_snap()
+                elif coll == "matches":
+                    # INT-2 guard: in-txn read must return PENDING_CONFIRMATION so
+                    # _scoring_txn does not abort on the happy-path tests.
+                    match_snap = Mock()
+                    match_snap.get.return_value = (
+                        MatchStatusEnum.PENDING_CONFIRMATION.value
+                    )
+                    ref.get.return_value = match_snap
                 doc_refs[key] = ref
             return doc_refs[key]
 

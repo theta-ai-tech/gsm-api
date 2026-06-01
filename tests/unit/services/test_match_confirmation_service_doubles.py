@@ -181,6 +181,14 @@ def _make_service(
                     snap = Mock()
                     snap.to_dict.return_value = user_docs.get(doc_id, _user_doc(doc_id))
                     ref.get.return_value = snap
+                elif coll == "matches":
+                    # INT-2 guard: in-txn read must return PENDING_CONFIRMATION so
+                    # _scoring_txn does not abort on the happy-path tests.
+                    match_snap = Mock()
+                    match_snap.get.return_value = (
+                        MatchStatusEnum.PENDING_CONFIRMATION.value
+                    )
+                    ref.get.return_value = match_snap
                 doc_refs[key] = ref
             return doc_refs[key]
 
@@ -704,23 +712,43 @@ class TestDoublesConfirmationWithScoring:
 class TestDoublesDoubleScoreRaceGuard:
     """INT-2: completion txn re-asserts status to prevent double-scoring (doubles)."""
 
-    def test_aborts_if_match_already_completed_doubles(self):
+    def _make_guarded_doubles_service(
+        self, snap_status: str
+    ) -> tuple[object, MagicMock]:
+        """Return (service, mock_client) with match_ref.get() yielding snap_status."""
         match = _pending_doubles_match()
         service, mock_client, doc_refs, _ = _make_service(match)
 
-        # Retrieve the match doc ref that _make_service registered and configure
-        # its .get() to return a snapshot reporting COMPLETED status — simulating
-        # a Firestore retry after the first concurrent txn already committed.
         match_ref = mock_client.collection("matches").document(MATCH_ID)
         match_snap = Mock()
-        match_snap.get.return_value = MatchStatusEnum.COMPLETED.value
+        match_snap.get.return_value = snap_status
         match_ref.get.return_value = match_snap
+        return service, mock_client
+
+    def test_aborts_if_match_already_completed_doubles(self):
+        """Firestore retry sees COMPLETED — doubles txn must abort without re-scoring."""
+        service, _ = self._make_guarded_doubles_service(MatchStatusEnum.COMPLETED.value)
 
         with patch("app.services.match_confirmation_service.firestore") as mock_fs:
             mock_fs.transactional = lambda fn: fn
             mock_fs.ArrayUnion = lambda items: {"__array_union__": items}
 
-            with pytest.raises(ValueError, match="already completed"):
+            with pytest.raises(ValueError, match="not pending confirmation"):
+                service.verify_score(
+                    B1,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_team="A"),
+                )
+
+    def test_aborts_if_match_disputed_doubles(self):
+        """Concurrent dispute transitions match to DISPUTED — doubles scoring txn must abort."""
+        service, _ = self._make_guarded_doubles_service(MatchStatusEnum.DISPUTED.value)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = lambda items: {"__array_union__": items}
+
+            with pytest.raises(ValueError, match="not pending confirmation"):
                 service.verify_score(
                     B1,
                     MATCH_ID,
