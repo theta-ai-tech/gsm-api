@@ -163,6 +163,25 @@ def _make_service(
     return service, mock_client, mock_ph_repo, mock_ticker_repo, mock_region_config_repo
 
 
+def _make_pending_snap() -> Mock:
+    """Return a mock Firestore DocumentSnapshot whose 'status' field is PENDING_CONFIRMATION.
+
+    Used in _get_doc factories for the match document so the INT-2 guard inside
+    _scoring_txn passes on the happy path.
+    """
+    snap = Mock()
+    snap.get.return_value = MatchStatusEnum.PENDING_CONFIRMATION.value
+    return snap
+
+
+def _make_match_doc() -> MagicMock:
+    """Return a mock Firestore DocumentReference for the match whose in-txn read
+    reports PENDING_CONFIRMATION status."""
+    doc = MagicMock()
+    doc.get.return_value = _make_pending_snap()
+    return doc
+
+
 def _make_user_snap(
     pts: int,
     tier: TierEnum,
@@ -331,7 +350,9 @@ class TestConfirmationWithScoring:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -434,7 +455,9 @@ class TestConfirmationWithScoring:
                 return winner_doc
             if uid == LOSER_UID:
                 return loser_doc
-            return _extra.setdefault(uid, MagicMock())
+            return _extra.setdefault(
+                uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+            )
 
         mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -572,7 +595,9 @@ class TestVerifyScoreSelfConfirmation:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -618,7 +643,9 @@ class TestWalkover:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -720,7 +747,9 @@ class TestUpsetTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -804,7 +833,9 @@ class TestUpsetTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -845,7 +876,9 @@ class TestUpsetTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -923,7 +956,9 @@ class TestRetirementFromStoredScore:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1041,7 +1076,9 @@ class TestStreakAndPersonalBest:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1269,7 +1306,9 @@ class TestTierCrossedTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1447,7 +1486,9 @@ class TestTierCrossedTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1487,7 +1528,9 @@ class TestTierCrossedTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1567,7 +1610,9 @@ class TestPersonalBestTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1718,7 +1763,9 @@ class TestPersonalBestTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1795,7 +1842,9 @@ class TestWinStreakTickerEvent:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -1999,7 +2048,9 @@ class TestResultSubmittedByLifecycle:
                     return winner_doc
                 if uid == LOSER_UID:
                     return loser_doc
-                return _extra.setdefault(uid, MagicMock())
+                return _extra.setdefault(
+                    uid, _make_match_doc() if uid == MATCH_ID else MagicMock()
+                )
 
             mock_client.collection.return_value.document.side_effect = _get_doc
 
@@ -2210,3 +2261,72 @@ class TestNotificationIntentEmission:
         # The submitter (u1) must NOT receive the intent
         assert "u1" not in target_uids
         assert target_uids == {"u2", "u3", "u4"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: INT-2 double-scoring race guard
+# ---------------------------------------------------------------------------
+
+
+class TestDoubleScoreRaceGuard:
+    """INT-2: completion txn re-asserts status to prevent double-scoring."""
+
+    def _make_guarded_service(self, snap_status: str) -> tuple[object, MagicMock]:
+        """Return (service, mock_client) with match_ref.get() returning snap_status."""
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            score=stored_score,
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        match_snap = Mock()
+        match_snap.get.return_value = snap_status
+
+        match_doc = MagicMock()
+        match_doc.get.return_value = match_snap
+
+        winner_doc = MagicMock()
+        loser_doc = MagicMock()
+
+        def _get_doc(uid: str) -> MagicMock:
+            if uid == MATCH_ID:
+                return match_doc
+            if uid == WINNER_UID:
+                return winner_doc
+            if uid == LOSER_UID:
+                return loser_doc
+            return MagicMock()
+
+        mock_client.collection.return_value.document.side_effect = _get_doc
+        return service, mock_client
+
+    def test_aborts_if_match_already_completed_singles(self):
+        """Firestore retry sees COMPLETED — txn must abort without re-scoring."""
+        service, _ = self._make_guarded_service(MatchStatusEnum.COMPLETED.value)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = lambda x: x
+
+            with pytest.raises(ValueError, match="not pending confirmation"):
+                service.verify_score(
+                    LOSER_UID,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_uid=WINNER_UID),
+                )
+
+    def test_aborts_if_match_disputed_singles(self):
+        """Concurrent dispute transitions match to DISPUTED — scoring txn must abort."""
+        service, _ = self._make_guarded_service(MatchStatusEnum.DISPUTED.value)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = lambda x: x
+
+            with pytest.raises(ValueError, match="not pending confirmation"):
+                service.verify_score(
+                    LOSER_UID,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_uid=WINNER_UID),
+                )

@@ -490,6 +490,15 @@ class MatchConfirmationService:
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
             # --- READS (must precede all writes) ---
+            # INT-2: re-assert status inside txn (double-scoring race guard).
+            # Check for PENDING_CONFIRMATION rather than just COMPLETED so that
+            # a disputed match (or any other non-pending state) is also rejected.
+            match_snap = cast(firestore.DocumentSnapshot, match_ref.get(transaction=txn))
+            if match_snap.get("status") != MatchStatusEnum.PENDING_CONFIRMATION.value:
+                raise ValueError(
+                    f"Match {match_id} is not pending confirmation (status="
+                    f"{match_snap.get('status')}); skipping scoring"
+                )
             winner_snaps = {
                 p_uid: cast(firestore.DocumentSnapshot, ref.get(transaction=txn))
                 for p_uid, ref in winner_refs.items()
@@ -1005,6 +1014,15 @@ class MatchConfirmationService:
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
             # --- READS (must precede all writes) ---
+            # INT-2: re-assert status inside txn so Firestore-retried or concurrent
+            # completions cannot double-award points. Require PENDING_CONFIRMATION
+            # (not merely !COMPLETED) so disputed matches are also rejected.
+            match_snap = cast(firestore.DocumentSnapshot, match_ref.get(transaction=txn))
+            if match_snap.get("status") != MatchStatusEnum.PENDING_CONFIRMATION.value:
+                raise ValueError(
+                    f"Match {match_id} is not pending confirmation (status="
+                    f"{match_snap.get('status')}); skipping scoring"
+                )
             winner_snap = cast(firestore.DocumentSnapshot, winner_ref.get(transaction=txn))
             loser_snap = cast(firestore.DocumentSnapshot, loser_ref.get(transaction=txn))
 
