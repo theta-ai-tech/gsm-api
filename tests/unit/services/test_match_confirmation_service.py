@@ -2210,3 +2210,53 @@ class TestNotificationIntentEmission:
         # The submitter (u1) must NOT receive the intent
         assert "u1" not in target_uids
         assert target_uids == {"u2", "u3", "u4"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: INT-2 double-scoring race guard
+# ---------------------------------------------------------------------------
+
+
+class TestDoubleScoreRaceGuard:
+    """INT-2: completion txn re-asserts status to prevent double-scoring."""
+
+    def test_aborts_if_match_already_completed_singles(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            score=stored_score,
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        # Simulate: match_ref.get(transaction=txn) returns COMPLETED status
+        # (as would happen on a Firestore retry after the first txn committed).
+        match_snap = Mock()
+        match_snap.get.return_value = MatchStatusEnum.COMPLETED.value
+
+        match_doc = MagicMock()
+        match_doc.get.return_value = match_snap
+
+        winner_doc = MagicMock()
+        loser_doc = MagicMock()
+
+        def _get_doc(uid: str) -> MagicMock:
+            if uid == MATCH_ID:
+                return match_doc
+            if uid == WINNER_UID:
+                return winner_doc
+            if uid == LOSER_UID:
+                return loser_doc
+            return MagicMock()
+
+        mock_client.collection.return_value.document.side_effect = _get_doc
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = lambda x: x
+
+            with pytest.raises(ValueError, match="already completed"):
+                service.verify_score(
+                    LOSER_UID,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_uid=WINNER_UID),
+                )

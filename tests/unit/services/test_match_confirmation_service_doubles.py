@@ -694,3 +694,35 @@ class TestDoublesConfirmationWithScoring:
         )
         assert a1_entry.delta == 100  # base win in equal-tier match
         assert a1_entry.pts == 1600
+
+
+# ---------------------------------------------------------------------------
+# Tests: INT-2 double-scoring race guard
+# ---------------------------------------------------------------------------
+
+
+class TestDoublesDoubleScoreRaceGuard:
+    """INT-2: completion txn re-asserts status to prevent double-scoring (doubles)."""
+
+    def test_aborts_if_match_already_completed_doubles(self):
+        match = _pending_doubles_match()
+        service, mock_client, doc_refs, _ = _make_service(match)
+
+        # Retrieve the match doc ref that _make_service registered and configure
+        # its .get() to return a snapshot reporting COMPLETED status — simulating
+        # a Firestore retry after the first concurrent txn already committed.
+        match_ref = mock_client.collection("matches").document(MATCH_ID)
+        match_snap = Mock()
+        match_snap.get.return_value = MatchStatusEnum.COMPLETED.value
+        match_ref.get.return_value = match_snap
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            mock_fs.ArrayUnion = lambda items: {"__array_union__": items}
+
+            with pytest.raises(ValueError, match="already completed"):
+                service.verify_score(
+                    B1,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_team="A"),
+                )

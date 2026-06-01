@@ -490,6 +490,12 @@ class MatchConfirmationService:
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
             # --- READS (must precede all writes) ---
+            # INT-2: re-assert status inside txn (double-scoring race guard)
+            match_snap = cast(firestore.DocumentSnapshot, match_ref.get(transaction=txn))
+            if match_snap.get("status") == MatchStatusEnum.COMPLETED.value:
+                raise ValueError(
+                    f"Match {match_id} is already completed; skipping duplicate scoring"
+                )
             winner_snaps = {
                 p_uid: cast(firestore.DocumentSnapshot, ref.get(transaction=txn))
                 for p_uid, ref in winner_refs.items()
@@ -1005,6 +1011,13 @@ class MatchConfirmationService:
         @firestore.transactional
         def _scoring_txn(txn: firestore.Transaction) -> None:
             # --- READS (must precede all writes) ---
+            # INT-2: re-assert status inside txn so Firestore-retried or concurrent
+            # completions cannot double-award points.
+            match_snap = cast(firestore.DocumentSnapshot, match_ref.get(transaction=txn))
+            if match_snap.get("status") == MatchStatusEnum.COMPLETED.value:
+                raise ValueError(
+                    f"Match {match_id} is already completed; skipping duplicate scoring"
+                )
             winner_snap = cast(firestore.DocumentSnapshot, winner_ref.get(transaction=txn))
             loser_snap = cast(firestore.DocumentSnapshot, loser_ref.get(transaction=txn))
 
