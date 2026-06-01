@@ -89,6 +89,7 @@ def _tier_config() -> TierConfig:
 def _make_match(
     status: MatchStatusEnum = MatchStatusEnum.SCHEDULED,
     score: MatchScore | None = None,
+    result_submitted_by: list[str] | None = None,
 ) -> Match:
     return Match(
         match_id=MATCH_ID,
@@ -100,6 +101,7 @@ def _make_match(
             MatchParticipant(uid=LOSER_UID, role="player"),
         ],
         score=score,
+        result_submitted_by=result_submitted_by or [],
     )
 
 
@@ -484,6 +486,103 @@ class TestDispute:
         assert response.scoring is None
         # No pointHistory written
         mock_ph_repo.add_entry_in_transaction.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: self-confirmation guard (INT-1, #319)
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyScoreSelfConfirmation:
+    def test_submitter_cannot_confirm_own_result(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            score=stored_score,
+            result_submitted_by=[WINNER_UID],
+        )
+        service, _, _, _, _ = _make_service(match=match)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            with pytest.raises(ValueError, match="opposing player"):
+                service.verify_score(
+                    WINNER_UID,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_uid=WINNER_UID),
+                )
+
+    def test_submitter_cannot_self_dispute(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            score=stored_score,
+            result_submitted_by=[WINNER_UID],
+        )
+        service, mock_client, mock_ph_repo, _, _ = _make_service(match=match)
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+            # Submitter resubmits with a conflicting winner — this must be
+            # rejected by the guard *before* it can route to a dispute.
+            with pytest.raises(ValueError, match="opposing player"):
+                service.verify_score(
+                    WINNER_UID,
+                    MATCH_ID,
+                    VerifyScoreRequest(winner_uid=LOSER_UID),
+                )
+
+        # The match must NOT have been written to DISPUTED.
+        txn = mock_client.transaction()
+        match_ref = mock_client.collection("matches").document(MATCH_ID)
+        disputed_updates = [
+            c
+            for c in txn.update.call_args_list
+            if c.args
+            and c.args[0] == match_ref
+            and c.args[1].get("status") == MatchStatusEnum.DISPUTED
+        ]
+        assert not disputed_updates
+        mock_ph_repo.add_entry_in_transaction.assert_not_called()
+
+    def test_opposing_player_can_confirm_completes(self):
+        stored_score = _make_score(winner_uid=WINNER_UID)
+        match = _make_match(
+            status=MatchStatusEnum.PENDING_CONFIRMATION,
+            score=stored_score,
+            result_submitted_by=[WINNER_UID],
+        )
+        service, mock_client, _, _, _ = _make_service(match=match)
+
+        winner_snap = _make_user_snap(2100, TierEnum.INTERMEDIATE, name="Winner")
+        loser_snap = _make_user_snap(2050, TierEnum.INTERMEDIATE, name="Loser")
+
+        with patch("app.services.match_confirmation_service.firestore") as mock_fs:
+            mock_fs.transactional = lambda fn: fn
+
+            winner_doc = MagicMock()
+            loser_doc = MagicMock()
+            winner_doc.get.return_value = winner_snap
+            loser_doc.get.return_value = loser_snap
+
+            _extra: dict[str, MagicMock] = {}
+
+            def _get_doc(uid: str) -> MagicMock:
+                if uid == WINNER_UID:
+                    return winner_doc
+                if uid == LOSER_UID:
+                    return loser_doc
+                return _extra.setdefault(uid, MagicMock())
+
+            mock_client.collection.return_value.document.side_effect = _get_doc
+
+            response = service.verify_score(
+                LOSER_UID,
+                MATCH_ID,
+                VerifyScoreRequest(winner_uid=WINNER_UID, score=_make_score()),
+            )
+
+        assert response.status == MatchStatusEnum.COMPLETED
 
 
 # ---------------------------------------------------------------------------

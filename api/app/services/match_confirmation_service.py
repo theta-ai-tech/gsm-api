@@ -904,6 +904,15 @@ class MatchConfirmationService:
         winner_uid: str = request.winner_uid
         loser_uid = next(p for p in match.participant_uids if p != winner_uid)
 
+        # INT-1: a singles result must be confirmed by the OTHER participant,
+        # never the player who submitted it. Without this a single player could
+        # submit and then confirm their own result, awarding points with no
+        # opponent agreement. Mirrors the doubles opposing-party rule in
+        # _second_submission_doubles. Empty result_submitted_by (legacy docs) is
+        # treated leniently so the confirmation still records.
+        if uid in match.result_submitted_by:
+            raise ValueError("Confirmation must come from the opposing player")
+
         stored_winner_uid = match.score.winner_uid if match.score else None
 
         if stored_winner_uid is not None and stored_winner_uid != winner_uid:
