@@ -16,7 +16,7 @@ FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/d
 LEAGUE_ID="padel-local-2025"
 USER_A="user_ignatios"   # ACTIVE member of padel-local-2025
 USER_B="user_bob"        # ACTIVE member of padel-local-2025
-USER_NON_MEMBER="user_2" # NOT a member of padel-local-2025
+USER_NON_MEMBER="user_smoke_333_nonmember"  # fresh uid — not a league member
 
 # ── Venv resolution ─────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
@@ -80,6 +80,11 @@ reset_play_tab() {
     }' > /dev/null
 }
 
+firestore_get_string() {
+  # Usage: firestore_get_string <collection/docId> <field>
+  curl -s "$FIRESTORE/$1" | jq -r ".fields.$2.stringValue // \"null\""
+}
+
 # ── Token acquisition ────────────────────────────────────────────────────────
 echo "Acquiring tokens..."
 TOKEN_A=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" "$USER_A" -t 2>/dev/null)
@@ -93,32 +98,39 @@ fi
 echo "  Tokens acquired."
 echo ""
 
-# ── Setup: reset both users to DISCOVERY ────────────────────────────────────
+# ── Setup: reset both seeded users to DISCOVERY ─────────────────────────────
 echo "Setup: resetting play states to DISCOVERY..."
 reset_play_tab "$USER_A"
 reset_play_tab "$USER_B"
 echo "  Done."
 echo ""
 
+OFFER_ID="null"
+MATCH_ID="null"
+
 # ── Step 1: Send a league-scoped offer ──────────────────────────────────────
-echo "=== Step 1: POST /me/offer with leagueId (201) ==="
+echo "=== Step 1: POST /me/offers with leagueId creates offer (201) ==="
 PROPOSED_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 OFFER_RESP=$(curl -s -o /tmp/pr333_offer.json -w "%{http_code}" \
-  -X POST "$API/me/offer" \
+  -X POST "$API/me/offers" \
   -H "Authorization: Bearer $TOKEN_A" \
   -H "Content-Type: application/json" \
   -d "{
-    \"toUid\": \"$USER_B\",
+    \"to_uid\": \"$USER_B\",
     \"sport\": \"padel\",
-    \"matchType\": \"singles\",
-    \"proposedTime\": \"$PROPOSED_TIME\",
-    \"leagueId\": \"$LEAGUE_ID\"
+    \"match_type\": \"singles\",
+    \"proposed_time\": \"$PROPOSED_TIME\",
+    \"league_id\": \"$LEAGUE_ID\"
   }")
-assert_eq "POST /me/offer returns 201" "$OFFER_RESP" "201"
+assert_eq "POST /me/offers returns 201" "$OFFER_RESP" "201"
 
 OFFER_ID=$(jq -r '.offer_id // "null"' /tmp/pr333_offer.json)
 assert_not_null "Offer ID is present" "$OFFER_ID"
 echo "  offer_id: $OFFER_ID"
+
+# Verify leagueId was stored on the offer doc in Firestore
+OFFER_LEAGUE=$(firestore_get_string "offers/$OFFER_ID" "leagueId")
+assert_eq "Offer doc has leagueId in Firestore" "$OFFER_LEAGUE" "$LEAGUE_ID"
 
 echo ""
 echo "=== Step 2: Accept the offer as user B ==="
@@ -132,54 +144,59 @@ assert_not_null "Match ID is present in accept response" "$MATCH_ID"
 echo "  match_id: $MATCH_ID"
 
 echo ""
-echo "=== Step 3: Match document has leagueId set ==="
-MATCH_RESP=$(curl -s -o /tmp/pr333_match.json -w "%{http_code}" \
-  "$API/matches/$MATCH_ID" \
-  -H "Authorization: Bearer $TOKEN_A")
-assert_eq "GET /matches/{id} returns 200" "$MATCH_RESP" "200"
-
-MATCH_LEAGUE_ID=$(jq -r '.league_id // "null"' /tmp/pr333_match.json)
-assert_eq "Match has leagueId = $LEAGUE_ID" "$MATCH_LEAGUE_ID" "$LEAGUE_ID"
+echo "=== Step 3: Match document has leagueId set in Firestore ==="
+MATCH_LEAGUE=$(firestore_get_string "matches/$MATCH_ID" "leagueId")
+assert_eq "Match doc has leagueId = $LEAGUE_ID" "$MATCH_LEAGUE" "$LEAGUE_ID"
 
 echo ""
-echo "=== Step 4: GET /leagues/{id}/matches lists the new match ==="
+echo "=== Step 4: GET /leagues/{id}/matches lists the match ==="
 LEAGUES_MATCHES=$(curl -s \
   "$API/leagues/$LEAGUE_ID/matches" \
   -H "Authorization: Bearer $TOKEN_A")
-FOUND_MATCH=$(echo "$LEAGUES_MATCHES" | jq -r --arg mid "$MATCH_ID" '.[] | select(.match_id == $mid) | .league_id // "null"' 2>/dev/null || echo "null")
+FOUND_MATCH=$(echo "$LEAGUES_MATCHES" | jq -r --arg mid "$MATCH_ID" '
+  (.matches // []) | .[] | select(.match_id == $mid) | .league_id // "null"' 2>/dev/null || echo "null")
 assert_eq "League matches list includes new match with leagueId" "$FOUND_MATCH" "$LEAGUE_ID"
 
 echo ""
-echo "=== Step 5: Non-member rejection (400) ==="
-# Reset USER_NON_MEMBER to DISCOVERY first
-reset_play_tab "$USER_NON_MEMBER"
+echo "=== Step 5: Non-member offer is rejected (409) ==="
+# Reset USER_B to DISCOVERY (was in MATCH_SCHEDULED after step 2)
+reset_play_tab "$USER_B"
+# Create a Firestore profile for the non-member so they pass the sender-exists check
+curl -s -X POST "$API/me" \
+  -H "Authorization: Bearer $TOKEN_NON" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"Non Member\",\"sports\":[\"padel\"],\"levels\":{\"padel\":\"beginner\"},\"area\":1}" \
+  > /dev/null 2>&1 || true
+
 NON_MEMBER_RESP=$(curl -s -o /tmp/pr333_nonmember.json -w "%{http_code}" \
-  -X POST "$API/me/offer" \
+  -X POST "$API/me/offers" \
   -H "Authorization: Bearer $TOKEN_NON" \
   -H "Content-Type: application/json" \
   -d "{
-    \"toUid\": \"$USER_B\",
+    \"to_uid\": \"$USER_B\",
     \"sport\": \"padel\",
-    \"matchType\": \"singles\",
-    \"proposedTime\": \"$PROPOSED_TIME\",
-    \"leagueId\": \"$LEAGUE_ID\"
+    \"match_type\": \"singles\",
+    \"proposed_time\": \"$PROPOSED_TIME\",
+    \"league_id\": \"$LEAGUE_ID\"
   }")
-assert_eq "Non-member offer returns 400" "$NON_MEMBER_RESP" "400"
+assert_eq "Non-member offer returns 409" "$NON_MEMBER_RESP" "409"
 
 echo ""
-echo "=== Step 6: Non-existent league returns 400 ==="
+echo "=== Step 6: Non-existent league is rejected (400) ==="
+# Reset USER_A to DISCOVERY (accepted offer may have changed state)
+reset_play_tab "$USER_A"
 FAKE_LEAGUE_RESP=$(curl -s -o /tmp/pr333_fakelg.json -w "%{http_code}" \
-  -X POST "$API/me/offer" \
+  -X POST "$API/me/offers" \
   -H "Authorization: Bearer $TOKEN_A" \
   -H "Content-Type: application/json" \
   -d "{
-    \"toUid\": \"$USER_B\",
+    \"to_uid\": \"$USER_B\",
     \"sport\": \"padel\",
-    \"matchType\": \"singles\",
-    \"proposedTime\": \"$PROPOSED_TIME\",
-    \"leagueId\": \"does-not-exist\"
+    \"match_type\": \"singles\",
+    \"proposed_time\": \"$PROPOSED_TIME\",
+    \"league_id\": \"does-not-exist-league\"
   }")
-assert_eq "Nonexistent league offer returns 400" "$FAKE_LEAGUE_RESP" "400"
+assert_eq "Nonexistent league returns 404" "$FAKE_LEAGUE_RESP" "404"
 
 # ── Teardown ─────────────────────────────────────────────────────────────────
 echo ""
@@ -188,6 +205,7 @@ echo "Teardown: cleaning up match + offer docs and resetting play states..."
   curl -s -X DELETE "$FIRESTORE/matches/$MATCH_ID" > /dev/null 2>&1 || true
 [ "$OFFER_ID" != "null" ] && \
   curl -s -X DELETE "$FIRESTORE/offers/$OFFER_ID" > /dev/null 2>&1 || true
+curl -s -X DELETE "$FIRESTORE/users/$USER_NON_MEMBER" > /dev/null 2>&1 || true
 reset_play_tab "$USER_A"
 reset_play_tab "$USER_B"
 echo "  Done."
