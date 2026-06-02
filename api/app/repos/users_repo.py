@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from google.api_core.exceptions import AlreadyExists
+from google.api_core.exceptions import Conflict
 
 from app.repos.base import RepoBase
 from app.repos.mappers import to_private_user_profile, to_public_user_profile
@@ -36,7 +36,7 @@ class UsersRepo(RepoBase):
         """Write a new user document atomically; raises ValueError if uid already exists."""
         try:
             self.client.collection("users").document(uid).create(doc)
-        except AlreadyExists:
+        except Conflict:
             raise ValueError("already_registered")
 
     def update_play_tab(self, uid: str, updates: dict) -> None:
