@@ -310,6 +310,156 @@ class TestSendOfferLeagueValidation:
         with pytest.raises(ValueError, match="Recipient is not an active member"):
             play_service_with_leagues.send_offer("sender_uid", request)
 
+    def test_send_doubles_offer_rejects_non_member_sender_partner(
+        self,
+        play_service_with_leagues,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_leagues_repo,
+    ):
+        """Doubles: sender's partner is not a league member → ValueError."""
+        from app.models.enums import (
+            AvailabilityEnum,
+            BroadcastStatusEnum,
+            BroadcastTypeEnum,
+            CourtStatusEnum,
+        )
+        from app.models.play import Broadcast, BroadcastLocation
+
+        now = datetime.now(timezone.utc)
+
+        # Set up user docs: sender, recipient, sender_partner, broadcast_partner
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Sender",
+                "rankings": {},
+                "playTab": {"state": "BROADCAST_ACTIVE"},
+            },
+            {
+                "name": "Recipient",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "bcast_doubles",
+                },
+            },
+            {"name": "Sender Partner", "rankings": {}, "playTab": {}},
+            {"name": "Broadcast Partner", "rankings": {}, "playTab": {}},
+        ]
+
+        mock_broadcast = Broadcast(
+            broadcast_id="bcast_doubles",
+            owner_uid="recipient_uid",
+            owner_name="Recipient",
+            sport=SportEnum.TENNIS,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+            partner_uid="broadcast_partner_uid",
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=now + timedelta(hours=1),
+            created_at=now - timedelta(minutes=5),
+            location=BroadcastLocation(area=1),
+        )
+        mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
+
+        mock_leagues_repo.get_by_id.return_value = _active_league()
+        # sender=active, recipient=active, sender_partner=None (not a member)
+        mock_leagues_repo.get_member.side_effect = [
+            _active_member(),  # sender
+            _active_member(),  # recipient
+            None,  # sender's partner — not a member
+        ]
+
+        request = SendOfferRequest(
+            to_uid="recipient_uid",
+            sport=SportEnum.TENNIS,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="sender_partner_uid",
+            source_broadcast_id="bcast_doubles",
+            proposed_time=now + timedelta(hours=2),
+            league_id="league_001",
+        )
+        with pytest.raises(ValueError, match="Sender partner is not an active member"):
+            play_service_with_leagues.send_offer("sender_uid", request)
+
+    def test_send_doubles_offer_rejects_non_member_recipient_partner(
+        self,
+        play_service_with_leagues,
+        mock_users_repo,
+        mock_broadcasts_repo,
+        mock_leagues_repo,
+    ):
+        """Doubles: recipient's partner (from broadcast) is not a league member → ValueError."""
+        from app.models.enums import (
+            AvailabilityEnum,
+            BroadcastStatusEnum,
+            BroadcastTypeEnum,
+            CourtStatusEnum,
+        )
+        from app.models.play import Broadcast, BroadcastLocation
+
+        now = datetime.now(timezone.utc)
+
+        mock_users_repo.get_user_doc.side_effect = [
+            {
+                "name": "Sender",
+                "rankings": {},
+                "playTab": {"state": "BROADCAST_ACTIVE"},
+            },
+            {
+                "name": "Recipient",
+                "rankings": {},
+                "playTab": {
+                    "state": "BROADCAST_ACTIVE",
+                    "activeBroadcastId": "bcast_doubles",
+                },
+            },
+            {"name": "Sender Partner", "rankings": {}, "playTab": {}},
+            {"name": "Broadcast Partner", "rankings": {}, "playTab": {}},
+        ]
+
+        mock_broadcast = Broadcast(
+            broadcast_id="bcast_doubles",
+            owner_uid="recipient_uid",
+            owner_name="Recipient",
+            sport=SportEnum.TENNIS,
+            match_type=MatchTypeEnum.DOUBLES,
+            broadcast_type=BroadcastTypeEnum.FIND_OPPONENT,
+            partner_uid="broadcast_partner_uid",
+            availability=AvailabilityEnum.TODAY,
+            court_status=CourtStatusEnum.HAVE_COURT,
+            status=BroadcastStatusEnum.ACTIVE,
+            expires_at=now + timedelta(hours=1),
+            created_at=now - timedelta(minutes=5),
+            location=BroadcastLocation(area=1),
+        )
+        mock_broadcasts_repo.get_by_id.return_value = mock_broadcast
+
+        mock_leagues_repo.get_by_id.return_value = _active_league()
+        # sender=active, recipient=active, sender_partner=active, broadcast_partner=None
+        mock_leagues_repo.get_member.side_effect = [
+            _active_member(),  # sender
+            _active_member(),  # recipient
+            _active_member(),  # sender's partner
+            None,  # recipient's partner (broadcast) — not a member
+        ]
+
+        request = SendOfferRequest(
+            to_uid="recipient_uid",
+            sport=SportEnum.TENNIS,
+            match_type=MatchTypeEnum.DOUBLES,
+            partner_uid="sender_partner_uid",
+            source_broadcast_id="bcast_doubles",
+            proposed_time=now + timedelta(hours=2),
+            league_id="league_001",
+        )
+        with pytest.raises(
+            ValueError, match="Recipient partner is not an active member"
+        ):
+            play_service_with_leagues.send_offer("sender_uid", request)
+
 
 # ---------------------------------------------------------------------------
 # accept_offer tests — league_id flows to match

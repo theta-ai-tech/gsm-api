@@ -810,6 +810,31 @@ class PlayService:
             if not broadcast_partner_doc:
                 raise ValueError("Broadcast partner user not found")
 
+        # League membership validation for doubles partners.
+        # The sender/recipient were already validated in the league block above.
+        # For doubles we also need the sender's partner and the recipient's partner
+        # (carried on the source broadcast) to be ACTIVE league members.
+        if (
+            request.match_type == MatchTypeEnum.DOUBLES
+            and request.league_id
+            and self.leagues_repo is not None
+        ):
+            partner_uid = request.partner_uid  # already validated non-None above
+            if partner_uid:
+                partner_member = self.leagues_repo.get_member(request.league_id, partner_uid)
+                if partner_member is None or partner_member.status != LeagueMemberStatusEnum.ACTIVE:
+                    raise ValueError("Sender partner is not an active member of the league")
+            if source_broadcast is not None and source_broadcast.partner_uid:
+                recipient_partner_uid = source_broadcast.partner_uid
+                recipient_partner_member = self.leagues_repo.get_member(
+                    request.league_id, recipient_partner_uid
+                )
+                if (
+                    recipient_partner_member is None
+                    or recipient_partner_member.status != LeagueMemberStatusEnum.ACTIVE
+                ):
+                    raise ValueError("Recipient partner is not an active member of the league")
+
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=5)  # 5 minute TTL
 
