@@ -77,6 +77,82 @@ curl -s http://localhost:8000/ready
 
 ---
 
+## `POST /me`
+
+### Purpose
+Create a new user profile on first onboarding. Called by the iOS onboarding wizard after
+the user authenticates with Firebase.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`).
+
+### Behavior
+- Derives `registrationTier` server-side from the supplied `levels` per sport using the
+  `beginner→amateur / intermediate→intermediate / advanced→advanced / pro→competitive` mapping.
+  The client cannot set `registrationTier` directly.
+- Sets initial `pts` to `tier_config.get_floor(registrationTier)` per sport.
+- Sets `playTab.state` to `DISCOVERY`.
+- If `email` is present in the Firebase token, it is used; otherwise the `email` field
+  in the request body is required.
+- Returns `409` if a profile for `uid` already exists (idempotency guard).
+
+### Request body
+```json
+{
+  "name": "Alex",
+  "email": "alex@example.com",
+  "sports": ["padel", "tennis"],
+  "levels": {"padel": "intermediate", "tennis": "beginner"},
+  "area": 101,
+  "profile_url": "https://example.com/avatar.png"
+}
+```
+
+### Example call
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Alex","sports":["padel"],"levels":{"padel":"intermediate"},"area":101}' \
+  http://localhost:8000/me
+```
+
+### Example success response (`201`)
+```json
+{
+  "uid": "user_abc123",
+  "name": "Alex",
+  "email": "alex@example.com",
+  "profile_url": null,
+  "is_pro": false,
+  "rankings": {
+    "padel": {"sport": "padel", "pts": 2000, "tier": "intermediate", "registration_tier": "intermediate"},
+    "tennis": null,
+    "pickleball": null
+  },
+  "preferences": {
+    "area": 101,
+    "levels": {"padel": "intermediate", "tennis": null, "pickleball": null},
+    "sports": ["padel"],
+    "feed_opt_out": false
+  },
+  "leagues_active": [],
+  "leagues_completed": [],
+  "upcoming_matches": [],
+  "completed_matches": [],
+  "journal_recent": [],
+  "cursors": null,
+  "north_star_goal": null
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `409` profile already exists for this uid
+- `422` email not in token and not in request body; or required field missing; or declared sport has no level
+
+---
+
 ## `GET /users/{uid}`
 
 ### Purpose
