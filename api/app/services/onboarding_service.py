@@ -31,11 +31,7 @@ class OnboardingService:
         if not email:
             raise ValueError("email_required")
 
-        # 2. Check duplicate
-        if self.users_repo.get_user_doc(uid) is not None:
-            raise ValueError("already_registered")
-
-        # 3. Build per-sport rankings (camelCase for Firestore)
+        # 2. Build per-sport rankings (camelCase for Firestore)
         tier_config = self.tier_config_repo.get()
         rankings: dict = {}
         for sport in request.sports:
@@ -54,18 +50,18 @@ class OnboardingService:
                 "personalBest": None,
             }
 
-        # 4. Build levels map (only declared sports)
+        # 3. Build levels map (only declared sports)
         levels_map: dict = {
             sport.value: getattr(request.levels, sport.value).value for sport in request.sports
         }
 
-        # 5. Build full Firestore document (camelCase — mappers expect this)
+        # 4. Build full Firestore document (camelCase — mappers expect this)
         now = datetime.now(timezone.utc)
         doc: dict = {
             "uid": uid,
             "name": request.name,
             "email": str(email),
-            "profileUrl": request.profile_url or token_picture,
+            "profileUrl": str(request.profile_url) if request.profile_url else token_picture,
             "isPro": False,
             "phone": None,
             "rankings": rankings,
@@ -93,7 +89,7 @@ class OnboardingService:
             },
         }
 
-        # 6. Persist and return
+        # 5. Persist and return
         self.users_repo.create_profile(uid, doc)
         profile = self.users_repo.get_private_profile(uid)
         assert profile is not None

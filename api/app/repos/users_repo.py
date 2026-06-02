@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from google.api_core.exceptions import AlreadyExists
 
 from app.repos.base import RepoBase
 from app.repos.mappers import to_private_user_profile, to_public_user_profile
@@ -32,8 +33,11 @@ class UsersRepo(RepoBase):
         return profile.leagues_active, profile.leagues_completed
 
     def create_profile(self, uid: str, doc: dict) -> None:
-        """Write a new user document. Caller must verify non-existence first."""
-        self.client.collection("users").document(uid).set(doc)
+        """Write a new user document atomically; raises ValueError if uid already exists."""
+        try:
+            self.client.collection("users").document(uid).create(doc)
+        except AlreadyExists:
+            raise ValueError("already_registered")
 
     def update_play_tab(self, uid: str, updates: dict) -> None:
         """

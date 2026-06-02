@@ -170,17 +170,20 @@ class TestRegisterMe:
         assert response.status_code == 422
 
     def test_empty_sports_list_returns_422(self, client_with_email):
-        """sports=[] passes Pydantic (no constraint yet) but service should still work;
-        this test documents the boundary — an empty list produces no rankings.
-        The validator only checks that declared sports have levels, so empty [] is valid
-        at the model layer. We verify 201 is returned (service mock not raising)."""
-        client, svc = client_with_email
+        """sports=[] is rejected by Field(min_length=1) at the model layer."""
+        client, _ = client_with_email
         payload = {
             "name": "Test",
             "sports": [],
             "levels": {},
             "area": 1,
         }
-        # Service mock is not configured to raise, so 201
         response = client.post("/me", json=payload)
-        assert response.status_code == 201
+        assert response.status_code == 422
+
+    def test_invalid_profile_url_returns_422(self, client_with_email):
+        """profile_url that is not a valid URL is rejected by Pydantic (HttpUrl)."""
+        client, _ = client_with_email
+        payload = {**_HAPPY_PAYLOAD, "profile_url": "not-a-url"}
+        response = client.post("/me", json=payload)
+        assert response.status_code == 422

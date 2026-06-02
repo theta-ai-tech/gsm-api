@@ -1,4 +1,4 @@
-from pydantic import EmailStr, model_validator
+from pydantic import EmailStr, Field, HttpUrl, model_validator
 
 from app.models.base import GsmBaseModel
 from app.models.common import PerSportLevels
@@ -8,10 +8,10 @@ from app.models.enums import SportEnum
 class RegisterMeRequest(GsmBaseModel):
     name: str
     email: EmailStr | None = None
-    sports: list[SportEnum]
+    sports: list[SportEnum] = Field(min_length=1)
     levels: PerSportLevels
     area: int
-    profile_url: str | None = None
+    profile_url: HttpUrl | None = None
 
     @model_validator(mode="after")
     def levels_cover_sports(self) -> "RegisterMeRequest":
