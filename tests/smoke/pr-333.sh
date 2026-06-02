@@ -86,10 +86,28 @@ firestore_get_string() {
 }
 
 # ── Token acquisition ────────────────────────────────────────────────────────
+# Robust helper: looks up the user's existing Auth email (handles emulator
+# restarts where seeded users have gsm.local emails), falling back to creating
+# a fresh account with @example.com for users that don't exist yet.
+get_token_for_uid() {
+  local uid="$1"
+  local fallback_email="${uid}@example.com"
+  local password="test_pass_123"
+  local auth_host="${FIREBASE_AUTH_EMULATOR_HOST:-127.0.0.1:9099}"
+  local existing_email
+  existing_email=$(curl -s -X POST \
+    "http://${auth_host}/identitytoolkit.googleapis.com/v1/accounts:lookup?key=fake-api-key" \
+    -H "Authorization: Bearer owner" \
+    -H "Content-Type: application/json" \
+    -d "{\"localId\": [\"$uid\"]}" | jq -r '.users[0].email // empty' 2>/dev/null || true)
+  local email="${existing_email:-$fallback_email}"
+  bash "$REPO_ROOT/scripts/get_emu_token.sh" "$uid" "$email" "$password" -t 2>/dev/null
+}
+
 echo "Acquiring tokens..."
-TOKEN_A=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" "$USER_A" -t 2>/dev/null)
-TOKEN_B=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" "$USER_B" -t 2>/dev/null)
-TOKEN_NON=$(bash "$REPO_ROOT/scripts/get_emu_token.sh" "$USER_NON_MEMBER" "${USER_NON_MEMBER}@example.com" "test_pass_123" -t 2>/dev/null)
+TOKEN_A=$(get_token_for_uid "$USER_A")
+TOKEN_B=$(get_token_for_uid "$USER_B")
+TOKEN_NON=$(get_token_for_uid "$USER_NON_MEMBER")
 
 if [ -z "$TOKEN_A" ] || [ -z "$TOKEN_B" ]; then
   echo "ERROR: Could not get auth tokens. Are emulators running and seed applied?"
