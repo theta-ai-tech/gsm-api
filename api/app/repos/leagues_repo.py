@@ -32,6 +32,19 @@ class LeaguesRepo(RepoBase):
             return None
         return to_league(data, league_id=league_id)
 
+    def get_member(self, league_id: str, uid: str) -> Optional[LeagueMember]:
+        doc = (
+            self.client.collection("leagues")
+            .document(league_id)
+            .collection("members")
+            .document(uid)
+            .get()
+        )
+        data = self._doc_to_dict(doc)
+        if data is None:
+            return None
+        return to_league_member(data, uid=uid)
+
     def list_members(self, league_id: str, limit: int = 200) -> List[LeagueMember]:
         query = (
             self.client.collection("leagues")

@@ -563,6 +563,7 @@ def to_offer(doc: dict[str, Any], offer_id: str | None = None) -> Offer:
         court_location=doc.get("courtLocation"),
         venue_ref=_parse_venue_ref(doc.get("venueRef")),
         source_broadcast_id=doc.get("sourceBroadcastId"),
+        league_id=doc.get("leagueId"),
         message=doc.get("message"),
         status=OfferStatusEnum(status_val),
         expires_at=_require(doc, "expiresAt"),

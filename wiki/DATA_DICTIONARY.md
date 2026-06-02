@@ -620,6 +620,7 @@ Purpose: match proposals (challenges) sent between users. An offer may target an
 | toName | string | required | — | cache | — | Denormalized recipient name. |
 | toRanking | map | optional | — | cache | — | Denormalized `{sport, pts}` from recipient. |
 | matchId | string | optional | — | canonical | — | Set when status transitions to `accepted`; references the created match. |
+| leagueId | string | optional | — | canonical | — | When set, the offer is a league challenge; both sender + recipient must be ACTIVE members of the league. Propagated to the created match on acceptance. |
 
 ### Required composite indexes
 - Pending offers by recipient: `toUid` (ASC), `status` (ASC), `createdAt` (ASC)
