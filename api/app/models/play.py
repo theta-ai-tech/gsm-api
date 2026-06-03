@@ -97,6 +97,7 @@ class Offer(GsmBaseModel):
     court_location: str | None = None
     venue_ref: VenueRef | None = None
     source_broadcast_id: str | None = None
+    league_id: str | None = None
     message: str | None = None
     status: OfferStatusEnum
     expires_at: datetime
@@ -157,6 +158,7 @@ class SendOfferRequest(GsmBaseModel):
     venue_ref: VenueRef | None = None
     source_broadcast_id: str | None = None
     message: str | None = None
+    league_id: str | None = None
 
     @model_validator(mode="after")
     def _validate_doubles(self) -> "SendOfferRequest":

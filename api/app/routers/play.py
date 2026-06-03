@@ -8,11 +8,13 @@ from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from app.dependencies.repos import (
     get_broadcasts_repo,
     get_firestore_client,
+    get_leagues_repo,
     get_matches_repo,
     get_notification_intent_repo,
     get_offers_repo,
     get_users_repo,
 )
+from app.repos.leagues_repo import LeaguesRepo
 from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.models.enums import MatchTypeEnum
 from app.models.play import (
@@ -41,6 +43,7 @@ def get_play_service(
     offers_repo: OffersRepo = Depends(get_offers_repo),
     firestore_client: firestore.Client = Depends(get_firestore_client),
     notification_intent_repo: NotificationIntentRepo = Depends(get_notification_intent_repo),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
 ) -> PlayService:
     """Dependency to get PlayService instance."""
     return PlayService(
@@ -50,6 +53,7 @@ def get_play_service(
         offers_repo,
         firestore_client,
         notification_intent_repo=notification_intent_repo,
+        leagues_repo=leagues_repo,
     )
 
 

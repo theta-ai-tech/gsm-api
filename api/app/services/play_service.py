@@ -21,6 +21,8 @@ from app.models.enums import (
     BroadcastStatusEnum,
     BroadcastTypeEnum,
     CourtStatusEnum,
+    LeagueMemberStatusEnum,
+    LeagueStatusEnum,
     MatchStatusEnum,
     MatchTypeEnum,
     OfferStatusEnum,
@@ -45,8 +47,9 @@ from app.models.play import (
     MeStateParticipant,
     MeStatePrimary,
     MeStateResponse,
-    OpponentSummary,
+    Offer,
     OfferActionResponse,
+    OpponentSummary,
     OutgoingOfferPayload,
     PendingOfferSummary,
     PostMatchConfirmRequiredPayload,
@@ -56,6 +59,7 @@ from app.models.play import (
     SendOfferResponse,
 )
 from app.repos.broadcasts_repo import BroadcastsRepo
+from app.repos.leagues_repo import LeaguesRepo
 from app.repos.mappers import _parse_sport_ranking
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
@@ -105,6 +109,7 @@ class PlayService:
         offers_repo: OffersRepo,
         firestore_client: firestore.Client,
         notification_intent_repo: NotificationIntentRepo | None = None,
+        leagues_repo: LeaguesRepo | None = None,
     ):
         self.users_repo = users_repo
         self.broadcasts_repo = broadcasts_repo
@@ -112,6 +117,7 @@ class PlayService:
         self.offers_repo = offers_repo
         self.client = firestore_client
         self.notification_intent_repo = notification_intent_repo
+        self.leagues_repo = leagues_repo
 
     def _emit_notification_intent(self, intent: PlayNotificationIntent) -> None:
         if self.notification_intent_repo is None:
@@ -732,6 +738,21 @@ class PlayService:
         if request.source_broadcast_id and request.source_broadcast_id != recipient_broadcast_id:
             raise ValueError("sourceBroadcastId is not the recipient's active broadcast")
 
+        # League validation: if league_id is provided, both sender and recipient must
+        # be ACTIVE members of an ACTIVE league.
+        if request.league_id and self.leagues_repo is not None:
+            league = self.leagues_repo.get_by_id(request.league_id)
+            if league is None:
+                raise ValueError("League not found")
+            if league.status != LeagueStatusEnum.ACTIVE:
+                raise ValueError(f"League is not active (status={league.status.value})")
+            sender_member = self.leagues_repo.get_member(request.league_id, from_uid)
+            if sender_member is None or sender_member.status != LeagueMemberStatusEnum.ACTIVE:
+                raise ValueError("Sender is not an active member of the league")
+            recipient_member = self.leagues_repo.get_member(request.league_id, request.to_uid)
+            if recipient_member is None or recipient_member.status != LeagueMemberStatusEnum.ACTIVE:
+                raise ValueError("Recipient is not an active member of the league")
+
         # Doubles validation (DBL-4).
         # 1. If challenging a broadcast, the offer's match_type must match the
         #    broadcast's match_type (you can't send a singles challenge to a
@@ -789,6 +810,31 @@ class PlayService:
             if not broadcast_partner_doc:
                 raise ValueError("Broadcast partner user not found")
 
+        # League membership validation for doubles partners.
+        # The sender/recipient were already validated in the league block above.
+        # For doubles we also need the sender's partner and the recipient's partner
+        # (carried on the source broadcast) to be ACTIVE league members.
+        if (
+            request.match_type == MatchTypeEnum.DOUBLES
+            and request.league_id
+            and self.leagues_repo is not None
+        ):
+            partner_uid = request.partner_uid  # already validated non-None above
+            if partner_uid:
+                partner_member = self.leagues_repo.get_member(request.league_id, partner_uid)
+                if partner_member is None or partner_member.status != LeagueMemberStatusEnum.ACTIVE:
+                    raise ValueError("Sender partner is not an active member of the league")
+            if source_broadcast is not None and source_broadcast.partner_uid:
+                recipient_partner_uid = source_broadcast.partner_uid
+                recipient_partner_member = self.leagues_repo.get_member(
+                    request.league_id, recipient_partner_uid
+                )
+                if (
+                    recipient_partner_member is None
+                    or recipient_partner_member.status != LeagueMemberStatusEnum.ACTIVE
+                ):
+                    raise ValueError("Recipient partner is not an active member of the league")
+
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=5)  # 5 minute TTL
 
@@ -822,6 +868,7 @@ class PlayService:
             "courtLocation": request.court_location,
             "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
             "sourceBroadcastId": request.source_broadcast_id,
+            "leagueId": request.league_id,
             "message": request.message,
             "status": "pending",
             "expiresAt": expires_at,
@@ -917,6 +964,34 @@ class PlayService:
             expires_at=expires_at,
             created_at=now,
         )
+
+    def _build_match_data(
+        self,
+        offer: Offer,
+        match_type: MatchTypeEnum,
+        participants: list[dict[str, Any]],
+        participant_uids: list[str],
+        participant_pair: str | None,
+        venue_ref: Any,
+    ) -> dict[str, Any]:
+        """Build the match document dict from an accepted offer.
+
+        Both singles and doubles paths call this helper to ensure the match doc
+        shape is consistent and ``leagueId`` is always propagated from the offer.
+        """
+        return {
+            "sport": offer.sport.value,
+            "status": MatchStatusEnum.SCHEDULED.value,
+            "matchType": match_type.value,
+            "scheduledAt": offer.proposed_time,
+            "participants": participants,
+            "participantUids": participant_uids,
+            "participantPair": participant_pair,
+            "resultSubmittedBy": [],
+            "leagueId": offer.league_id,
+            "courtId": None,
+            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+        }
 
     # ===== POST /me/offers/{offer_id}/accept =====
 
@@ -1054,49 +1129,41 @@ class PlayService:
                     "displayName": sender_partner_display_name,
                 },
             ]
-            match_data: dict[str, Any] = {
-                "sport": offer.sport.value,
-                "status": MatchStatusEnum.SCHEDULED.value,
-                "matchType": MatchTypeEnum.DOUBLES.value,
-                "scheduledAt": offer.proposed_time,
-                "participants": participants,
-                "participantUids": uids,
+            match_data: dict[str, Any] = self._build_match_data(
+                offer=offer,
+                match_type=MatchTypeEnum.DOUBLES,
+                participants=participants,
+                participant_uids=uids,
                 # participant_pair is meaningless for 4-player matches.
-                "participantPair": None,
-                "resultSubmittedBy": [],
-                "leagueId": None,
-                "courtId": None,
-                "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
-            }
+                participant_pair=None,
+                venue_ref=venue_ref,
+            )
             participant_uids_to_update = uids
         else:
-            match_data = {
-                "sport": offer.sport.value,
-                "status": MatchStatusEnum.SCHEDULED.value,
-                "matchType": MatchTypeEnum.SINGLES.value,
-                "scheduledAt": offer.proposed_time,
-                "participants": [
-                    {
-                        "uid": offer.from_uid,
-                        "team": None,
-                        "role": ParticipantRoleEnum.PLAYER.value,
-                        "displayName": sender_display_name,
-                    },
-                    {
-                        "uid": offer.to_uid,
-                        "team": None,
-                        "role": ParticipantRoleEnum.PLAYER.value,
-                        "displayName": recipient_display_name,
-                    },
-                ],
-                "participantUids": [offer.from_uid, offer.to_uid],
-                "participantPair": compute_participant_pair([offer.from_uid, offer.to_uid]),
-                "resultSubmittedBy": [],
-                "leagueId": None,
-                "courtId": None,
-                "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
-            }
-            participant_uids_to_update = [offer.from_uid, offer.to_uid]
+            singles_participants: list[dict[str, Any]] = [
+                {
+                    "uid": offer.from_uid,
+                    "team": None,
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": sender_display_name,
+                },
+                {
+                    "uid": offer.to_uid,
+                    "team": None,
+                    "role": ParticipantRoleEnum.PLAYER.value,
+                    "displayName": recipient_display_name,
+                },
+            ]
+            singles_uids = [offer.from_uid, offer.to_uid]
+            match_data = self._build_match_data(
+                offer=offer,
+                match_type=MatchTypeEnum.SINGLES,
+                participants=singles_participants,
+                participant_uids=singles_uids,
+                participant_pair=compute_participant_pair(singles_uids),
+                venue_ref=venue_ref,
+            )
+            participant_uids_to_update = singles_uids
 
         # Transactional write
         transaction = self.client.transaction()
