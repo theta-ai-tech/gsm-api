@@ -3,6 +3,14 @@
 # Generated: 2026-06-09
 # Usage: bash tests/smoke/pr-334.sh
 #
+# NOTE: This is a standings-endpoint smoke test only.
+# It verifies that GET /leagues/{id}/standings returns correct ordering when member
+# stats are seeded directly via the Firestore emulator REST API.
+# It does NOT exercise the full LGM-2 end-to-end flow (offer → accept →
+# verify-score → trigger → standings). That flow is covered by the integration
+# tests in tests/integration/test_lgm2_league_match_scoring_integration.py
+# and can be run with: make test-int
+#
 # Requires: make emu-all running + API started from the PR worktree.
 # The smoke-test skill starts the API automatically.
 
