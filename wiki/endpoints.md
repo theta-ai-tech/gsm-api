@@ -689,9 +689,14 @@ Required.
   "sport": "tennis",
   "proposedTime": "2026-02-03T18:00:00Z",
   "courtLocation": "Central Court, Athens",
-  "message": "Up for a game?"
+  "message": "Up for a game?",
+  "leagueId": null
 }
 ```
+
+Field rules:
+- `leagueId`: optional string or `null`; when set, tags the offer and resulting match as a league
+  match; both parties must be active members of the referenced league.
 
 ### Behavior
 - Creates `offers/{id}` doc (status=pending, expiresAt=now+5min, denormalized fields from both users).
