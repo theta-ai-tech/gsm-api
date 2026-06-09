@@ -75,14 +75,15 @@ curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "fields": {
-      "name":            {"stringValue": "Test League LGM-3"},
-      "sport":           {"stringValue": "padel"},
-      "status":          {"stringValue": "open"},
-      "owner_uid":       {"stringValue": "user_ignatios"},
-      "max_players":     {"integerValue": "16"},
-      "current_players": {"integerValue": "0"},
-      "region":          {"stringValue": "athens"},
-      "tier":            {"stringValue": "intermediate"}
+      "name":           {"stringValue": "Test League LGM-3"},
+      "sport":          {"stringValue": "padel"},
+      "status":         {"stringValue": "open"},
+      "ownerUid":       {"stringValue": "user_ignatios"},
+      "maxPlayers":     {"integerValue": "16"},
+      "currentPlayers": {"integerValue": "0"},
+      "region":         {"stringValue": "athens"},
+      "tier":           {"stringValue": "intermediate"},
+      "startDate":      {"timestampValue": "2026-07-01T00:00:00Z"}
     }
   }' > /dev/null
 echo "  seeded league: $LEAGUE_ID"
