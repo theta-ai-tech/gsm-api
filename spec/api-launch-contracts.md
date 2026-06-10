@@ -223,8 +223,9 @@ Field rules:
 - `source_broadcast_id`: optional — links to an originating broadcast.
 - `message`: optional, max 300 chars.
 - `league_id`: optional string or `null`. When set, the offer and resulting match are tagged as a
-  league match. Both caller and recipient must be active members of the referenced league. The match
-  will appear in league standings once completed.
+  league match. The referenced league must have status `active` (not `open` or `upcoming`). Both
+  caller and recipient must be active members of the referenced league. The match will appear in
+  league standings once completed.
 
 #### Response (`201`, SendOfferResponse)
 
@@ -292,7 +293,7 @@ Response (`201`):
 |------|-----------|
 | `401` | Missing or invalid token |
 | `404` | Target user not found |
-| `409` | Sender not in valid state, or already has an active outgoing offer |
+| `409` | Sender not in valid state, or already has an active outgoing offer; or (when `league_id` is set) league not found, league not `active`, or caller/recipient is not an active league member |
 | `422` | Validation error |
 
 ---
@@ -928,6 +929,6 @@ On success: creates `leagues/{id}/members/{uid}` document and atomically increme
 
 8. **League match creation — no dedicated endpoint:** League matches are not created via a
    dedicated endpoint. They use the standard offer flow (`POST /me/offers` with `league_id` set,
-   introduced in LGM-1 / PR #333). Both offer sender and recipient must be active members of the
-   referenced league. The resulting match carries `league_id` and counts toward league standings
-   once completed.
+   introduced in LGM-1 / PR #333). The league must be `active` (not `open` or `upcoming`), and
+   both offer sender and recipient must be active members of the league. The resulting match carries
+   `league_id` and counts toward league standings once completed.
