@@ -292,8 +292,8 @@ Response (`201`):
 | Code | Condition |
 |------|-----------|
 | `401` | Missing or invalid token |
-| `404` | Target user not found |
-| `409` | Sender not in valid state, or already has an active outgoing offer; or (when `league_id` is set) league not found, league not `active`, or caller/recipient is not an active league member |
+| `404` | Target user not found; or (when `league_id` is set) league not found |
+| `409` | Sender not in valid state, or already has an active outgoing offer; or (when `league_id` is set) league not `active`, or caller/recipient is not an active league member |
 | `422` | Validation error |
 
 ---

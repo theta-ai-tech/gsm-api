@@ -696,7 +696,7 @@ Required.
 
 Field rules:
 - `leagueId`: optional string or `null`; when set, tags the offer and resulting match as a league
-  match; both parties must be active members of the referenced league.
+  match; the referenced league must have status `active`, and both parties must be active members.
 
 ### Behavior
 - Creates `offers/{id}` doc (status=pending, expiresAt=now+5min, denormalized fields from both users).
