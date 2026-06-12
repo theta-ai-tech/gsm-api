@@ -65,6 +65,11 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/venues/search` | Free-text venue search (curated + Google Places) |
 | `GET` | `/venues` | List curated venues for a sport |
 | `POST` | `/venues/suggest` | Submit a venue to the moderation queue |
+| `GET` | `/leagues` | Browse leagues with filters and cursor pagination |
+| `GET` | `/leagues/{id}` | Get full league detail |
+| `GET` | `/leagues/{id}/standings` | Get league standings (auth: member) |
+| `GET` | `/leagues/{id}/matches` | List upcoming or completed league matches (auth: member) |
+| `POST` | `/leagues/{id}/join` | Self-serve join a league |
 
 ---
 
@@ -205,7 +210,8 @@ Response (`201`):
   "court_location": "Central Court, Athens",
   "venue_ref": null,
   "source_broadcast_id": null,
-  "message": "Up for a game?"
+  "message": "Up for a game?",
+  "league_id": null
 }
 ```
 
@@ -216,6 +222,10 @@ Field rules:
 - `venue_ref`: optional `VenueRef` object or `null`.
 - `source_broadcast_id`: optional — links to an originating broadcast.
 - `message`: optional, max 300 chars.
+- `league_id`: optional string or `null`. When set, the offer and resulting match are tagged as a
+  league match. The referenced league must have status `active` (not `open` or `upcoming`). Both
+  caller and recipient must be active members of the referenced league. The match will appear in
+  league standings once completed.
 
 #### Response (`201`, SendOfferResponse)
 
@@ -255,7 +265,8 @@ Request:
     "name": "Flisvos Padel Academy",
     "coordinates": {"lat": 37.93, "lng": 23.68}
   },
-  "message": "Doubles game?"
+  "message": "Doubles game?",
+  "league_id": null
 }
 ```
 
@@ -281,8 +292,8 @@ Response (`201`):
 | Code | Condition |
 |------|-----------|
 | `401` | Missing or invalid token |
-| `404` | Target user not found |
-| `409` | Sender not in valid state, or already has an active outgoing offer |
+| `404` | Target user not found; or (when `league_id` is set) league not found |
+| `409` | Sender not in valid state, or already has an active outgoing offer; or (when `league_id` is set) league not `active`, or caller/recipient is not an active league member |
 | `422` | Validation error |
 
 ---
@@ -664,6 +675,226 @@ collection until moderated.
 
 ---
 
+### GET /leagues
+
+**Auth:** Required (Firebase Bearer ID token).
+
+**Query parameters:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `region` | string | No | Filter by region (e.g. `"athens"`) |
+| `sport` | `tennis\|padel\|pickleball` | No | Filter by sport |
+| `status` | `open\|active\|upcoming\|completed` | No | Filter by league status (default: `open`) |
+| `limit` | int (1–50) | No | Max results per page (default: `20`) |
+| `cursor` | string | No | Opaque pagination token from previous response |
+
+**Response (`200`):**
+
+```json
+{
+  "leagues": [
+    {
+      "league_id": "padel-local-2025",
+      "name": "Padel Local 2025",
+      "sport": "padel",
+      "status": "open",
+      "region": "athens",
+      "tier": "intermediate",
+      "max_players": 16,
+      "current_players": 4,
+      "start_date": "2025-06-01T00:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+`next_cursor` is `null` when there are no more pages. Treat it as opaque — do not parse. Returns
+`200` with `leagues: []` when no results match (never `404`).
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Invalid cursor token |
+| `401` | Missing or invalid token |
+| `422` | Validation error (invalid `sport` or `status`, `limit` out of range) |
+
+---
+
+### GET /leagues/{id}
+
+**Auth:** Required. No league membership check — any authenticated user can fetch league detail.
+
+**Path parameter:** `id` — the league's Firestore document ID.
+
+**Request body:** None.
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "padel-local-2025",
+  "name": "Padel Local 2025",
+  "sport": "padel",
+  "season": "2025",
+  "status": "open",
+  "owner_uid": "user_ignatios",
+  "region": "athens",
+  "max_players": 16,
+  "current_players": 4,
+  "start_date": "2025-06-01T00:00:00Z",
+  "end_date": null,
+  "tier": "intermediate",
+  "meta": null
+}
+```
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `404` | League not found |
+
+---
+
+### GET /leagues/{id}/standings
+
+**Auth:** Required. Caller must be an active member of the league.
+
+**Path parameter:** `id` — league ID.
+
+**Request body:** None.
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "padel-local-2025",
+  "standings": [
+    {
+      "rank": 1,
+      "uid": "user_abc",
+      "display_name": "user_abc",
+      "wins": 5,
+      "losses": 1,
+      "tier_ring": null
+    },
+    {
+      "rank": 2,
+      "uid": "user_xyz",
+      "display_name": "user_xyz",
+      "wins": 3,
+      "losses": 2,
+      "tier_ring": null
+    }
+  ]
+}
+```
+
+Sorted by wins (desc), losses (asc), net wins (desc), then name (asc). Dense ranking (tied players
+share a rank; next rank is `+1`, not `+gap`).
+
+MVP notes: `display_name` falls back to `uid` (will be fixed in issue #325); `tier_ring` is always
+`null` at MVP.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `403` | Caller is not a member of the league |
+| `404` | League not found |
+
+---
+
+### GET /leagues/{id}/matches
+
+**Auth:** Required. Caller must be an active member of the league.
+
+**Path parameter:** `id` — league ID.
+
+**Query parameters:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `upcoming\|completed` | No | Match filter (default: `upcoming`) |
+| `limit` | int (1–50) | No | Max results per page (default: `10`) |
+| `cursor` | string | No | Opaque pagination token from previous response |
+
+**Response (`200`):**
+
+```json
+{
+  "matches": [
+    {
+      "match_id": "match_abc",
+      "league_id": "padel-local-2025",
+      "sport": "padel",
+      "match_type": "singles",
+      "status": "scheduled",
+      "scheduled_at": "2026-06-10T18:00:00Z",
+      "finished_at": null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+`next_cursor` is opaque — do not parse. Returns `200` with `matches: []` when no results match.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Invalid cursor token |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a member of the league |
+| `404` | League not found |
+
+---
+
+### POST /leagues/{id}/join
+
+**Auth:** Required.
+
+**Path parameter:** `id` — league ID.
+
+**Request body:** None.
+
+**Response (`201`, LeagueMember):**
+
+```json
+{
+  "uid": "user_abc",
+  "role": "player",
+  "status": "active",
+  "joined_at": "2026-06-01T10:00:00Z",
+  "stats": null
+}
+```
+
+Preconditions:
+- League must exist.
+- League `status` must be `open` or `upcoming`.
+- Caller must not already be a member.
+- League must not be at full capacity (`current_players >= max_players`, if both are set).
+
+On success: creates `leagues/{id}/members/{uid}` document and atomically increments
+`current_players` on the league document.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `404` | League not found |
+| `409` | Already a member, league not `open`/`upcoming`, or league at full capacity |
+
+---
+
 ## Known Limitations and Deferred Fields
 
 1. **`POST /matches/{id}/verify-score` — dispute resolution:** When the second call disagrees the
@@ -695,3 +926,9 @@ collection until moderated.
    `broadcast_type=find_fourth` and `partner_uid=null` represents a solo player seeking three
    others to fill a doubles game. This is valid and supported at launch. The iOS client should
    render it as "Looking for 3 players" rather than "Looking for 1 opponent".
+
+8. **League match creation — no dedicated endpoint:** League matches are not created via a
+   dedicated endpoint. They use the standard offer flow (`POST /me/offers` with `league_id` set,
+   introduced in LGM-1 / PR #333). The league must be `active` (not `open` or `upcoming`), and
+   both offer sender and recipient must be active members of the league. The resulting match carries
+   `league_id` and counts toward league standings once completed.
