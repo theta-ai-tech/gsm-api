@@ -19,7 +19,7 @@ if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
   VENV_DIR="$REPO_ROOT/.venv"
 else
   MAIN_WT=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree / {print ; exit}')
+    | awk '/^worktree / {print $2; exit}')
   VENV_DIR="$MAIN_WT/.venv"
 fi
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
@@ -92,8 +92,8 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API/health")
 assert_eq "GET /health → 200" "$STATUS" "200"
 
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer $TOKEN" "$API/me")
-assert_eq "GET /me → 200 (Admin SDK reads Firestore despite deny-all)" "$STATUS" "200"
+  -H "Authorization: Bearer $TOKEN" "$API/me/state")
+assert_eq "GET /me/state → 200 (Admin SDK reads Firestore despite deny-all)" "$STATUS" "200"
 
 echo ""
 echo "Test 4: firebase.smoke.json exists and references firestore.rules.dev"
