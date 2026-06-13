@@ -273,6 +273,7 @@ class TestPostLeagueJoin:
                 .get()
             )
             assert member_doc.exists
+            assert member_doc.to_dict().get("uid") == PRIMARY_USER_UID
             # Verify currentPlayers incremented
             league_doc = db.collection("leagues").document(self._HAPPY_LEAGUE_ID).get()
             assert league_doc.to_dict()["currentPlayers"] == 1
@@ -350,7 +351,9 @@ class TestPostLeagueJoin:
                 .get()
             )
             assert member_doc.exists
-            assert member_doc.to_dict().get("displayName") == "Test User"
+            member_fields = member_doc.to_dict()
+            assert member_fields.get("uid") == PRIMARY_USER_UID
+            assert member_fields.get("displayName") == "Test User"
 
             # Verify standings show real name
             standings_resp = client.get(f"/leagues/{_DISPLAY_NAME_LEAGUE_ID}/standings")

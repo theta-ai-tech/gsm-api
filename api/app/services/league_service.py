@@ -30,6 +30,7 @@ class LeagueService:
 
         now = datetime.now(timezone.utc)
         member_data: dict = {
+            "uid": uid,
             "role": LeagueRoleEnum.PLAYER.value,
             "status": LeagueMemberStatusEnum.ACTIVE.value,
             "joinedAt": now,

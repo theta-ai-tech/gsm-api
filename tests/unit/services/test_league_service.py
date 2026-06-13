@@ -184,6 +184,7 @@ class TestJoinLeague:
         set_calls = mock_firestore_client.transaction.return_value.set.call_args_list
         assert len(set_calls) >= 1
         written_data = set_calls[0][0][1]
+        assert written_data.get("uid") == "uid1"
         assert written_data.get("displayName") == "Alice"
 
     def test_open_league_can_join(
