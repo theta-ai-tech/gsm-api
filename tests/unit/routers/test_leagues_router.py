@@ -344,7 +344,7 @@ class TestPostLeagueJoin:
     ):
         mock_league_service.join_league.return_value = self._make_member()
         client.post("/leagues/lg1/join")
-        mock_league_service.join_league.assert_called_once_with("lg1", _UID)
+        mock_league_service.join_league.assert_called_once_with("lg1", _UID, None)
 
     def test_no_auth_returns_401(self, mock_league_service: Mock):
         app.dependency_overrides.pop(get_current_user, None)

@@ -340,24 +340,28 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             role=LeagueRoleEnum.ADMIN,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 8, 15),
+            display_name="Ignatios",
         ),
         LeagueMember(
             uid=USER_ALICE.uid,
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 8, 20),
+            display_name="Alice",
         ),
         LeagueMember(
             uid=USER_BOB.uid,
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 8, 22),
+            display_name="Bob",
         ),
         LeagueMember(
             uid=USER_DIANA.uid,
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2026, 1, 10),
+            display_name="Diana",
         ),
     ],
     "tennis-local-2025": [
@@ -366,12 +370,14 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             role=LeagueRoleEnum.ADMIN,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 3, 15),
+            display_name="Alice",
         ),
         LeagueMember(
             uid=USER_IGNATIOS.uid,
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2025, 3, 20),
+            display_name="Ignatios",
         ),
     ],
     "tennis-completed-2024": [
@@ -380,12 +386,14 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             role=LeagueRoleEnum.ADMIN,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2024, 8, 15),
+            display_name="Alice",
         ),
         LeagueMember(
             uid=USER_IGNATIOS.uid,
             role=LeagueRoleEnum.PLAYER,
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2024, 8, 20),
+            display_name="Ignatios",
         ),
     ],
 }

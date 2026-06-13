@@ -27,6 +27,7 @@ class LeagueMember(GsmBaseModel):
     status: LeagueMemberStatusEnum
     joined_at: datetime
     stats: dict[str, Any] | None = None
+    display_name: str | None = None
 
 
 class LeagueBrowseCard(GsmBaseModel):

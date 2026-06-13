@@ -273,6 +273,7 @@ class TestPostLeagueJoin:
                 .get()
             )
             assert member_doc.exists
+            assert member_doc.to_dict().get("uid") == PRIMARY_USER_UID
             # Verify currentPlayers incremented
             league_doc = db.collection("leagues").document(self._HAPPY_LEAGUE_ID).get()
             assert league_doc.to_dict()["currentPlayers"] == 1
@@ -316,6 +317,53 @@ class TestPostLeagueJoin:
             assert resp.status_code == 409
         finally:
             self._cleanup_league(db, self._FULL_LEAGUE_ID)
+            _restore(prev)
+
+    def test_join_with_display_name_visible_in_standings(self, db):
+        """When a user joins with a display_name, standings should show it instead of uid."""
+        _DISPLAY_NAME_LEAGUE_ID = "test-int-join-displayname"
+        db.collection("leagues").document(_DISPLAY_NAME_LEAGUE_ID).set(
+            self._make_open_league_doc(max_players=10, current_players=0)
+        )
+        prev = dict(app.dependency_overrides)
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+            uid=PRIMARY_USER_UID, email="test@gsm.local", display_name="Test User"
+        )
+        app.dependency_overrides[get_leagues_repo] = lambda: LeaguesRepo(db)
+        app.dependency_overrides[get_league_service] = lambda: LeagueService(
+            LeaguesRepo(db), db
+        )
+        app.dependency_overrides[get_role_service] = lambda: RoleService(db=db)
+        client = TestClient(app)
+        try:
+            # Join the league
+            resp = client.post(f"/leagues/{_DISPLAY_NAME_LEAGUE_ID}/join")
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["display_name"] == "Test User"
+
+            # Verify displayName stored in Firestore member doc
+            member_doc = (
+                db.collection("leagues")
+                .document(_DISPLAY_NAME_LEAGUE_ID)
+                .collection("members")
+                .document(PRIMARY_USER_UID)
+                .get()
+            )
+            assert member_doc.exists
+            member_fields = member_doc.to_dict()
+            assert member_fields.get("uid") == PRIMARY_USER_UID
+            assert member_fields.get("displayName") == "Test User"
+
+            # Verify standings show real name
+            standings_resp = client.get(f"/leagues/{_DISPLAY_NAME_LEAGUE_ID}/standings")
+            assert standings_resp.status_code == 200
+            standings = standings_resp.json()["standings"]
+            assert len(standings) == 1
+            assert standings[0]["display_name"] == "Test User"
+            assert standings[0]["uid"] == PRIMARY_USER_UID
+        finally:
+            self._cleanup_league(db, _DISPLAY_NAME_LEAGUE_ID)
             _restore(prev)
 
 
