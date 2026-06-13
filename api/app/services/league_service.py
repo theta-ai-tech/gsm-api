@@ -15,7 +15,9 @@ class LeagueService:
         self.leagues_repo = leagues_repo
         self.client = firestore_client
 
-    def join_league(self, league_id: str, uid: str) -> LeagueMember:
+    def join_league(
+        self, league_id: str, uid: str, display_name: str | None = None
+    ) -> LeagueMember:
         # Fast pre-checks (non-transactional — stable data)
         league = self.leagues_repo.get_by_id(league_id)
         if league is None:
@@ -27,12 +29,14 @@ class LeagueService:
             )
 
         now = datetime.now(timezone.utc)
-        member_data = {
+        member_data: dict = {
             "role": LeagueRoleEnum.PLAYER.value,
             "status": LeagueMemberStatusEnum.ACTIVE.value,
             "joinedAt": now,
             "stats": None,
         }
+        if display_name is not None:
+            member_data["displayName"] = display_name
 
         transaction = self.client.transaction()
 
@@ -76,19 +80,20 @@ class LeagueService:
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=now,
             stats=None,
+            display_name=display_name,
         )
 
     def get_standings(self, league_id: str) -> list[StandingsEntry]:
         members = self.leagues_repo.list_members(league_id)
 
         # Build sortable rows: (wins, losses, display_name, uid)
-        # display_name falls back to uid — displayName not yet stored in member docs
+        # display_name falls back to uid when not stored in member doc
         rows: list[tuple[int, int, str, str]] = []
         for m in members:
             stats = m.stats or {}
             wins = int(stats.get("wins", 0))
             losses = int(stats.get("losses", 0))
-            rows.append((wins, losses, m.uid, m.uid))
+            rows.append((wins, losses, m.display_name or m.uid, m.uid))
 
         # Sort: wins DESC, losses ASC, (wins-losses) DESC, display_name ASC
         rows.sort(key=lambda r: (-r[0], r[1], -(r[0] - r[1]), r[2]))

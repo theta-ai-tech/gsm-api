@@ -11,6 +11,7 @@ class CurrentUser(BaseModel):
     issuer: str | None = None
     picture: str | None = None
     roles: list[str] | None = None
+    display_name: str | None = None
 
 
 def is_owner(current_user: CurrentUser, target_uid: str) -> bool:

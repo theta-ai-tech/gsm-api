@@ -164,7 +164,7 @@ def join_league(
     league_service: LeagueService = Depends(get_league_service),
 ) -> LeagueMember:
     try:
-        return league_service.join_league(league_id, current_user.uid)
+        return league_service.join_league(league_id, current_user.uid, current_user.display_name)
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg:

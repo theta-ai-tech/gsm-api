@@ -147,12 +147,44 @@ class TestJoinLeague:
         mock_leagues_repo.get_by_id.return_value = _make_league()
         with patch("app.services.league_service.firestore.transactional", lambda f: f):
             _setup_txn_mocks(mock_firestore_client, member_exists=False)
-            result = league_service.join_league("lg1", "uid1")
+            result = league_service.join_league("lg1", "uid1", "Alice")
         assert isinstance(result, LeagueMember)
         assert result.uid == "uid1"
         assert result.role == LeagueRoleEnum.PLAYER
         assert result.status == LeagueMemberStatusEnum.ACTIVE
         assert result.stats is None
+        assert result.display_name == "Alice"
+
+    def test_join_with_no_display_name(
+        self,
+        league_service: LeagueService,
+        mock_leagues_repo: Mock,
+        mock_firestore_client: Mock,
+    ) -> None:
+        mock_leagues_repo.get_by_id.return_value = _make_league()
+        with patch("app.services.league_service.firestore.transactional", lambda f: f):
+            _setup_txn_mocks(mock_firestore_client, member_exists=False)
+            result = league_service.join_league("lg1", "uid1")
+        assert result.display_name is None
+
+    def test_join_writes_display_name_to_firestore(
+        self,
+        league_service: LeagueService,
+        mock_leagues_repo: Mock,
+        mock_firestore_client: Mock,
+    ) -> None:
+        mock_leagues_repo.get_by_id.return_value = _make_league()
+        txn_mock = Mock()
+        mock_firestore_client.transaction.return_value = txn_mock
+        with patch("app.services.league_service.firestore.transactional", lambda f: f):
+            _setup_txn_mocks(mock_firestore_client, member_exists=False)
+            # The transaction object passed to _join_txn is the mock returned by client.transaction()
+            league_service.join_league("lg1", "uid1", "Alice")
+        # txn.set is called with member_ref and member_data containing displayName
+        set_calls = mock_firestore_client.transaction.return_value.set.call_args_list
+        assert len(set_calls) >= 1
+        written_data = set_calls[0][0][1]
+        assert written_data.get("displayName") == "Alice"
 
     def test_open_league_can_join(
         self,
@@ -242,13 +274,19 @@ class TestJoinLeague:
         assert result.uid == "uid1"
 
 
-def _make_member_with_stats(uid: str, wins: int = 0, losses: int = 0) -> LeagueMember:
+def _make_member_with_stats(
+    uid: str,
+    wins: int = 0,
+    losses: int = 0,
+    display_name: str | None = None,
+) -> LeagueMember:
     return LeagueMember(
         uid=uid,
         role=LeagueRoleEnum.PLAYER,
         status=LeagueMemberStatusEnum.ACTIVE,
         joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         stats={"wins": wins, "losses": losses},
+        display_name=display_name,
     )
 
 
@@ -345,6 +383,15 @@ class TestGetStandings:
         ]
         result = league_service.get_standings("lg1")
         assert result[0].display_name == "uid1"
+
+    def test_standings_uses_member_display_name(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("uid1", wins=2, losses=1, display_name="Alice")
+        ]
+        result = league_service.get_standings("lg1")
+        assert result[0].display_name == "Alice"
 
     def test_alphabetical_tiebreak_within_tied_group(
         self, league_service: LeagueService, mock_leagues_repo: Mock

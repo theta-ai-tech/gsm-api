@@ -196,13 +196,16 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
 
 
 def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:
-    return {
+    doc: Dict[str, Any] = {
         "uid": member.uid,
         "role": member.role.value,
         "status": member.status.value,
         "joinedAt": member.joined_at,
         "stats": member.stats or {},
     }
+    if member.display_name is not None:
+        doc["displayName"] = member.display_name
+    return doc
 
 
 def _set_score_to_dict(score: SetScore) -> Dict[str, Any]:

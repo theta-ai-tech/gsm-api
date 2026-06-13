@@ -432,6 +432,7 @@ def to_league_member(doc: dict[str, Any], uid: str | None = None) -> LeagueMembe
         status=LeagueMemberStatusEnum(status_val),
         joined_at=_require(doc, "joinedAt"),
         stats=doc.get("stats"),
+        display_name=doc.get("displayName"),
     )
 
 

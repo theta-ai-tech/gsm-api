@@ -317,6 +317,7 @@ def handle_league_member_upsert(
         "sport": league_data.get("sport"),
         "status": league_data.get("status"),
         "role": after.get("role"),
+        "displayName": after.get("displayName"),
     }
 
     if not summary.get("sport") or not summary.get("status"):

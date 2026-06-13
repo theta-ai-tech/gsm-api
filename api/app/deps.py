@@ -66,6 +66,7 @@ def get_current_user(
         issuer=decoded.get("iss"),
         picture=decoded.get("picture"),
         roles=roles,
+        display_name=decoded.get("name"),
     )
 
 

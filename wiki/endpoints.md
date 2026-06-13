@@ -294,7 +294,7 @@ curl -s \
     {
       "rank": 1,
       "uid": "user_ignatios",
-      "display_name": "user_ignatios",
+      "display_name": "Ignatios",
       "wins": 5,
       "losses": 1,
       "tier_ring": null
@@ -302,7 +302,7 @@ curl -s \
     {
       "rank": 2,
       "uid": "user_sam",
-      "display_name": "user_sam",
+      "display_name": "Sam",
       "wins": 3,
       "losses": 2,
       "tier_ring": null
@@ -312,7 +312,7 @@ curl -s \
 ```
 
 ### Notes
-- `display_name` currently falls back to `uid` — `displayName` is not yet stored in member docs (MVP limitation).
+- `display_name` is the value stored in the member doc at join time (from the Firebase token `name` claim). Falls back to `uid` if no display name was available when the user joined.
 - `tier_ring` is always `null` for MVP.
 
 ### Common error responses
