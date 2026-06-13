@@ -12,7 +12,7 @@ set -uo pipefail
 PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-FIRESTORE="http://127.0.0.1:8082/emulator/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
+FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 
 # ── Venv resolution ──────────────────────────────────────────────────────────
 if [ -f "$REPO_ROOT/.venv/bin/activate" ]; then
@@ -44,7 +44,7 @@ assert_eq() {
 
 # ── Preflight: Firestore emulator ────────────────────────────────────────────
 echo "Preflight: checking Firestore emulator..."
-if ! curl -fsS "http://127.0.0.1:8082/emulator/v1/projects/gsm-dev-f70d0/databases/(default)/documents/" > /dev/null 2>&1; then
+if ! curl -fsS "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/" > /dev/null 2>&1; then
   echo "ERROR: Firestore emulator not reachable at 127.0.0.1:8082. Run 'make emu-all'."
   exit 1
 fi

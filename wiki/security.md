@@ -30,16 +30,31 @@ that:
 - Block writes to server-authoritative fields: `rankings.*`, `registrationTier`, `playTab`, `stats`
 - Allow users to read `leagues/*` and `matches/*` they participate in (by UID membership)
 
-### Dev Rules
+### Dev Rules and Smoke Testing
 
-`firestore.rules.dev` contains allow-all rules for reference. The emulator admin REST
-endpoint (`http://127.0.0.1:8082/emulator/v1/...`) provides unrestricted emulator access
-without needing to swap rule files.
+`firestore.rules.dev` contains allow-all rules for local debugging. `firebase.smoke.json`
+references it so the emulator can be started with those rules for smoke test runs:
+
+```bash
+# Start emulator with allow-all rules — use this when running smoke tests:
+make emu-smoke
+
+# Start emulator with deny-all rules — use this for all other dev work:
+make emu-all
+```
+
+Smoke scripts (`tests/smoke/pr-*.sh`) make direct Firestore REST calls for test setup and
+teardown. These calls hit `/v1/...` which enforces security rules. With deny-all rules active
+(`make emu-all`), setup calls return `PERMISSION_DENIED`. Use `make emu-smoke` instead when
+running smoke scripts.
+
+Integration tests (`make test`) are unaffected — they use `google.cloud.firestore.Client`
+which bypasses rules in the emulator regardless of which rules file is active.
 
 ### Verification
 
 ```bash
-# After make emu-all is running:
+# After make emu-all is running (deny-all rules active):
 bash scripts/verify_firestore_rules.sh
 ```
 

@@ -12,7 +12,7 @@ FAIL=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 API="${API_BASE_URL:-http://127.0.0.1:8317}"
-FIRESTORE="http://127.0.0.1:8082/emulator/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
+FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 LOG_FILE="${LOG_FILE:-/tmp/gsm-api-pr-317.log}"
 
 # ── Log config for INFO-level app events ─────────────────────────────────────

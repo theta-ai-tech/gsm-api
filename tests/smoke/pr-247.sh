@@ -3,7 +3,7 @@
 # Prerequisites: make emu-all (Terminal 1), make seed-emu (Terminal 2)
 set -uo pipefail
 
-BASE="http://127.0.0.1:8082/emulator/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
+BASE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 PASS=0
 FAIL=0
 

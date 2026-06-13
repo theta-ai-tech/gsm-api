@@ -20,7 +20,7 @@ PASS=0
 FAIL=0
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 API="${API_BASE_URL:-http://127.0.0.1:8334}"
-FIRESTORE="http://127.0.0.1:8082/emulator/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
+FIRESTORE="http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents"
 
 _SMOKE_LEAGUE_ID="smoke-test-lgm2-334"
 

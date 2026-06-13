@@ -1,0 +1,12 @@
+{
+  "functions": { "source": "functions", "runtime": "python311" },
+  "firestore": {
+    "rules": "firestore.rules.dev",
+    "indexes": "firestore.indexes.json"
+  },
+  "emulators": {
+    "auth":      { "port": 9099, "host": "127.0.0.1" },
+    "firestore": { "port": 8082, "host": "127.0.0.1" },
+    "ui":        { "enabled": true, "port": 4000 }
+  }
+}

@@ -24,6 +24,7 @@ help:
 	@echo "make api-dev-real     - run API against real Firestore"
 	@echo "make emu-firestore    - start Firestore emulator"
 	@echo "make emu-all          - start Firestore + Auth emulators"
+	@echo "make emu-smoke        - start emulators with allow-all rules (for smoke tests)"
 	@echo "make api-dev-emu      - run API against Firestore emulator"
 	@echo "make api-dev-emu-auth - run API against Firestore + Auth emulators"
 	@echo "make seed             - seed example data into emulator"
@@ -145,6 +146,11 @@ emu-firestore:
 .PHONY: emu-all
 emu-all:
 	firebase emulators:start --only firestore,auth
+
+# Start Firestore + Auth emulators with allow-all rules (for running smoke tests)
+.PHONY: emu-smoke
+emu-smoke:
+	firebase --config firebase.smoke.json emulators:start --only firestore,auth
 
 # --- Dev utilities ---
 # Seed example data into emulator (legacy)
