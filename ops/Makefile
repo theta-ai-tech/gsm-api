@@ -51,6 +51,7 @@ help:
 	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
 	@echo "make cache-integrity-emu - run read-only cache integrity checks on emulator"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
+	@echo "make deploy-rules-dev  - deploy Firestore security rules to dev project"
 
 # --- Python env ---
 # Create virtual env
@@ -234,7 +235,12 @@ test-integration: test-int
 deploy-indexes-dev:
 	@echo "Deploying Firestore indexes to dev project: $(DEV_PROJECT_ID)"
 	firebase deploy --only firestore:indexes --project $(DEV_PROJECT_ID)
-    
+
+# Deploy Firestore security rules to dev project
+.PHONY: deploy-rules-dev
+deploy-rules-dev:
+	firebase deploy --only firestore:rules --project $(DEV_PROJECT_ID)
+
 # Build Docker image
 .PHONY: docker-build
 docker-build:

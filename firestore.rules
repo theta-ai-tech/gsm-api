@@ -1,9 +1,23 @@
-// LOCAL DEV ONLY — DO NOT DEPLOY TO PROD
 rules_version = '2';
+
+// GSM Production Security Rules
+//
+// Access model (confirmed 2026-06-13):
+//   iOS → FastAPI REST endpoints → Firebase Admin SDK → Firestore
+//
+// The Admin SDK bypasses security rules in both production and emulator.
+// The iOS client does not access Firestore directly via the Firebase SDK.
+// All data reads and writes go through the API (endpoints.md).
+//
+// Therefore: deny all direct client access. The Admin SDK still works.
+//
+// If direct Firebase SDK access is ever added (e.g. for real-time
+// notification delivery via issue #329 NTF-2), update these rules and
+// add per-collection, per-field tests before deploying.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
