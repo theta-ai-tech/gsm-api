@@ -24,6 +24,7 @@ help:
 	@echo "make api-dev-real     - run API against real Firestore"
 	@echo "make emu-firestore    - start Firestore emulator"
 	@echo "make emu-all          - start Firestore + Auth emulators"
+	@echo "make emu-smoke        - start emulators with allow-all rules (for smoke tests)"
 	@echo "make api-dev-emu      - run API against Firestore emulator"
 	@echo "make api-dev-emu-auth - run API against Firestore + Auth emulators"
 	@echo "make seed             - seed example data into emulator"
@@ -51,6 +52,7 @@ help:
 	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
 	@echo "make cache-integrity-emu - run read-only cache integrity checks on emulator"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
+	@echo "make deploy-rules-dev  - deploy Firestore security rules to dev project"
 
 # --- Python env ---
 # Create virtual env
@@ -145,6 +147,11 @@ emu-firestore:
 emu-all:
 	firebase emulators:start --only firestore,auth
 
+# Start Firestore + Auth emulators with allow-all rules (for running smoke tests)
+.PHONY: emu-smoke
+emu-smoke:
+	firebase --config firebase.smoke.json emulators:start --only firestore,auth
+
 # --- Dev utilities ---
 # Seed example data into emulator (legacy)
 .PHONY: seed
@@ -234,7 +241,12 @@ test-integration: test-int
 deploy-indexes-dev:
 	@echo "Deploying Firestore indexes to dev project: $(DEV_PROJECT_ID)"
 	firebase deploy --only firestore:indexes --project $(DEV_PROJECT_ID)
-    
+
+# Deploy Firestore security rules to dev project
+.PHONY: deploy-rules-dev
+deploy-rules-dev:
+	firebase deploy --only firestore:rules --project $(DEV_PROJECT_ID)
+
 # Build Docker image
 .PHONY: docker-build
 docker-build:

@@ -1,7 +1,7 @@
 {
   "functions": { "source": "functions", "runtime": "python311" },
   "firestore": {
-    "rules": "firestore.rules",
+    "rules": "firestore.rules.dev",
     "indexes": "firestore.indexes.json"
   },
   "emulators": {
