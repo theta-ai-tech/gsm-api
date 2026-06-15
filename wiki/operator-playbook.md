@@ -270,11 +270,21 @@ for uid in participant_uids:
 Use when ops decides the correct result and wants points awarded. This **reuses the audited scoring
 path** — no manual pts math, no manual `pointHistory` writes.
 
-**Step 1 — reopen the match for confirmation.** Set `status="pending_confirmation"`, write the
-agreed `score` (with the correct `winnerUid`), and set `resultSubmittedBy` to a **single-element**
-array holding only the *first* submitter's uid. This matters: `verify-score` rejects a confirmation
-from a uid already present in `resultSubmittedBy`, so leaving only the first submitter lets the
-**opposing** participant confirm.
+> ⚠️ **The `verify-score` request shape differs by match type.** Singles confirmations carry
+> `winner_uid`; doubles confirmations carry `winner_team` (`"A"` or `"B"`). The request model
+> **rejects the wrong target for the match type** (`winner_uid is not valid for doubles matches; use
+> winner_team`, and vice-versa). Check the disputed match's `matchType` (from Step 0) and follow the
+> matching variant below.
+
+The common idea for both variants: reopen the match to `pending_confirmation`, write the agreed
+score, and reset `resultSubmittedBy` to a **single-element** array holding only the *first*
+submitter's uid. This matters — `verify-score` rejects a confirmation from a uid already present in
+`resultSubmittedBy` (singles) / from a player on the same team as the original submitter (doubles),
+so leaving only the first submitter lets the **opposing** side confirm.
+
+#### B-singles
+
+**Step 1 — reopen for confirmation** (set the agreed `score` with the correct `winnerUid`):
 
 ```bash
 curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
@@ -294,9 +304,35 @@ curl -s -X POST -H "Authorization: Bearer $OPPOSING_TOKEN" -H "Content-Type: app
   -d '{"winner_uid": "{agreedWinnerUid}", "score": {"sets": [{"p1_games": 6, "p2_games": 4}], "winner_uid": "{agreedWinnerUid}"}}'
 ```
 
-The existing scoring path then runs: points are awarded, `pointHistory` is written, the match moves
-to `completed`, and **all participants are auto-released to `DISCOVERY`** — no manual user-doc
-writes needed for Outcome B.
+#### B-doubles
+
+**Step 1 — reopen for confirmation** (set the agreed `score` with the correct `winnerTeam` —
+`"A"` or `"B"`). Reset `resultSubmittedBy` to a single-element array holding **one player from the
+team that submitted first**; confirmation must then come from a player on the *opposing* team:
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/matches/{matchId}?updateMask.fieldPaths=status&updateMask.fieldPaths=resultSubmittedBy" \
+  -d '{"fields": {
+        "status":           {"stringValue": "pending_confirmation"},
+        "resultSubmittedBy": {"arrayValue": {"values": [{"stringValue": "{firstSubmitterUid}"}]}}
+      }}'
+# Also set the agreed score with winnerTeam on the match doc the same way, e.g.
+#   "score": {"mapValue": {"fields": {"winnerTeam": {"stringValue": "A"}, ...sets...}}}
+```
+
+**Step 2 — a player on the opposing team confirms the agreed winning team** (note `winner_team`, not
+`winner_uid`):
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $OPPOSING_TEAM_TOKEN" -H "Content-Type: application/json" \
+  "http://localhost:8000/matches/{matchId}/verify-score" \
+  -d '{"winner_team": "A", "score": {"sets": [{"p1_games": 6, "p2_games": 4}], "winner_team": "A"}}'
+```
+
+For both variants, the existing scoring path then runs: points are awarded, `pointHistory` is
+written, the match moves to `completed`, and **all participants are auto-released to `DISCOVERY`** —
+no manual user-doc writes needed for Outcome B.
 
 ---
 
