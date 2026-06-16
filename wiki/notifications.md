@@ -117,3 +117,21 @@ This separation means:
 - The backend can run without Firebase Messaging credentials.
 - Mobile teams can change their notification strategy (e.g. silent push vs. visible alert) without touching the API.
 - The same intent document can be used to drive both push notifications and in-app notification centers.
+
+## Delivery (planned — option b)
+
+> **Status:** designed, not yet implemented. Intents are written today but **not delivered** to any
+> device. Real push (reaching a backgrounded/closed app) requires a server to call FCM — a client-side
+> Firestore listener only runs while the app is foregrounded.
+
+The chosen target is **backend-owned delivery**: device tokens are stored on the user, and a
+Firestore-triggered Cloud Function calls FCM whenever a `notificationIntents` doc is created. This
+closes the "intents written but never delivered" gap server-side; iOS only has to register its device
+token (`POST /me/device-tokens`).
+
+Full architecture, device-token model, registration API, trigger design, idempotency/pruning rules,
+and the iOS contract are specified in
+**[`plans/plan-push-notifications.md`](../plans/plan-push-notifications.md)**. This work is tracked by
+epic [#329 (NTF-2)](https://github.com/theta-ai-tech/gsm-api/issues/329) and decomposed into issues
+**PUSH-1 … PUSH-7** (label `push-notifications`), scheduled for a post-iOS sprint. This section will be
+updated to describe live behaviour once that sprint lands.
