@@ -187,7 +187,156 @@ Valid values:
 
 ---
 
-## 7. Smoke Tests
+## 7. Disputed Matches — Resolution Runbook
+
+When a score confirmation disagrees (the second `verify-score` caller names a different winner),
+the match moves to `status="disputed"` and **no scoring happens**. There is **no API endpoint to
+transition a match out of `disputed` at MVP** — this is a deliberate scope cut for the Athens beta
+(OPS-DISPUTE-1): disputes are rare, and building an authenticated admin mutation endpoint is out of
+scope for launch. Until that endpoint exists, an operator resolves disputes by writing Firestore
+directly using the procedure below. Revisit post-beta if dispute volume warrants automation.
+
+> **Releasing a participant requires TWO fields**, not one. `/me/state` derives `mode` from the
+> stored `playTab.state` and, for `MATCH_DISPUTED`, loads the match via `playTab.activeMatchId`.
+> A participant is only fully released when **both** `playTab.state="DISCOVERY"` **and**
+> `playTab.activeMatchId=null` are set.
+>
+> **Singles vs doubles divergence:** a singles dispute writes only the match doc — participant
+> `playTab` is untouched, so those users already read `DISCOVERY`. A doubles dispute also sets every
+> participant `playTab.state="MATCH_DISPUTED"` (but does **not** clear `activeMatchId`). The reset
+> below is written to cover both: run it for every uid regardless of each field's current value.
+
+All REST calls below target the Firestore emulator. The `-H "Authorization: Bearer owner"` header
+makes the emulator bypass security rules (the same owner bypass used for the Auth emulator in §3).
+In **production**, perform the identical field writes via the Firebase console or an Admin SDK
+script (the Admin SDK bypasses rules automatically — no owner header needed).
+
+### Step 0 — Inspect the match
+
+Read the disputed match to confirm its status and find every uid that must be released
+(`participantUids`: 2 for singles, 4 for doubles).
+
+```bash
+curl -s -H "Authorization: Bearer owner" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/matches/{matchId}"
+# Expect: fields.status.stringValue == "disputed"
+#         fields.matchType.stringValue == "singles" | "doubles"
+#         fields.participantUids.arrayValue.values == [ {stringValue: ...}, ... ]
+```
+
+The operator resets **every** uid in `participantUids`.
+
+### Outcome A — Void the match (default, recommended for launch)
+
+No winner, no points awarded, no ranking/pts fields change. Use this unless ops has decided the
+correct result.
+
+**Step 1 — mark the match cancelled** (`cancelled` is the terminal `MatchStatusEnum` value):
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/matches/{matchId}?updateMask.fieldPaths=status" \
+  -d '{"fields": {"status": {"stringValue": "cancelled"}}}'
+```
+
+**Step 2 — release each participant.** Run once per uid in `participantUids`, regardless of the
+field's current value. The nested `updateMask.fieldPaths=playTab.state` /
+`playTab.activeMatchId` form updates only those two keys and leaves the rest of `playTab` intact:
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/users/{uid}?updateMask.fieldPaths=playTab.state&updateMask.fieldPaths=playTab.activeMatchId" \
+  -d '{"fields": {"playTab": {"mapValue": {"fields": {
+        "state":         {"stringValue": "DISCOVERY"},
+        "activeMatchId": {"nullValue": null}
+      }}}}}'
+```
+
+No ranking or `pts` fields change. After both steps, `GET /me/state` for each participant returns
+`mode == "DISCOVERY"`.
+
+**Production equivalent** (Admin SDK):
+
+```python
+match_ref.update({"status": "cancelled"})
+for uid in participant_uids:
+    db.collection("users").document(uid).update(
+        {"playTab.state": "DISCOVERY", "playTab.activeMatchId": None}
+    )
+```
+
+### Outcome B — Adjudicate a winner (preserve points)
+
+Use when ops decides the correct result and wants points awarded. This **reuses the audited scoring
+path** — no manual pts math, no manual `pointHistory` writes.
+
+> ⚠️ **The `verify-score` request shape differs by match type.** Singles confirmations carry
+> `winner_uid`; doubles confirmations carry `winner_team` (`"A"` or `"B"`). The request model
+> **rejects the wrong target for the match type** (`winner_uid is not valid for doubles matches; use
+> winner_team`, and vice-versa). Check the disputed match's `matchType` (from Step 0) and follow the
+> matching variant below.
+
+The common idea for both variants: reopen the match to `pending_confirmation`, write the agreed
+score, and reset `resultSubmittedBy` to a **single-element** array holding only the *first*
+submitter's uid. This matters — `verify-score` rejects a confirmation from a uid already present in
+`resultSubmittedBy` (singles) / from a player on the same team as the original submitter (doubles),
+so leaving only the first submitter lets the **opposing** side confirm.
+
+#### B-singles
+
+**Step 1 — reopen for confirmation** (set the agreed `score` with the correct `winnerUid`):
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/matches/{matchId}?updateMask.fieldPaths=status&updateMask.fieldPaths=resultSubmittedBy" \
+  -d '{"fields": {
+        "status":           {"stringValue": "pending_confirmation"},
+        "resultSubmittedBy": {"arrayValue": {"values": [{"stringValue": "{firstSubmitterUid}"}]}}
+      }}'
+# Also set the agreed score/winnerUid on the match doc the same way.
+```
+
+**Step 2 — the opposing participant confirms the agreed winner:**
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $OPPOSING_TOKEN" -H "Content-Type: application/json" \
+  "http://localhost:8000/matches/{matchId}/verify-score" \
+  -d '{"winner_uid": "{agreedWinnerUid}", "score": {"sets": [{"p1_games": 6, "p2_games": 4}], "winner_uid": "{agreedWinnerUid}"}}'
+```
+
+#### B-doubles
+
+**Step 1 — reopen for confirmation** (set the agreed `score` with the correct `winnerTeam` —
+`"A"` or `"B"`). Reset `resultSubmittedBy` to a single-element array holding **one player from the
+team that submitted first**; confirmation must then come from a player on the *opposing* team:
+
+```bash
+curl -s -X PATCH -H "Authorization: Bearer owner" -H "Content-Type: application/json" \
+  "http://127.0.0.1:8082/v1/projects/gsm-dev-f70d0/databases/(default)/documents/matches/{matchId}?updateMask.fieldPaths=status&updateMask.fieldPaths=resultSubmittedBy" \
+  -d '{"fields": {
+        "status":           {"stringValue": "pending_confirmation"},
+        "resultSubmittedBy": {"arrayValue": {"values": [{"stringValue": "{firstSubmitterUid}"}]}}
+      }}'
+# Also set the agreed score with winnerTeam on the match doc the same way, e.g.
+#   "score": {"mapValue": {"fields": {"winnerTeam": {"stringValue": "A"}, ...sets...}}}
+```
+
+**Step 2 — a player on the opposing team confirms the agreed winning team** (note `winner_team`, not
+`winner_uid`):
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $OPPOSING_TEAM_TOKEN" -H "Content-Type: application/json" \
+  "http://localhost:8000/matches/{matchId}/verify-score" \
+  -d '{"winner_team": "A", "score": {"sets": [{"p1_games": 6, "p2_games": 4}], "winner_team": "A"}}'
+```
+
+For both variants, the existing scoring path then runs: points are awarded, `pointHistory` is
+written, the match moves to `completed`, and **all participants are auto-released to `DISCOVERY`** —
+no manual user-doc writes needed for Outcome B.
+
+---
+
+## 8. Smoke Tests
 
 | Script | What it covers | How to run | Requires |
 |--------|---------------|-----------|---------|
@@ -204,7 +353,7 @@ For detailed tool guidance see [wiki/tools.md](tools.md).
 
 ---
 
-## 8. Reset / Re-seed
+## 9. Reset / Re-seed
 
 ```bash
 # Stop the emulator (Ctrl-C in Terminal 1)
@@ -220,7 +369,7 @@ are configured. A bare `make emu-all` always starts clean.
 
 ---
 
-## 9. Manual vs Automated
+## 10. Manual vs Automated
 
 | Operation | Manual / Automated | Notes |
 |-----------|--------------------|-------|
@@ -229,6 +378,7 @@ are configured. A bare `make emu-all` always starts clean.
 | Create demo user (Auth) | **Manual** — `./scripts/get_emu_token.sh` or `signUp` REST call | UIDs `user_*` are Firestore-only |
 | Add / promote a venue | **Manual** — Firestore REST PATCH | No `POST /venues` endpoint yet |
 | Create a league | **Manual** — Firestore REST PATCH | No `POST /leagues` endpoint yet |
+| Resolve a disputed match | **Manual** — Firestore REST PATCH | No API endpoint at MVP (OPS-DISPUTE-1) |
 | Running smoke tests | **Manual** — `./scripts/smoke_*.sh` or `bash tests/smoke/pr-N.sh` | Auto-triggered in QA gate for open PRs |
 | Lint / type checks | **Automated** — GitHub Actions CI on every PR push | Also run locally: `make fmt format type` |
 | API deployment | **Automated** — GitHub Actions deploy on `main` merge | Manual dispatch also available |

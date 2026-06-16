@@ -898,8 +898,14 @@ On success: creates `leagues/{id}/members/{uid}` document and atomically increme
 ## Known Limitations and Deferred Fields
 
 1. **`POST /matches/{id}/verify-score` — dispute resolution:** When the second call disagrees the
-   match moves to `disputed`, but there is no API endpoint for dispute resolution at MVP.
-   Disputed matches require admin intervention via the Firebase console.
+   match moves to `disputed`, but there is **no dispute-resolution API endpoint at MVP** — a
+   deliberate scope cut (OPS-DISPUTE-1): disputes are rare in the controlled Athens beta and an
+   authenticated admin mutation endpoint is out of launch scope. Operators resolve disputes by
+   writing Firestore directly using the tested manual procedure in
+   [`wiki/operator-playbook.md`](../wiki/operator-playbook.md) §7 ("Disputed Matches — Resolution
+   Runbook"): either **void** the match (`status="cancelled"` + release each participant to
+   `DISCOVERY`) or **adjudicate** a winner by reopening for confirmation and reusing the audited
+   scoring path. Revisit post-beta if dispute volume warrants automation.
 
 2. **`POST /me/offers` response — omitted fields:** `venue_ref` and `source_broadcast_id` are
    stored on the offer document but are NOT echoed back in the `SendOfferResponse`. The iOS client
