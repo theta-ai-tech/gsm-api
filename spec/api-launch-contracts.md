@@ -423,19 +423,19 @@ Field rules:
   "loser_uid": "user_xyz",
   "winner_team": null,
   "loser_team": null,
-  "winner_delta": 35,
-  "loser_delta": -20,
-  "winner_new_pts": 855,
-  "loser_new_pts": 780,
+  "winner_delta": 164,
+  "loser_delta": -50,
+  "winner_new_pts": 2984,
+  "loser_new_pts": 3050,
   "scoring": {
     "sport": "tennis",
-    "your_pts_before": 820,
-    "your_pts_after": 855,
-    "delta": 35,
+    "your_pts_before": 2820,
+    "your_pts_after": 2984,
+    "delta": 164,
     "breakdown": {
-      "base_win": 25,
-      "upset_bonus": 10,
-      "elo_bonus": 0,
+      "base_win": 100,
+      "upset_bonus": 50,
+      "elo_bonus": 14,
       "penalty": 0
     },
     "tier_before": "intermediate",
@@ -444,6 +444,11 @@ Field rules:
   }
 }
 ```
+
+This is an upset: an Intermediate winner (2820 pts) beats an Advanced loser (3100 pts), earning
+`base 100 + upset 50 + elo floor((3100 - 2820) * 0.05) = 14`, total `+164`. The loser takes the flat
+`-50` penalty (3100 → 3050, above the Advanced 3000 floor, so no clamp). See `wiki/scoring.md` for the
+full formula and worked examples.
 
 **Doubles completed response:**
 
@@ -455,27 +460,33 @@ Field rules:
   "loser_uid": "",
   "winner_team": "A",
   "loser_team": "B",
-  "winner_delta": 28,
-  "loser_delta": -18,
-  "winner_new_pts": 848,
-  "loser_new_pts": 762,
+  "winner_delta": 170,
+  "loser_delta": 0,
+  "winner_new_pts": 2070,
+  "loser_new_pts": 2200,
   "scoring": {
     "sport": "padel",
-    "your_pts_before": 820,
-    "your_pts_after": 848,
-    "delta": 28,
+    "your_pts_before": 1900,
+    "your_pts_after": 2070,
+    "delta": 170,
     "breakdown": {
-      "base_win": 20,
-      "upset_bonus": 8,
-      "elo_bonus": 0,
+      "base_win": 100,
+      "upset_bonus": 50,
+      "elo_bonus": 20,
       "penalty": 0
     },
-    "tier_before": "intermediate",
+    "tier_before": "amateur",
     "tier_after": "intermediate",
-    "tier_crossed": false
+    "tier_crossed": true
   }
 }
 ```
+
+Doubles is scored per-player against the **opposing pair's average pts** (integer division) and the
+**highest-tier opponent**. Here the calling player (Amateur, 1900 pts) is scored against the loser
+pair's average of `(2200 + 2400) // 2 = 2300` pts at Intermediate tier — an upset: `base 100 + upset
+50 + elo floor((2300 - 1900) * 0.05) = 20`, total `+170`, crossing Amateur → Intermediate. See
+`wiki/scoring.md` for the full per-player model and worked example.
 
 `scoring` (ScoringPayload) is only populated on a `completed` match. It is always `null` on the
 first call and on `pending_confirmation` responses. `winner_delta`/`loser_delta`/`winner_new_pts`/

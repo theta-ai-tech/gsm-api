@@ -94,6 +94,8 @@ See `arch/` folder for detailed component diagrams.
 
 **Detailed Schema**: See `wiki/DATA_DICTIONARY.md` for complete Firestore field definitions and indexes.
 
+**Scoring Rules**: See `wiki/scoring.md` for the singles + doubles point formulas, tier-based upset/penalty semantics, and worked examples.
+
 ---
 
 ## Tab 1: PLAY — User Scenarios & Flows
@@ -434,6 +436,7 @@ See `wiki/functions.md` for:
 - **Product Vision**: `docs/strategy/prd-idea.md` (original product concept — repo-root path)
 - **Tab 1 PRD**: `docs/product/tab1-play-description.md` (strategic product requirements — repo-root path)
 - **Firestore Schema**: `wiki/DATA_DICTIONARY.md` (complete field definitions)
+- **Scoring Rules**: `wiki/scoring.md` (singles + doubles point formulas, tier-based upset/penalty, worked examples)
 - **Database Sketch**: `wiki/dbschema.md` (collection overview)
 - **State Machine**: `arch/me_state_machine.md` (mermaid diagram + transition rules)
 - **Match Lifecycle**: `arch/match_lifecycle.md` (post-match flow architecture)
