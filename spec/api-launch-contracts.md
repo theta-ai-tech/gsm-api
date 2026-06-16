@@ -460,10 +460,10 @@ full formula and worked examples.
   "loser_uid": "",
   "winner_team": "A",
   "loser_team": "B",
-  "winner_delta": 170,
+  "winner_delta": 0,
   "loser_delta": 0,
-  "winner_new_pts": 2070,
-  "loser_new_pts": 2200,
+  "winner_new_pts": 0,
+  "loser_new_pts": 0,
   "scoring": {
     "sport": "padel",
     "your_pts_before": 1900,
@@ -490,7 +490,9 @@ pair's average of `(2200 + 2400) // 2 = 2300` pts at Intermediate tier — an up
 
 `scoring` (ScoringPayload) is only populated on a `completed` match. It is always `null` on the
 first call and on `pending_confirmation` responses. `winner_delta`/`loser_delta`/`winner_new_pts`/
-`loser_new_pts` are all `0` until the match completes.
+`loser_new_pts` are all `0` until the match completes; on completed doubles responses they also remain
+`0` because doubles scoring is per-player and exposed through the caller-specific `scoring` payload
+instead of aggregate top-level fields.
 
 #### Key error codes
 

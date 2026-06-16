@@ -683,7 +683,7 @@ Ownership: owner-only (self); written by scoring engine / admin functions.
 
 Purpose: time-series audit log of every point change for a user. Powers the Progression Graph in Tab 3.
 
-See `wiki/scoring.md` for how `pts`, `delta`, and the breakdown values are computed.
+See `wiki/scoring.md` for how `pts` and `delta` are computed.
 
 Ordering: `sport` filter + `createdAt` DESC with cursor-based pagination.
 

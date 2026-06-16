@@ -13,26 +13,24 @@ Scoring runs **once per match**, on the **second** `verify-score` call — the c
 match from `pending_confirmation` to `completed` (both participants/teams have agreed on the result).
 It never runs on the first submit, and the `scoring` payload is always `null` on a
 `pending_confirmation` response. Until a match completes, `winner_delta`, `loser_delta`,
-`winner_new_pts`, and `loser_new_pts` are all `0`.
+`winner_new_pts`, and `loser_new_pts` are all `0`. On completed doubles responses those top-level
+fields remain `0`; per-player doubles scoring is exposed through the caller-specific `scoring`
+payload.
 
 Each completed match produces, per player:
 
 - a points delta (broken down into `base`, `upset_bonus`, `elo_bonus`, `penalty`),
 - a new pts total and a (possibly unchanged) tier,
 - a `tier_crossed` flag when the new pts cross a tier threshold,
-- a `pointHistory` audit entry (skipped entirely for walkover/retirement).
+- a `pointHistory` audit entry with the final `pts` and effective `delta` (skipped entirely for
+  walkover/retirement).
 
 ### Field-name conventions
 
-The same numbers surface under two naming conventions, depending on the layer:
-
-| Concept | Live API response (`ScoringPayload`, snake_case) | Stored `pointHistory.breakdown` (camelCase) |
-| --- | --- | --- |
-| Base win | `base_win` | `baseWin` |
-| Upset bonus | `upset_bonus` | `upsetBonus` |
-| ELO bonus | `elo_bonus` | `eloBonus` |
-| Penalty | `penalty` | `penalty` |
-| Pts before / after | `your_pts_before` / `your_pts_after` | — (stored as `pts` = after) |
+The live API response exposes the caller's breakdown in `ScoringPayload` using snake_case field names:
+`base_win`, `upset_bonus`, `elo_bonus`, and `penalty`. Stored `pointHistory` entries do **not** persist
+that breakdown; they store the final `pts`, effective `delta`, reason, match/opponent metadata, and
+tier before/after.
 
 ## Tier configuration
 
