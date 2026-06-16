@@ -131,7 +131,7 @@ token (`POST /me/device-tokens`).
 
 Full architecture, device-token model, registration API, trigger design, idempotency/pruning rules,
 and the iOS contract are specified in
-**[`plans/plan-push-notifications.md`](../plans/plan-push-notifications.md)**. This work is tracked by
+**[`arch/push_notifications.md`](../arch/push_notifications.md)**. This work is tracked by
 epic [#329 (NTF-2)](https://github.com/theta-ai-tech/gsm-api/issues/329) and decomposed into issues
 **PUSH-1 … PUSH-7** (label `push-notifications`), scheduled for a post-iOS sprint. This section will be
 updated to describe live behaviour once that sprint lands.
