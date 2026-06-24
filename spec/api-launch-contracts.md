@@ -62,6 +62,7 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `POST` | `/me/offers/{offerId}/accept` | Accept an incoming offer; creates a match |
 | `POST` | `/matches/{matchId}/verify-score` | Submit or confirm a match result |
 | `GET` | `/me/state` | Current play-tab mode and mode-specific payload |
+| `GET` | `/me/discovery` | Browsable list of active intents (state-agnostic) |
 | `GET` | `/venues/search` | Free-text venue search (curated + Google Places) |
 | `GET` | `/venues` | List curated venues for a sport |
 | `POST` | `/venues/suggest` | Submit a venue to the moderation queue |
@@ -544,6 +545,78 @@ Doubles additions to specific modes:
 | Code | Condition |
 |------|-----------|
 | `401` | Missing or invalid token |
+
+---
+
+### GET /me/discovery
+
+**Auth:** Required (Firebase Bearer ID token).
+
+Always available regardless of the caller's current play state. A user in
+`BROADCAST_ACTIVE`, `MATCH_SCHEDULED`, or any other mode can call this to browse
+active intents — unlike the `DISCOVERY` payload in `GET /me/state`, which is only
+present when `mode == DISCOVERY`.
+
+#### Query parameters
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sport` | `tennis\|padel\|pickleball` | No | Filter by sport. |
+| `match_type` | `singles\|doubles` | No | Filter by singles/doubles. |
+
+#### Request body
+
+None.
+
+#### Response (`200`)
+
+```json
+{
+  "serverTime": "2026-06-24T12:00:00Z",
+  "activeClubsNearby": 2,
+  "intents": [
+    {
+      "toUid": "user_alice",
+      "name": "Alice",
+      "ranking": null,
+      "level": "advanced",
+      "sport": "padel",
+      "matchType": "singles",
+      "broadcastType": "find_opponent",
+      "availability": "today",
+      "courtStatus": "have_court",
+      "venueRef": {
+        "venueId": "venue_glyfada_padel",
+        "placeId": null,
+        "name": "Glyfada Padel Club",
+        "coordinates": {"lat": 37.88, "lng": 23.75}
+      },
+      "areaName": null,
+      "expiresAt": "2026-07-01T12:00:00Z",
+      "createdAt": "2026-06-24T12:00:00Z",
+      "broadcastId": "broadcast_seed_alice_padel"
+    }
+  ]
+}
+```
+
+**Field notes:**
+- `activeClubsNearby`: count of distinct `location.area` values across all returned broadcasts.
+  Falls back to the count of intents when no broadcasts have an area set.
+- `areaName`: human-readable region name (e.g. `"athens"`), resolved from `config/regions`
+  mapping. Only populated for `courtStatus == "need_court"` broadcasts that carry a `location.area`.
+  `null` when the broadcast has no area or the region config is unavailable.
+- `venueRef`: populated only for `courtStatus == "have_court"` broadcasts. `null` for
+  `need_court` broadcasts.
+- `level`: self-assessed skill level from the owner's private profile preferences for the
+  broadcast sport. `null` if the owner has not set a level for that sport.
+
+#### Key error codes
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `422` | Invalid `sport` or `match_type` query parameter value |
 
 ---
 

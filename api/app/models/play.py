@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import HttpUrl, model_validator
+from pydantic import Field, HttpUrl, model_validator
 
 from app.models.base import GsmBaseModel
 from app.models.common import MatchScore, SportRanking, VenueRef
@@ -9,6 +9,7 @@ from app.models.enums import (
     BroadcastStatusEnum,
     BroadcastTypeEnum,
     CourtStatusEnum,
+    LevelEnum,
     MatchTypeEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
@@ -362,6 +363,35 @@ class DiscoveryPayload(GsmBaseModel):
     """Payload returned when mode == DISCOVERY."""
 
     broadcasts: list[DiscoveryBroadcastCard] = []
+
+
+class DiscoveryFeedItem(GsmBaseModel):
+    """One browsable intent in the GET /me/discovery feed."""
+
+    to_uid: str = Field(alias="toUid")
+    name: str
+    ranking: SportRanking | None = None
+    level: LevelEnum | None = None
+    sport: SportEnum
+    match_type: MatchTypeEnum = Field(default=MatchTypeEnum.SINGLES, alias="matchType")
+    broadcast_type: BroadcastTypeEnum = Field(
+        default=BroadcastTypeEnum.FIND_OPPONENT, alias="broadcastType"
+    )
+    availability: AvailabilityEnum
+    court_status: CourtStatusEnum = Field(alias="courtStatus")
+    venue_ref: VenueRef | None = Field(default=None, alias="venueRef")
+    area_name: str | None = Field(default=None, alias="areaName")
+    expires_at: datetime = Field(alias="expiresAt")
+    created_at: datetime = Field(alias="createdAt")
+    broadcast_id: str = Field(alias="broadcastId")
+
+
+class DiscoveryFeedResponse(GsmBaseModel):
+    """Response shape for GET /me/discovery."""
+
+    server_time: datetime = Field(alias="serverTime")
+    active_clubs_nearby: int = Field(alias="activeClubsNearby")
+    intents: list[DiscoveryFeedItem] = []
 
 
 class MeStateResponse(GsmBaseModel):

@@ -14,6 +14,7 @@ from google.cloud import firestore
 
 from tools.seed_data import (
     REGION_MAPPING,
+    SAMPLE_BROADCASTS,
     SAMPLE_JOURNAL_ENTRIES,
     SAMPLE_LEADERBOARDS,
     SAMPLE_LEAGUE_MEMBERS,
@@ -75,6 +76,10 @@ def seed_all(client: firestore.Client) -> None:
     for match in SAMPLE_MATCHES:
         doc_ref = client.collection("matches").document(match.match_id)
         doc_ref.set(match_to_firestore_doc(match))
+
+    for broadcast_id, broadcast_doc in SAMPLE_BROADCASTS:
+        doc_ref = client.collection("broadcasts").document(broadcast_id)
+        doc_ref.set(broadcast_doc)
 
     for entry in SAMPLE_JOURNAL_ENTRIES:
         doc_ref = (
@@ -189,6 +194,7 @@ def main() -> None:
         f"{len(SAMPLE_USERS)} users, "
         f"{len(SAMPLE_LEAGUES)} leagues, "
         f"{len(SAMPLE_MATCHES)} matches, "
+        f"{len(SAMPLE_BROADCASTS)} broadcasts, "
         f"{len(SAMPLE_JOURNAL_ENTRIES)} journal entries, "
         f"{total_ph} point history entries, "
         f"{len(SAMPLE_LEADERBOARDS)} leaderboard snapshots, "
