@@ -31,6 +31,7 @@ from app.models.play import (
 from app.repos.broadcasts_repo import BroadcastsRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
+from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.services.play_service import PlayService
 
@@ -48,6 +49,7 @@ def make_play_service(db) -> PlayService:
         MatchesRepo(db),
         OffersRepo(db),
         db,
+        region_config_repo=RegionConfigRepo(db),
     )
 
 
@@ -1617,3 +1619,360 @@ class TestConcurrentBroadcastCreation:
             assert "created" in result_types
             assert alice_tab["state"] == "BROADCAST_ACTIVE"
             assert alice_tab.get("activeBroadcastId") is not None
+
+
+# ===== Test: Discovery Feed =====
+
+
+def seed_user_with_level(
+    db,
+    uid: str,
+    name: str,
+    padel_level: str | None = None,
+    tennis_level: str | None = None,
+) -> None:
+    """Seed a user with sport-level preferences for discovery feed enrichment tests."""
+    levels: dict[str, str] = {}
+    if padel_level:
+        levels["padel"] = padel_level
+    if tennis_level:
+        levels["tennis"] = tennis_level
+    db.collection("users").document(uid).set(
+        {
+            "name": name,
+            "email": f"{uid}@test.com",
+            "preferences": {
+                "area": 101,
+                "levels": levels,
+                "sports": list(levels.keys()),
+            },
+            "playTab": {
+                "state": "BROADCAST_ACTIVE",
+                "updatedAt": datetime.now(timezone.utc),
+            },
+        }
+    )
+
+
+def seed_region_config(db) -> None:
+    """Seed config/regions for area_name resolution tests."""
+    db.collection("config").document("regions").set(
+        {
+            "mapping": {"101": "athens", "202": "thessaloniki"},
+            "version": 1,
+        }
+    )
+
+
+class TestDiscoveryFeed:
+    def test_basic_feed_returns_active_broadcasts(self, db):
+        """build_discovery_feed returns broadcasts owned by others, not by caller."""
+        alice_uid = "df_alice_basic"
+        bob_uid = "df_bob_basic"
+        caller_uid = "df_caller_basic"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="advanced")
+        seed_user_with_level(db, bob_uid, "Bob", padel_level="intermediate")
+        seed_discovery_user(db, caller_uid, "Caller")
+
+        service = make_play_service(db)
+
+        now = datetime.now(timezone.utc)
+        # Alice broadcasts HAVE_COURT padel
+        db.collection("broadcasts").document("df_bc_alice").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+        # Bob broadcasts NEED_COURT padel with area
+        db.collection("broadcasts").document("df_bc_bob").set(
+            {
+                "ownerUid": bob_uid,
+                "ownerName": "Bob",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "need_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now - timedelta(minutes=5),
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 2
+        owner_uids = {item.to_uid for item in feed.intents}
+        assert alice_uid in owner_uids
+        assert bob_uid in owner_uids
+        assert caller_uid not in owner_uids
+
+    def test_caller_own_broadcast_excluded(self, db):
+        """Caller's own broadcast is not included in the feed."""
+        caller_uid = "df_caller_exclude"
+        seed_user_with_level(db, caller_uid, "Caller", padel_level="beginner")
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document("df_bc_caller_self").set(
+            {
+                "ownerUid": caller_uid,
+                "ownerName": "Caller",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 0
+
+    def test_level_populated_from_owner_profile(self, db):
+        """level field is resolved from owner's preferences.levels."""
+        alice_uid = "df_alice_level"
+        caller_uid = "df_caller_level"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="advanced")
+        seed_discovery_user(db, caller_uid, "Caller")
+        seed_region_config(db)
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document("df_bc_level").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 1
+        assert feed.intents[0].level is not None
+        assert feed.intents[0].level.value == "advanced"
+
+    def test_venue_ref_only_on_have_court(self, db):
+        """venue_ref is included for HAVE_COURT and omitted for NEED_COURT."""
+        alice_uid = "df_alice_venue"
+        caller_uid = "df_caller_venue"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="intermediate")
+        seed_discovery_user(db, caller_uid, "Caller")
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document("df_bc_have_court").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "venueRef": {
+                    "venueId": "test_venue",
+                    "placeId": None,
+                    "name": "Test Club",
+                    "coordinates": {"lat": 37.97, "lng": 23.72},
+                },
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 1
+        item = feed.intents[0]
+        assert item.court_status.value == "have_court"
+        assert item.venue_ref is not None
+        assert item.venue_ref.name == "Test Club"
+
+    def test_area_name_resolved_for_need_court(self, db):
+        """area_name is resolved via region config for NEED_COURT broadcasts."""
+        bob_uid = "df_bob_area"
+        caller_uid = "df_caller_area"
+        seed_user_with_level(db, bob_uid, "Bob", padel_level="beginner")
+        seed_discovery_user(db, caller_uid, "Caller")
+        seed_region_config(db)
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document("df_bc_need_court").set(
+            {
+                "ownerUid": bob_uid,
+                "ownerName": "Bob",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "need_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 1
+        item = feed.intents[0]
+        assert item.court_status.value == "need_court"
+        assert item.venue_ref is None
+        assert item.area_name == "athens"
+
+    def test_match_type_filter(self, db):
+        """Passing match_type=doubles filters to only doubles broadcasts."""
+        alice_uid = "df_alice_filter"
+        bob_uid = "df_bob_filter"
+        caller_uid = "df_caller_filter"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="advanced")
+        seed_user_with_level(db, bob_uid, "Bob", padel_level="advanced")
+        seed_discovery_user(db, caller_uid, "Caller")
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        # Alice: singles
+        db.collection("broadcasts").document("df_bc_singles").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+        # Bob: doubles
+        db.collection("broadcasts").document("df_bc_doubles").set(
+            {
+                "ownerUid": bob_uid,
+                "ownerName": "Bob",
+                "sport": "padel",
+                "matchType": "doubles",
+                "broadcastType": "find_fourth",
+                "availability": "today",
+                "courtStatus": "have_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        feed = service.build_discovery_feed(
+            caller_uid, match_type=MatchTypeEnum.DOUBLES
+        )
+        assert len(feed.intents) == 1
+        assert feed.intents[0].to_uid == bob_uid
+
+    def test_active_clubs_nearby_distinct_areas(self, db):
+        """active_clubs_nearby counts distinct location areas."""
+        alice_uid = "df_alice_areas"
+        bob_uid = "df_bob_areas"
+        caller_uid = "df_caller_areas"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="advanced")
+        seed_user_with_level(db, bob_uid, "Bob", padel_level="intermediate")
+        seed_discovery_user(db, caller_uid, "Caller")
+        seed_region_config(db)
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        # Alice in area 101, Bob in area 202 — two distinct areas
+        db.collection("broadcasts").document("df_bc_area101").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "need_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+        db.collection("broadcasts").document("df_bc_area202").set(
+            {
+                "ownerUid": bob_uid,
+                "ownerName": "Bob",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "need_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now - timedelta(minutes=1),
+                "location": {"area": 202},
+            }
+        )
+
+        feed = service.build_discovery_feed(caller_uid)
+        # 2 distinct areas
+        assert feed.active_clubs_nearby == 2
+
+    def test_region_config_missing_fallback(self, db):
+        """When config/regions doc is absent, area_name falls back to None."""
+        alice_uid = "df_alice_no_config"
+        caller_uid = "df_caller_no_config"
+        seed_user_with_level(db, alice_uid, "Alice", padel_level="beginner")
+        seed_discovery_user(db, caller_uid, "Caller")
+        # do NOT seed config/regions
+
+        service = make_play_service(db)
+        now = datetime.now(timezone.utc)
+        db.collection("broadcasts").document("df_bc_no_config").set(
+            {
+                "ownerUid": alice_uid,
+                "ownerName": "Alice",
+                "sport": "padel",
+                "matchType": "singles",
+                "broadcastType": "find_opponent",
+                "availability": "today",
+                "courtStatus": "need_court",
+                "status": "active",
+                "expiresAt": now + timedelta(days=1),
+                "createdAt": now,
+                "location": {"area": 101},
+            }
+        )
+
+        import app.repos.region_config_repo as rc_module
+
+        db.collection("config").document("regions").delete()
+        rc_module._cache = None  # clear TTL cache so the miss is fresh
+        feed = service.build_discovery_feed(caller_uid)
+        assert len(feed.intents) == 1
+        assert feed.intents[0].area_name is None

@@ -12,14 +12,17 @@ from app.dependencies.repos import (
     get_matches_repo,
     get_notification_intent_repo,
     get_offers_repo,
+    get_region_config_repo,
     get_users_repo,
 )
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.notification_intent_repo import NotificationIntentRepo
-from app.models.enums import MatchTypeEnum
+from app.repos.region_config_repo import RegionConfigRepo
+from app.models.enums import MatchTypeEnum, SportEnum
 from app.models.play import (
     CreateBroadcastRequest,
     CreateBroadcastResponse,
+    DiscoveryFeedResponse,
     MeStateResponse,
     OfferActionResponse,
     SendOfferRequest,
@@ -44,6 +47,7 @@ def get_play_service(
     firestore_client: firestore.Client = Depends(get_firestore_client),
     notification_intent_repo: NotificationIntentRepo = Depends(get_notification_intent_repo),
     leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    region_config_repo: RegionConfigRepo = Depends(get_region_config_repo),
 ) -> PlayService:
     """Dependency to get PlayService instance."""
     return PlayService(
@@ -54,6 +58,7 @@ def get_play_service(
         firestore_client,
         notification_intent_repo=notification_intent_repo,
         leagues_repo=leagues_repo,
+        region_config_repo=region_config_repo,
     )
 
 
@@ -77,6 +82,34 @@ def get_me_state(
     broadcast feed (e.g. ``?match_type=doubles``).
     """
     return play_service.get_me_state(current_user.uid, match_type=match_type)
+
+
+# ===== GET /me/discovery =====
+
+
+@router.get("/discovery", response_model=DiscoveryFeedResponse, response_model_by_alias=True)
+def get_discovery_feed(
+    sport: SportEnum | None = Query(
+        default=None,
+        description="Filter the feed by sport.",
+    ),
+    match_type: MatchTypeEnum | None = Query(
+        default=None,
+        description="Filter by singles/doubles.",
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    play_service: PlayService = Depends(get_play_service),
+) -> DiscoveryFeedResponse:
+    """
+    Return the browsable list of active intents regardless of the caller's play state.
+
+    Unlike the DISCOVERY payload embedded in GET /me/state (which is only present
+    when mode == DISCOVERY), this endpoint is always available — users in
+    BROADCAST_ACTIVE, MATCH_SCHEDULED, or any other state can still browse intents.
+
+    Optional ``sport`` and ``match_type`` query params narrow the results.
+    """
+    return play_service.build_discovery_feed(current_user.uid, sport=sport, match_type=match_type)
 
 
 # ===== POST /me/broadcast =====

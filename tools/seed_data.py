@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.models import (
     CursorBundle,
@@ -279,6 +279,59 @@ USER_DIANA = PrivateUserProfile(
 )
 
 SAMPLE_USERS = [USER_IGNATIOS, USER_ALICE, USER_BOB, USER_DIANA]
+
+# --- Broadcasts ---
+# Sample active broadcasts for testing GET /me/discovery.
+# Written as raw Firestore dicts (camelCase) because broadcasts are
+# created by the service and stored in camelCase format.
+# user_alice: HAVE_COURT padel broadcast with venue reference
+_NOW = datetime.now(timezone.utc)
+BROADCAST_ALICE_PADEL: dict = {
+    "ownerUid": USER_ALICE.uid,
+    "ownerName": USER_ALICE.name,
+    "ownerRanking": None,
+    "sport": "padel",
+    "matchType": "singles",
+    "broadcastType": "find_opponent",
+    "partnerUid": None,
+    "availability": "today",
+    "courtStatus": "have_court",
+    "courtLocation": "Glyfada Padel Club",
+    "venueRef": {
+        "venueId": "venue_glyfada_padel",
+        "placeId": None,
+        "name": "Glyfada Padel Club",
+        "coordinates": {"lat": 37.8788, "lng": 23.7537},
+    },
+    "status": "active",
+    "expiresAt": _NOW + timedelta(days=7),
+    "createdAt": _NOW,
+    "location": {"area": None, "geo": None, "radiusKm": None},
+}
+
+# user_bob: NEED_COURT padel broadcast with area=101 (→ "athens" via region config)
+BROADCAST_BOB_PADEL: dict = {
+    "ownerUid": USER_BOB.uid,
+    "ownerName": USER_BOB.name,
+    "ownerRanking": None,
+    "sport": "padel",
+    "matchType": "singles",
+    "broadcastType": "find_opponent",
+    "partnerUid": None,
+    "availability": "weekend",
+    "courtStatus": "need_court",
+    "courtLocation": None,
+    "venueRef": None,
+    "status": "active",
+    "expiresAt": _NOW + timedelta(days=7),
+    "createdAt": _NOW - timedelta(minutes=5),
+    "location": {"area": 101, "geo": None, "radiusKm": None},
+}
+
+SAMPLE_BROADCASTS: list[tuple[str, dict]] = [
+    ("broadcast_seed_alice_padel", BROADCAST_ALICE_PADEL),
+    ("broadcast_seed_bob_padel", BROADCAST_BOB_PADEL),
+]
 
 # --- Leagues ---
 # Sample leagues referencing the users above.

@@ -566,6 +566,66 @@ See `spec/tab1-play-payloads.md` for full payload examples per mode.
 
 ---
 
+## `GET /me/discovery`
+
+### Purpose
+Returns the full browsable list of active play intents regardless of the caller's current play state. Unlike the `DISCOVERY` payload embedded in `GET /me/state` (only present when `mode == DISCOVERY`), this endpoint is always available — users in `BROADCAST_ACTIVE`, `MATCH_SCHEDULED`, or any other state can still browse intents. iOS replaces its `LivePlayService.fetchDiscoveryFeed()` mock with this endpoint.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`).
+
+### Behavior
+- Calls `broadcasts.list_active(sport, match_type)` to fetch up to 25 active broadcasts ordered by `createdAt` desc.
+- Excludes the caller's own broadcast.
+- Enriches each card with:
+  - `level`: resolved from the owner's `preferences.levels.<sport>` (one Firestore read per unique owner, deduped).
+  - `areaName`: resolved from `config/regions` mapping for `need_court` broadcasts with a `location.area`. Falls back gracefully to `null` when the region config doc is absent.
+  - `venueRef`: included only for `have_court` broadcasts; `null` for `need_court`.
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/me/discovery?sport=padel"
+```
+
+### Example response (`200`)
+```json
+{
+  "serverTime": "2026-06-24T12:00:00Z",
+  "activeClubsNearby": 1,
+  "intents": [
+    {
+      "toUid": "user_alice",
+      "name": "Alice",
+      "ranking": null,
+      "level": "advanced",
+      "sport": "padel",
+      "matchType": "singles",
+      "broadcastType": "find_opponent",
+      "availability": "today",
+      "courtStatus": "have_court",
+      "venueRef": {
+        "venueId": "venue_glyfada_padel",
+        "placeId": null,
+        "name": "Glyfada Padel Club",
+        "coordinates": {"lat": 37.88, "lng": 23.75}
+      },
+      "areaName": null,
+      "expiresAt": "2026-07-01T12:00:00Z",
+      "createdAt": "2026-06-24T12:00:00Z",
+      "broadcastId": "broadcast_seed_alice_padel"
+    }
+  ]
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `422` invalid `sport` or `match_type` query parameter value
+
+---
+
 ## `POST /me/broadcast`
 
 ### Purpose

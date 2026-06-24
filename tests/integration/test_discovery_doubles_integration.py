@@ -185,7 +185,9 @@ class TestDiscoveryFeed:
         assert resp.status_code == 200
         data = resp.json()
         ann = data["annotations"]
-        assert ann["nearby_count"] == 3
+        assert (
+            ann["nearby_count"] >= 3
+        )  # at minimum the 3 broadcasts seeded for this test
         assert ann["doubles_count"] == 2
         assert ann["find_fourth_count"] == 1
 
