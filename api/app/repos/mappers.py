@@ -61,6 +61,8 @@ from app.models import (
     VenueRef,
     VenueSummary,
 )
+from app.models.enums import PlatformEnum
+from app.models.user import DeviceToken
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 from app.models.ticker import TickerEvent
 
@@ -184,6 +186,15 @@ def _parse_match_reflection(data: dict[str, Any] | None) -> Optional[MatchReflec
     )
 
 
+def _parse_device_token(data: dict[str, Any]) -> DeviceToken:
+    return DeviceToken(
+        token=data["token"],
+        platform=PlatformEnum(data["platform"]),
+        created_at=data["createdAt"],
+        last_seen_at=data["lastSeenAt"],
+    )
+
+
 def _parse_north_star_goal(data: dict[str, Any] | None) -> Optional[NorthStarGoal]:
     if not data:
         return None
@@ -278,6 +289,7 @@ def to_private_user_profile(doc: dict[str, Any]) -> PrivateUserProfile:
         ],
         cursors=_parse_cursors(doc.get("cursors")),
         north_star_goal=_parse_north_star_goal(doc.get("northStarGoal")),
+        device_tokens=[_parse_device_token(t) for t in (doc.get("deviceTokens") or [])],
     )
 
 

@@ -32,6 +32,7 @@ from app.models.enums import (
     MatchTypeEnum,
     OfferStatusEnum,
     ParticipantRoleEnum,
+    PlatformEnum,
     PlayNotificationIntentTypeEnum,
     PlayTabStateEnum,
     PointHistoryReasonEnum,
@@ -62,7 +63,7 @@ from app.models.onboarding import RegisterMeRequest
 from app.models.ticker import TickerEvent
 from app.models.tier import TierConfig, TierThreshold
 from app.models.region_config import RegionConfig
-from app.models.user import PrivateUserProfile, PublicUserProfile
+from app.models.user import DeviceToken, PrivateUserProfile, PublicUserProfile
 from app.models.venue import VenueSummary
 from app.models.venue_suggestion import (
     CreateVenueSuggestionRequest,
@@ -96,6 +97,7 @@ __all__ = [
     "TierEnum",
     "PointHistoryReasonEnum",
     "TickerEventTypeEnum",
+    "PlatformEnum",
     "PlayNotificationIntentTypeEnum",
     # common value objects
     "SportRanking",
@@ -166,6 +168,7 @@ __all__ = [
     "TierThreshold",
     "TierConfig",
     # user
+    "DeviceToken",
     "PublicUserProfile",
     "PrivateUserProfile",
     # venue

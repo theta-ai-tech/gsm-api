@@ -163,6 +163,11 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | skillDna.{sport}.*.score | number | required | — | cache | — | `round(positive / (positive + negative) * 100)`; shown only when positive + negative >= 3. |
 | skillDna.{sport}.totalReflections | number | required | — | cache | — | Total reflection count for this sport. |
 | skillDna.{sport}.lastUpdated | timestamp | optional | — | cache | — | When this sport's DNA was last recalculated. |
+| deviceTokens | array&lt;map&gt; | optional | — | canonical | — | FCM/APNs device tokens for push delivery. Private; never on public profile. Shape: `[{token, platform, createdAt, lastSeenAt}]`. |
+| deviceTokens[].token | string | required | — | canonical | — | FCM registration token string. Dedupe key. |
+| deviceTokens[].platform | string | required | platform | canonical | — | `ios` or `android`. |
+| deviceTokens[].createdAt | timestamp | required | — | canonical | — | When the token was first registered. |
+| deviceTokens[].lastSeenAt | timestamp | required | — | canonical | — | Refreshed on every re-registration (token rotation). |
 
 ## Subcollection: users/{uid}/journalEntries
 Path: `users/{uid}/journalEntries/{entryId}`

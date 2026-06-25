@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from google.api_core.exceptions import Conflict
@@ -51,3 +52,33 @@ class UsersRepo(RepoBase):
         # Prefix all keys with "playTab."
         prefixed_updates = {f"playTab.{key}": value for key, value in updates.items()}
         self.client.collection("users").document(uid).update(prefixed_updates)
+
+    def upsert_device_token(self, uid: str, token: str, platform: str) -> None:
+        """Idempotent: adds token if new, refreshes lastSeenAt if already present."""
+        now = datetime.now(timezone.utc)
+        user_ref = self.client.collection("users").document(uid)
+        doc = user_ref.get()
+        tokens: list[dict] = (self._doc_to_dict(doc) or {}).get("deviceTokens") or []
+        for entry in tokens:
+            if entry.get("token") == token:
+                entry["lastSeenAt"] = now
+                user_ref.update({"deviceTokens": tokens})
+                return
+        tokens.append({"token": token, "platform": platform, "createdAt": now, "lastSeenAt": now})
+        user_ref.update({"deviceTokens": tokens})
+
+    def remove_device_token(self, uid: str, token: str) -> None:
+        """Remove a device token from the user's list. No-op if not found."""
+        user_ref = self.client.collection("users").document(uid)
+        doc = user_ref.get()
+        tokens: list[dict] = (self._doc_to_dict(doc) or {}).get("deviceTokens") or []
+        filtered = [t for t in tokens if t.get("token") != token]
+        if len(filtered) != len(tokens):
+            user_ref.update({"deviceTokens": filtered})
+
+    def list_device_tokens(self, uid: str) -> list[dict]:
+        """Return raw token dicts from the user doc (consumed by the Cloud Function trigger)."""
+        data = self.get_user_doc(uid)
+        if data is None:
+            return []
+        return data.get("deviceTokens") or []
