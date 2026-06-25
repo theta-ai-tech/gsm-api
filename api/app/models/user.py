@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import EmailStr, HttpUrl
 
 from app.models.base import GsmBaseModel
@@ -10,8 +12,18 @@ from app.models.common import (
     UserMatchSummary,
     UserPreferences,
 )
+from app.models.enums import PlatformEnum
 from app.models.skill_dna import SportSkillDna
 from app.models.stats import NorthStarGoal
+
+
+class DeviceToken(GsmBaseModel):
+    """A registered FCM/APNs device token for push delivery. Private; never on public profile."""
+
+    token: str
+    platform: PlatformEnum
+    created_at: datetime
+    last_seen_at: datetime
 
 
 class PublicUserProfile(GsmBaseModel):
@@ -38,3 +50,4 @@ class PrivateUserProfile(PublicUserProfile):
     journal_recent: list[JournalEntrySummary] = []
     cursors: CursorBundle | None = None
     north_star_goal: NorthStarGoal | None = None
+    device_tokens: list[DeviceToken] = []

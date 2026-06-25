@@ -146,3 +146,8 @@ class PlayNotificationIntentTypeEnum(StrEnum):
     INCOMING_OFFER = "incoming_offer"
     MATCH_SCHEDULED = "match_scheduled"
     SCORE_CONFIRM_REQUIRED = "score_confirm_required"
+
+
+class PlatformEnum(StrEnum):
+    IOS = "ios"
+    ANDROID = "android"
