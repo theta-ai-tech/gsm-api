@@ -8,6 +8,7 @@ from google.api_core.exceptions import Conflict
 from app.repos.base import RepoBase
 from app.repos.mappers import to_private_user_profile, to_public_user_profile
 from app.models import LeagueSummary, PrivateUserProfile, PublicUserProfile
+from app.models.enums import PlatformEnum
 
 
 class UsersRepo(RepoBase):
@@ -53,18 +54,23 @@ class UsersRepo(RepoBase):
         prefixed_updates = {f"playTab.{key}": value for key, value in updates.items()}
         self.client.collection("users").document(uid).update(prefixed_updates)
 
-    def upsert_device_token(self, uid: str, token: str, platform: str) -> None:
+    def upsert_device_token(self, uid: str, token: str, platform: PlatformEnum) -> None:
         """Idempotent: adds token if new, refreshes lastSeenAt if already present."""
         now = datetime.now(timezone.utc)
         user_ref = self.client.collection("users").document(uid)
         doc = user_ref.get()
-        tokens: list[dict] = (self._doc_to_dict(doc) or {}).get("deviceTokens") or []
+        doc_data = self._doc_to_dict(doc)
+        if doc_data is None:
+            raise ValueError(f"user_not_found:{uid}")
+        tokens: list[dict] = doc_data.get("deviceTokens") or []
         for entry in tokens:
             if entry.get("token") == token:
                 entry["lastSeenAt"] = now
                 user_ref.update({"deviceTokens": tokens})
                 return
-        tokens.append({"token": token, "platform": platform, "createdAt": now, "lastSeenAt": now})
+        tokens.append(
+            {"token": token, "platform": str(platform), "createdAt": now, "lastSeenAt": now}
+        )
         user_ref.update({"deviceTokens": tokens})
 
     def remove_device_token(self, uid: str, token: str) -> None:
