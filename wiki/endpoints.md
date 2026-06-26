@@ -153,6 +153,94 @@ curl -s -X POST \
 
 ---
 
+## `POST /me/device-tokens`
+
+### Purpose
+Register the caller's push notification device token so the backend can deliver push
+notifications. Called by the iOS/Android client on login and on token rotation.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). A user may only manage their own
+tokens — the token is always associated with the authenticated `uid`.
+
+### Behavior
+- Idempotent upsert into the user's `deviceTokens` array. If the token already exists, its
+  `lastSeenAt` is refreshed instead of inserting a duplicate.
+- New tokens are stored with `token`, `platform`, `createdAt`, and `lastSeenAt`.
+- `app_version` (alias `appVersion`) is accepted for forward compatibility but is not yet
+  persisted.
+- Returns `404` if no user document exists for the authenticated `uid`.
+
+### Request body
+```json
+{
+  "token": "fcm_or_apns_token_string",
+  "platform": "ios",
+  "app_version": "1.4.0"
+}
+```
+- `token` (required, non-empty string)
+- `platform` (required, one of `ios` | `android`)
+- `app_version` (optional; `appVersion` alias also accepted)
+
+### Example call
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"tok_abc","platform":"ios","app_version":"1.4.0"}' \
+  http://localhost:8000/me/device-tokens
+```
+
+### Example success response (`204`)
+No content.
+
+### Common error responses
+- `401` missing/invalid token
+- `404` no user profile exists for the authenticated uid
+- `422` empty token or invalid platform value
+
+---
+
+## `DELETE /me/device-tokens`
+
+### Purpose
+Unregister the caller's push token on logout or token rotation.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). Only the authenticated user's own
+tokens are affected.
+
+### Behavior
+- Removes the matching token from the user's `deviceTokens` array.
+- No-op (still `204`) if the token is not present.
+
+### Request body
+```json
+{
+  "token": "fcm_or_apns_token_string"
+}
+```
+- `token` (required, non-empty string)
+
+### Example call
+```bash
+curl -s -X DELETE \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"token":"tok_abc"}' \
+  http://localhost:8000/me/device-tokens
+```
+
+### Example success response (`204`)
+No content.
+
+### Common error responses
+- `401` missing/invalid token
+- `422` empty token
+
+---
+
 ## `GET /users/{uid}`
 
 ### Purpose
