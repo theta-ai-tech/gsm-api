@@ -180,7 +180,7 @@ trigger="onNotificationIntentCreated"
 
 | `action` | `reason` | Meaning |
 |----------|----------|---------|
-| `deliver` | — | Push sent. Carries `success_count` and `pruned_count`. |
+| `deliver` | — | Delivery attempt completed; stamped `deliveryStatus="delivered"`. Carries `success_count` and `pruned_count`. **Note:** `success_count=0` with `pruned_count=0` can mean a whole-batch rejection — cross-check the paired `PUSH3.fcmSender` `action="send"` log for `suspected_payload_error=true` (malformed shared payload) before assuming the tokens were bad. |
 | `skip` | `no_tokens` | User has no device tokens; stamped `deliveryStatus="no_tokens"`. |
 | `skip` | `already_delivered` | At-least-once redelivery suppressed by the `deliveredAt` guard. |
 | `ignore` | `triggers_disabled` | Kill switch is off (`GSM_TRIGGERS_ENABLED=false`). |
