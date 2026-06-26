@@ -10,25 +10,46 @@ logged but never reported as invalid, so they are retried rather than pruned.
 
 from __future__ import annotations
 
-from firebase_admin import messaging
+from firebase_admin import exceptions, messaging
 
 from functions.logging_utils import log_event
 
 _TRIGGER = "PUSH3.fcmSender"
 
-# Per-token failure codes that mean the token is permanently invalid and should
-# be pruned. Everything else is treated as transient and left intact.
-_PRUNABLE_CODES = frozenset({"UNREGISTERED", "INVALID_ARGUMENT"})
 
+def _is_unconditionally_prunable(exc: BaseException | None) -> bool:
+    """
+    True for per-token failures that ALWAYS mean the token is permanently invalid,
+    regardless of how many tokens fail:
 
-def _is_prunable(exc: BaseException | None) -> bool:
-    """True if the per-token send failure means the token is permanently invalid."""
+    - ``UnregisteredError``      — app uninstalled / token expired (code ``NOT_FOUND``)
+    - ``SenderIdMismatchError``  — token belongs to a different FCM sender (code
+      ``PERMISSION_DENIED``); it will never be deliverable by us, so prune it.
+
+    Detection is by exception *type*, not ``.code``: ``UnregisteredError.code`` is
+    actually ``"NOT_FOUND"`` and ``SenderIdMismatchError.code`` is
+    ``"PERMISSION_DENIED"``, so matching on the class is the reliable signal.
+    """
     if exc is None:
         return False
-    if isinstance(exc, messaging.UnregisteredError):
+    return isinstance(exc, (messaging.UnregisteredError, messaging.SenderIdMismatchError))
+
+
+def _is_invalid_argument(exc: BaseException | None) -> bool:
+    """
+    True if the per-token failure is ``INVALID_ARGUMENT``.
+
+    This is *conditionally* prunable: a single token failing with INVALID_ARGUMENT
+    is a malformed token, but if EVERY token fails with it the cause is almost
+    certainly a malformed shared payload (title/body/data too large), not the
+    tokens — see ``send`` for that guard. Transient errors (``UNAVAILABLE``,
+    ``INTERNAL``, quota, third-party-auth) are intentionally NOT pruned.
+    """
+    if exc is None:
+        return False
+    if isinstance(exc, exceptions.InvalidArgumentError):
         return True
-    code = getattr(exc, "code", None)
-    return code in _PRUNABLE_CODES
+    return getattr(exc, "code", None) == "INVALID_ARGUMENT"
 
 
 def send(
@@ -41,8 +62,15 @@ def send(
     Send a notification to ``tokens`` and report invalid tokens.
 
     Returns ``(success_count, invalid_tokens)`` where ``invalid_tokens`` are the
-    subset of ``tokens`` that failed with a prunable error (UNREGISTERED /
-    INVALID_ARGUMENT). Transient failures are logged but not returned as invalid.
+    subset of ``tokens`` (in input order) that failed with a *prunable* error:
+
+    - ``UnregisteredError`` / ``SenderIdMismatchError`` — always prunable.
+    - ``INVALID_ARGUMENT`` — prunable per-token, EXCEPT when every token fails
+      with it (a malformed shared payload would otherwise prune all valid tokens);
+      in that case nothing is pruned and the batch is treated as a transient/error.
+
+    Transient failures (UNAVAILABLE, INTERNAL, quota, third-party-auth) are logged
+    but never returned as invalid, so the caller retries rather than prunes.
 
     An empty ``tokens`` list short-circuits to ``(0, [])`` without calling FCM.
     """
@@ -57,16 +85,32 @@ def send(
 
     batch = messaging.send_each_for_multicast(message)
 
-    invalid_tokens: list[str] = []
+    # First pass: classify each failed token (preserve input order).
+    hard_prunable: list[str] = []
+    invalid_arg: list[str] = []
     transient_count = 0
     for token, response in zip(tokens, batch.responses):
         if response.success:
             continue
         exc = response.exception
-        if _is_prunable(exc):
-            invalid_tokens.append(token)
+        if _is_unconditionally_prunable(exc):
+            hard_prunable.append(token)
+        elif _is_invalid_argument(exc):
+            invalid_arg.append(token)
         else:
             transient_count += 1
+
+    # Guard: if every token failed with INVALID_ARGUMENT, the shared payload is the
+    # likely culprit, not the tokens — do not prune any of them.
+    all_invalid_arg_payload = bool(invalid_arg) and len(invalid_arg) == len(tokens)
+    if all_invalid_arg_payload:
+        prunable_invalid_arg: list[str] = []
+        transient_count += len(invalid_arg)
+    else:
+        prunable_invalid_arg = invalid_arg
+
+    prunable = set(hard_prunable) | set(prunable_invalid_arg)
+    invalid_tokens = [t for t in tokens if t in prunable]
 
     log_event(
         trigger=_TRIGGER,
@@ -75,6 +119,7 @@ def send(
         success_count=batch.success_count,
         invalid_count=len(invalid_tokens),
         transient_count=transient_count,
+        suspected_payload_error=all_invalid_arg_payload,
     )
 
     return batch.success_count, invalid_tokens

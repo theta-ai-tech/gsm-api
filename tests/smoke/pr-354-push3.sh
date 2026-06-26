@@ -63,12 +63,28 @@ with patch(P) as send_mock:
     sc, invalid = fcm_sender.send(["ok", "stale", "flaky"], "t", "b")
     check("prunes UNREGISTERED only, keeps transient", invalid == ["stale"])
 
-# 3) INVALID_ARGUMENT is prunable
+# 3) INVALID_ARGUMENT on SOME (not all) tokens is prunable
 with patch(P) as send_mock:
-    bad = Exception("bad"); bad.code = "INVALID_ARGUMENT"
-    send_mock.return_value = _batch(0, [_resp(False, bad)])
-    sc, invalid = fcm_sender.send(["bad"], "t", "b")
-    check("prunes INVALID_ARGUMENT", invalid == ["bad"])
+    from firebase_admin import exceptions
+    bad = exceptions.InvalidArgumentError("bad token")
+    send_mock.return_value = _batch(1, [_resp(True), _resp(False, bad)])
+    sc, invalid = fcm_sender.send(["ok", "bad"], "t", "b")
+    check("prunes per-token INVALID_ARGUMENT", invalid == ["bad"])
+
+# 3b) SenderIdMismatch is prunable (wrong FCM sender)
+with patch(P) as send_mock:
+    mismatch = messaging.SenderIdMismatchError("wrong sender")
+    send_mock.return_value = _batch(0, [_resp(False, mismatch)])
+    sc, invalid = fcm_sender.send(["wrong"], "t", "b")
+    check("prunes SenderIdMismatch", invalid == ["wrong"])
+
+# 3c) ALL tokens INVALID_ARGUMENT => shared-payload error, prune NONE
+with patch(P) as send_mock:
+    from firebase_admin import exceptions as _exc
+    big = _exc.InvalidArgumentError("payload too big")
+    send_mock.return_value = _batch(0, [_resp(False, big), _resp(False, big)])
+    sc, invalid = fcm_sender.send(["a", "b"], "t", "b")
+    check("all-INVALID_ARGUMENT treated as payload error (prune none)", invalid == [])
 
 # 4) empty tokens → (0, []) and provider NOT called
 with patch(P) as send_mock:
