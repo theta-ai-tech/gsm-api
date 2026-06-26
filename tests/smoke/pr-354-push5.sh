@@ -35,7 +35,7 @@ def check(name, cond):
     if not cond:
         fails += 1
 
-def fake_client(device_tokens, exists=True):
+def fake_client(device_tokens, exists=True, intent_state=None):
     client = MagicMock()
     snap = MagicMock()
     snap.exists = exists
@@ -43,17 +43,27 @@ def fake_client(device_tokens, exists=True):
     user_doc = client.collection.return_value.document.return_value
     user_doc.get.return_value = snap
     intent_doc = user_doc.collection.return_value.document.return_value
+    # The idempotency guard re-reads the CURRENT intent doc; default to pending so it proceeds.
+    isnap = MagicMock()
+    isnap.exists = True
+    isnap.to_dict.return_value = intent_state if intent_state is not None else {"deliveryStatus": "pending"}
+    intent_doc.get.return_value = isnap
     return client, user_doc, intent_doc
 
 BASE = {"type": "INCOMING_OFFER", "title": "New offer", "body": "Tap", "offerId": "off_1"}
 
-# (a) already-delivered → no send, no stamp, no read
-client, user_doc, intent_doc = fake_client([{"token": "tok_a"}])
+# (a) already-delivered (per the CURRENT intent doc) → no send, no stamp.
+# The event payload is the ORIGINAL pending create snapshot — the guard must ignore it and
+# trust the re-read instead.
+client, user_doc, intent_doc = fake_client(
+    [{"token": "tok_a"}],
+    intent_state={"deliveryStatus": "delivered", "deliveredAt": "2026-06-26T00:00:00Z"},
+)
 with patch.object(h.fcm_sender, "send") as send_mock, patch.object(h, "triggers_enabled", return_value=True):
-    h.deliver_notification_intent(client, "u1", "i1", {**BASE, "deliveredAt": "2026-06-26T00:00:00Z"})
-    check("already-delivered: send not called", not send_mock.called)
-    check("already-delivered: no stamp write", not intent_doc.update.called)
-    check("already-delivered: no user read", not client.collection.called)
+    h.deliver_notification_intent(client, "u1", "i1", dict(BASE))  # pending payload
+    check("already-delivered (current doc): send not called", not send_mock.called)
+    check("already-delivered (current doc): no stamp write", not intent_doc.update.called)
+    check("already-delivered (current doc): no user-token read", not user_doc.get.called)
 
 # (b) success → intent stamped delivered
 client, user_doc, intent_doc = fake_client([{"token": "tok_a"}, {"token": "tok_b"}])
@@ -77,6 +87,25 @@ with patch.object(h.fcm_sender, "send", side_effect=RuntimeError("down")), patch
     h.deliver_notification_intent(client, "u1", "i1", dict(BASE))
     stamped = intent_doc.update.call_args.args[0] if intent_doc.update.called else {}
     check("send-error: stamped failed", stamped.get("deliveryStatus") == "failed")
+
+# (e) DUPLICATE EVENT (codex regression): the same ORIGINAL pending payload delivered twice.
+# A stateful intent doc reflects the first call's stamp on the second .get(), so the guard
+# skips the re-send.
+istate = {"deliveryStatus": "pending"}
+client = MagicMock()
+user_doc = client.collection.return_value.document.return_value
+usnap = MagicMock(); usnap.exists = True; usnap.to_dict.return_value = {"deviceTokens": [{"token": "tok_a"}]}
+user_doc.get.return_value = usnap
+intent_doc = user_doc.collection.return_value.document.return_value
+def _iget():
+    s = MagicMock(); s.exists = True; s.to_dict.return_value = dict(istate); return s
+intent_doc.get.side_effect = _iget
+intent_doc.update.side_effect = lambda payload: istate.update(payload)
+with patch.object(h.fcm_sender, "send", return_value=(1, [])), patch.object(h, "triggers_enabled", return_value=True):
+    h.deliver_notification_intent(client, "u1", "i1", dict(BASE))  # first
+    h.deliver_notification_intent(client, "u1", "i1", dict(BASE))  # duplicate event
+    check("duplicate event: sent exactly once", h.fcm_sender.send.call_count == 1)
+    check("duplicate event: final status delivered", istate.get("deliveryStatus") == "delivered")
 
 print(f"\n── {'PASS' if fails == 0 else 'FAIL'}: {fails} failed ──")
 sys.exit(1 if fails else 0)

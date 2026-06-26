@@ -39,11 +39,21 @@ Each document represents one intent for the user identified by `uid`. The `inten
 
 Cloud Functions triggers are at-least-once, so the delivery trigger
 (`functions/notification_triggers/on_notification_intent.py`) may fire more than once for a
-single intent write. To avoid duplicate pushes the trigger skips any intent that already
-has a non-null `deliveredAt`, and after every terminal outcome it stamps the intent doc with
-`deliveredAt` plus a `deliveryStatus` of `delivered`, `no_tokens`, or `failed`. This is
-distinct from `dedupeKey`, which dedupes at the creation layer. Stamp writes are best-effort:
-a stamp failure is logged but never raised.
+single intent write. After every terminal outcome it stamps the intent doc with `deliveredAt`
+plus a `deliveryStatus` of `delivered`, `no_tokens`, or `failed`, and on each invocation it
+**re-reads the current intent doc** and skips when `deliveredAt` is already set.
+
+The re-read is essential: `@on_document_created` always re-delivers the *original create
+snapshot* (`deliveryStatus="pending"`, no `deliveredAt`), so a guard based on the event
+payload would never catch a duplicate. By consulting the live doc instead, a sequential
+re-fire of the same event is correctly deduplicated. This is distinct from `dedupeKey`, which
+dedupes at the creation layer.
+
+The stamp lands *after* the send, so the design intentionally prefers a **duplicate push over
+a dropped notification**: if the process crashes in the narrow send→stamp window (or two
+genuinely concurrent duplicate events race the re-read), a second push is possible. Stamping
+*before* the send would instead risk dropping a notification on send failure, which is worse
+for a matchmaking app. Stamp writes are best-effort: a stamp failure is logged but never raised.
 
 ## Intent Types
 
@@ -137,7 +147,7 @@ The trigger is wired in `functions/main.py` as `on_notification_intent_created`,
 1. **Intent written.** A play state transition makes the backend write an intent doc to `users/{uid}/notificationIntents/{intentId}` with `deliveryStatus: pending` and no `deliveredAt` (`api/app/repos/notification_intent_repo.py`).
 2. **Trigger fires.** `onNotificationIntentCreated` runs on the create event.
 3. **Kill-switch check.** If `GSM_TRIGGERS_ENABLED` is falsy the handler logs `action="ignore"` (`reason="triggers_disabled"`) and returns without sending or stamping.
-4. **Idempotency guard.** Cloud Functions are at-least-once. If the intent already has a non-null `deliveredAt`, the handler logs `action="skip"` (`reason="already_delivered"`) and returns — no duplicate push.
+4. **Idempotency guard.** Cloud Functions are at-least-once. The handler **re-reads the current intent doc** (not the create-event payload, which is always pending) and, if it already has a non-null `deliveredAt`, logs `action="skip"` (`reason="already_delivered"`) and returns — no duplicate push.
 5. **Token lookup.** The handler reads `users/{uid}.deviceTokens`. With no tokens it logs `action="skip"` (`reason="no_tokens"`), stamps `deliveryStatus="no_tokens"` + `deliveredAt`, and returns.
 6. **FCM multicast.** With tokens, it builds an FCM payload (`title`, `body`, and a string `data` map carrying `type` + any of `offerId`/`matchId`/`broadcastId`) and sends via `fcm_sender.send()`.
 7. **Invalid-token pruning.** Tokens that fail with a permanently-invalid error (`UNREGISTERED`, `SenderIdMismatch`, or per-token `INVALID_ARGUMENT`) are pruned from `users/{uid}.deviceTokens`. If a send raises, the handler stamps `deliveryStatus="failed"` and returns.

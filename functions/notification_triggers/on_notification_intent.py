@@ -41,20 +41,24 @@ _STATUS_FAILED = "failed"
 _INTENTS_SUBCOLLECTION = "notificationIntents"
 
 
+def _intent_ref(client: firestore.Client, uid: str, intent_id: str) -> Any:
+    # The INTENT doc lives in the per-user subcollection, NOT on the user doc.
+    return (
+        client.collection("users")
+        .document(uid)
+        .collection(_INTENTS_SUBCOLLECTION)
+        .document(intent_id)
+    )
+
+
 def _stamp(client: firestore.Client, uid: str, intent_id: str, status: str) -> None:
     # Best-effort delivery stamp on the INTENT doc (subcollection), not the user doc.
     try:
-        (
-            client.collection("users")
-            .document(uid)
-            .collection(_INTENTS_SUBCOLLECTION)
-            .document(intent_id)
-            .update(
-                {
-                    "deliveredAt": datetime.now(timezone.utc),
-                    "deliveryStatus": status,
-                }
-            )
+        _intent_ref(client, uid, intent_id).update(
+            {
+                "deliveredAt": datetime.now(timezone.utc),
+                "deliveryStatus": status,
+            }
         )
     except Exception as exc:  # best-effort: a stamp failure must not raise
         log_event(
@@ -120,9 +124,33 @@ def deliver_notification_intent(
         )
         return
 
-    # PUSH-5 idempotency guard: a non-null deliveredAt means a prior invocation already
-    # handled this intent (Cloud Functions are at-least-once). Skip without re-sending.
-    if intent.get("deliveredAt") is not None:
+    # PUSH-5 idempotency guard. Cloud Functions are at-least-once, and
+    # @on_document_created ALWAYS re-delivers the ORIGINAL create snapshot
+    # (deliveryStatus="pending", no deliveredAt). A guard based on the passed-in `intent`
+    # payload would therefore never catch a duplicate event. Re-read the CURRENT intent
+    # doc and skip if a prior invocation already stamped `deliveredAt`.
+    #
+    # The stamp happens after the send (see below), so a crash in the narrow send→stamp
+    # window can still yield a duplicate push on re-fire, and two genuinely concurrent
+    # duplicate events remain a rare race. That is the accepted at-least-once tradeoff:
+    # we prefer a duplicate push over a dropped notification (stamping pre-send would drop
+    # on send failure). The common case — a sequential retry of the same event — is now
+    # correctly deduplicated.
+    try:
+        current_snap = _intent_ref(client, uid, intent_id).get()
+        current = (current_snap.to_dict() or {}) if current_snap.exists else {}
+    except Exception as exc:
+        # Best-effort: if the current state can't be read, prefer delivering over dropping.
+        log_event(
+            trigger=_TRIGGER,
+            action="error",
+            reason="idempotency_read_failed",
+            uid=uid,
+            intentId=intent_id,
+            error=str(exc),
+        )
+        current = {}
+    if current.get("deliveredAt") is not None:
         log_event(
             trigger=_TRIGGER,
             action="skip",

@@ -193,12 +193,13 @@ def test_idempotency_skips_resend_when_already_delivered(
         deliver_notification_intent(db, _UID, _INTENT_ID, _base_intent())
     first_send.assert_called_once()
 
-    # Second invocation receives the intent dict as it now exists (carrying
-    # deliveredAt), simulating an at-least-once redelivery — must not re-send.
-    redelivered_intent = _read_intent(db)
-    assert redelivered_intent.get("deliveredAt") is not None
+    # Second invocation receives the ORIGINAL create payload again — exactly the shape an
+    # at-least-once @on_document_created redelivery carries (deliveryStatus="pending", no
+    # deliveredAt). The handler must consult the CURRENT intent doc (which the first call
+    # stamped) and skip — NOT trust the stale event payload. This is the codex regression.
+    assert _read_intent(db).get("deliveredAt") is not None  # first call did stamp it
     with patch(_SEND) as second_send:
-        deliver_notification_intent(db, _UID, _INTENT_ID, redelivered_intent)
+        deliver_notification_intent(db, _UID, _INTENT_ID, _base_intent())
     second_send.assert_not_called()
 
 

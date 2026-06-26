@@ -11,7 +11,9 @@ from functions.notification_triggers.on_notification_intent import (
 
 
 def _make_client(
-    device_tokens: list[dict[str, Any]] | None, exists: bool = True
+    device_tokens: list[dict[str, Any]] | None,
+    exists: bool = True,
+    intent_state: dict[str, Any] | None = None,
 ) -> MagicMock:
     client = MagicMock()
     user_snap = MagicMock()
@@ -19,7 +21,19 @@ def _make_client(
     user_snap.to_dict.return_value = (
         {"deviceTokens": device_tokens} if device_tokens is not None else {}
     )
-    client.collection.return_value.document.return_value.get.return_value = user_snap
+    user_doc = client.collection.return_value.document.return_value
+    user_doc.get.return_value = user_snap
+
+    # The idempotency guard re-reads the CURRENT intent doc (subcollection). Default to a
+    # freshly-created intent (deliveryStatus="pending", no deliveredAt) so the guard proceeds.
+    intent_snap = MagicMock()
+    intent_snap.exists = True
+    intent_snap.to_dict.return_value = (
+        intent_state if intent_state is not None else {"deliveryStatus": "pending"}
+    )
+    user_doc.collection.return_value.document.return_value.get.return_value = (
+        intent_snap
+    )
     return client
 
 
@@ -28,7 +42,7 @@ def _user_doc_ref(client: MagicMock) -> MagicMock:
 
 
 def _intent_doc_ref(client: MagicMock) -> MagicMock:
-    # users/{uid}/notificationIntents/{intentId} — the stamp target (subcollection).
+    # users/{uid}/notificationIntents/{intentId} — re-read + stamp target (subcollection).
     return _user_doc_ref(client).collection.return_value.document.return_value
 
 
@@ -195,26 +209,69 @@ def test_prune_error_is_swallowed(mock_send: MagicMock) -> None:
 
 @patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
 def test_skips_when_already_delivered(mock_send: MagicMock) -> None:
-    """PUSH-5: a non-null deliveredAt means a prior invocation handled it — do not re-send."""
-    client = _make_client([{"token": "tok_a"}])
+    """PUSH-5: the guard reads the CURRENT intent doc; a stamped deliveredAt means a prior
+    invocation handled it — do not re-send, even though the passed-in event payload (the
+    original create snapshot) still says pending."""
+    client = _make_client(
+        [{"token": "tok_a"}],
+        intent_state={
+            "deliveryStatus": "delivered",
+            "deliveredAt": "2026-06-25T10:00:00Z",
+        },
+    )
 
+    # The event payload is the ORIGINAL create snapshot — still pending, no deliveredAt.
     deliver_notification_intent(
         client=client,
         uid="u1",
         intent_id="intent1",
-        intent={
-            "type": "match_confirmed",
-            "title": "t",
-            "body": "b",
-            "deliveredAt": "2026-06-25T10:00:00Z",
-            "deliveryStatus": "delivered",
-        },
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
     )
 
     mock_send.assert_not_called()
-    # No user read and no stamp write happened (guard returns before touching the client).
-    client.collection.assert_not_called()
+    # The guard read the intent doc but did NOT read the user doc, send, or stamp.
+    _user_doc_ref(client).get.assert_not_called()
     _intent_doc_ref(client).update.assert_not_called()
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_duplicate_event_does_not_resend(mock_send: MagicMock) -> None:
+    """Regression (codex): a duplicate at-least-once event re-delivers the ORIGINAL pending
+    create payload. The guard must consult the CURRENT intent doc — which the first
+    invocation stamped — not the stale event snapshot, so the 2nd call does NOT re-send."""
+    mock_send.return_value = (1, [])
+
+    # Stateful fake: the intent doc starts pending; .update() mutates it; .get() reflects it.
+    intent_state: dict[str, Any] = {"deliveryStatus": "pending"}
+    client = MagicMock()
+    user_doc = client.collection.return_value.document.return_value
+    user_snap = MagicMock()
+    user_snap.exists = True
+    user_snap.to_dict.return_value = {"deviceTokens": [{"token": "tok_a"}]}
+    user_doc.get.return_value = user_snap
+
+    intent_doc = user_doc.collection.return_value.document.return_value
+
+    def _intent_get() -> MagicMock:
+        snap = MagicMock()
+        snap.exists = True
+        snap.to_dict.return_value = dict(intent_state)
+        return snap
+
+    def _intent_update(payload: dict[str, Any]) -> None:
+        intent_state.update(payload)
+
+    intent_doc.get.side_effect = _intent_get
+    intent_doc.update.side_effect = _intent_update
+
+    # The SAME original pending payload is delivered twice (duplicate event).
+    original_payload = {"type": "match_confirmed", "title": "t", "body": "b"}
+    deliver_notification_intent(client, "u1", "intent1", dict(original_payload))
+    deliver_notification_intent(client, "u1", "intent1", dict(original_payload))
+
+    # Sent exactly once despite two invocations of the same create event.
+    mock_send.assert_called_once()
+    assert intent_state["deliveryStatus"] == "delivered"
 
 
 @patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
