@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from app.deps import get_current_user
 from app.deps import get_firestore_client
 from app.routers.clubhouse import router as clubhouse_router
+from app.routers.device_tokens import router as device_tokens_router
 from app.routers.improve import router as improve_router
 from app.routers.lab import router as lab_router
 from app.routers.matches import router as matches_router
@@ -37,6 +38,7 @@ app.include_router(matches_router)
 app.include_router(clubhouse_router)
 app.include_router(venues_router)
 app.include_router(leagues_router)
+app.include_router(device_tokens_router)
 
 settings = get_settings()
 logger = logging.getLogger("gsm-api")

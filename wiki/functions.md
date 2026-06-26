@@ -142,3 +142,31 @@ Purpose: make trigger behavior inspectable and incident debugging faster.
 - `ignore` log when early-exiting (disabled/missing data/not qualified)
 - per-user write log (`upsert`/`migrate`/`remove`) with `changed`
 - `summary` log with counters
+
+## PUSH-4 — onNotificationIntentCreated (notification intent → FCM)
+Trigger: `@on_document_created(document="users/{uid}/notificationIntents/{intentId}")`
+Handler: `functions/notification_triggers/on_notification_intent.deliver_notification_intent`
+
+Purpose: deliver a freshly created notification intent to the target user's
+devices via FCM. Delivery is best-effort and decoupled from the business
+transaction that wrote the intent — a send or prune failure is logged but never
+raised.
+
+### Behavior summary
+- Respects the `GSM_TRIGGERS_ENABLED` kill switch (logs `ignore`/`triggers_disabled`
+  and returns without sending).
+- Reads `users/{uid}.deviceTokens` (list of `{token, platform, ...}` maps) and
+  extracts the token strings. If the user has no tokens it logs `skip`/`no_tokens`
+  and does not call FCM.
+- Builds the FCM payload: `title`/`body` become the notification; the `data` map
+  always includes `type` and, when present on the intent, `offerId` / `matchId` /
+  `broadcastId`. All `data` values are strings (FCM requirement).
+- Sends via the PUSH-3 sender (`functions.notification_triggers.fcm_sender.send`),
+  which returns `(success_count, invalid_tokens)`.
+- Prunes any `invalid_tokens` from `users/{uid}.deviceTokens` via a read-modify-write
+  `update` (entries whose `token` is invalid are removed).
+- Emits a `deliver` log with `tokens_count`, `success_count`, and `pruned_count`.
+
+### Not in scope (PUSH-5)
+- Idempotency via `deliveredAt` (skip-if-already-delivered + stamp). Only a comment
+  hook is left in the handler.

@@ -99,6 +99,11 @@ echo "Revision: $REVISION"
 echo "Source:   $FUNCTION_SOURCE/"
 echo "Scope:    functions"
 
+# The push-delivery trigger onNotificationIntentCreated (functions/notification_triggers/,
+# wired in functions/main.py) ships as part of `firebase deploy --only functions` below —
+# there is no separate deploy target for it. Deploying functions deploys the trigger.
+echo "Includes: onNotificationIntentCreated (push delivery) + match-cache triggers"
+
 echo "Setting revision config: gsm.revision=$REVISION"
 firebase functions:config:set gsm.revision="$REVISION" --project "$PROJECT"
 
