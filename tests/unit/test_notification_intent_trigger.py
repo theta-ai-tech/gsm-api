@@ -166,3 +166,23 @@ def test_send_error_is_swallowed(mock_send: MagicMock) -> None:
     )
 
     _user_doc_ref(client).update.assert_not_called()
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_prune_error_is_swallowed(mock_send: MagicMock) -> None:
+    """A failure while pruning invalid tokens must be logged, not raised (best-effort)."""
+    mock_send.return_value = (1, ["tok_bad"])
+    client = _make_client([{"token": "tok_good"}, {"token": "tok_bad"}])
+    # The prune write blows up.
+    _user_doc_ref(client).update.side_effect = RuntimeError("firestore unavailable")
+
+    # Must not raise even though the prune write fails.
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
+    )
+
+    # The prune was attempted exactly once (and swallowed).
+    _user_doc_ref(client).update.assert_called_once()
