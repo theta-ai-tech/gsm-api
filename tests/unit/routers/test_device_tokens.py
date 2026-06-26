@@ -89,6 +89,54 @@ class TestRegisterDeviceToken:
 
         assert response.status_code == 404
 
+    def test_other_value_error_returns_400(self, client_and_repo):
+        """A non-user_not_found ValueError from the repo maps to 400 (covers the fallback branch)."""
+        client, repo = client_and_repo
+        repo.upsert_device_token.side_effect = ValueError("something_else")
+
+        response = client.post(
+            "/me/device-tokens",
+            json={"token": "tok_abc", "platform": "ios"},
+        )
+
+        assert response.status_code == 400
+
+
+class TestDeviceTokenAuth:
+    """Auth enforcement with the REAL get_current_user dependency (no override)."""
+
+    def test_post_without_auth_returns_401(self):
+        repo = MagicMock(spec=UsersRepo)
+        previous = dict(app.dependency_overrides)
+        # Only override the repo; let the real get_current_user run -> 401 without a token.
+        app.dependency_overrides[get_users_repo] = lambda: repo
+        try:
+            client = TestClient(app)
+            response = client.post(
+                "/me/device-tokens",
+                json={"token": "tok_abc", "platform": "ios"},
+            )
+            assert response.status_code == 401
+            repo.upsert_device_token.assert_not_called()
+        finally:
+            app.dependency_overrides = previous
+
+    def test_delete_without_auth_returns_401(self):
+        repo = MagicMock(spec=UsersRepo)
+        previous = dict(app.dependency_overrides)
+        app.dependency_overrides[get_users_repo] = lambda: repo
+        try:
+            client = TestClient(app)
+            response = client.request(
+                "DELETE",
+                "/me/device-tokens",
+                json={"token": "tok_abc"},
+            )
+            assert response.status_code == 401
+            repo.remove_device_token.assert_not_called()
+        finally:
+            app.dependency_overrides = previous
+
 
 class TestDeleteDeviceToken:
     def test_happy_path_returns_204(self, client_and_repo):

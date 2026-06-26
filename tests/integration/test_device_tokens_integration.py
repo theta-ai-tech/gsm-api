@@ -66,6 +66,7 @@ class TestDeviceTokensIntegration:
         assert first.status_code == 204
         before = _read_tokens(firestore_client)
         assert len(before) == 1
+        first_created = before[0]["createdAt"]
         first_last_seen = before[0]["lastSeenAt"]
 
         second = device_token_client.post(
@@ -76,7 +77,12 @@ class TestDeviceTokensIntegration:
 
         after = _read_tokens(firestore_client)
         assert len(after) == 1  # no duplicate
-        assert after[0]["lastSeenAt"] >= first_last_seen  # refreshed
+        # Entry is updated in place, not recreated: createdAt is preserved …
+        assert after[0]["createdAt"] == first_created
+        # … and lastSeenAt is refreshed (advanced, never regressed). The deterministic
+        # strict-refresh assertion lives in the unit test; here we assert monotonicity
+        # against a real clock to avoid microsecond-collision flakiness.
+        assert after[0]["lastSeenAt"] >= first_last_seen
 
     def test_delete_removes_token(
         self, device_token_client: TestClient, firestore_client: firestore.Client
