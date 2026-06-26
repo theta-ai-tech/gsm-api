@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.models.enums import DeliveryStatusEnum
 from app.models.notification import PlayNotificationIntent
 from app.repos.base import RepoBase
 
@@ -17,6 +18,7 @@ class NotificationIntentRepo(RepoBase):
             "body": intent.body,
             "dedupeKey": intent.dedupe_key,
             "createdAt": intent.created_at,
+            "deliveryStatus": DeliveryStatusEnum.PENDING.value,
         }
         if intent.offer_id is not None:
             doc_data["offerId"] = intent.offer_id

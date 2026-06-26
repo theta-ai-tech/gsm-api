@@ -21,6 +21,7 @@ from app.models.enums import (
     BroadcastStatusEnum,
     BroadcastTypeEnum,
     CourtStatusEnum,
+    DeliveryStatusEnum,
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
     LeagueMemberStatusEnum,
@@ -99,6 +100,7 @@ __all__ = [
     "TickerEventTypeEnum",
     "PlatformEnum",
     "PlayNotificationIntentTypeEnum",
+    "DeliveryStatusEnum",
     # common value objects
     "SportRanking",
     "PerSportRankings",

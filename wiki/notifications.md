@@ -30,6 +30,18 @@ Each document represents one intent for the user identified by `uid`. The `inten
 | `offerId` | string | conditional | Set for `incoming_offer`. |
 | `matchId` | string | conditional | Set for `match_scheduled` and `score_confirm_required`. |
 | `broadcastId` | string | optional | Source broadcast ID, if applicable. |
+| `deliveryStatus` | string (enum) | yes | Delivery-layer state: `pending` (written at creation), `delivered`, `no_tokens`, or `failed`. Stamped by the PUSH-4 trigger after each send attempt. |
+| `deliveredAt` | timestamp | optional | UTC timestamp when the delivery trigger finished handling the intent. Absent until a send attempt completes. Acts as the delivery-layer idempotency guard. |
+
+### Delivery idempotency (PUSH-5)
+
+Cloud Functions triggers are at-least-once, so the delivery trigger
+(`functions/notification_triggers/on_notification_intent.py`) may fire more than once for a
+single intent write. To avoid duplicate pushes the trigger skips any intent that already
+has a non-null `deliveredAt`, and after every terminal outcome it stamps the intent doc with
+`deliveredAt` plus a `deliveryStatus` of `delivered`, `no_tokens`, or `failed`. This is
+distinct from `dedupeKey`, which dedupes at the creation layer. Stamp writes are best-effort:
+a stamp failure is logged but never raised.
 
 ## Intent Types
 

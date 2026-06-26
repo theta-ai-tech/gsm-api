@@ -8,12 +8,17 @@ PUSH-3 sender. Delivery is best-effort and decoupled: a send or prune failure is
 logged but never raised, so it can never roll back the business transaction that
 produced the intent.
 
-Idempotency (skip/stamp via ``deliveredAt``) is intentionally OUT OF SCOPE here —
-that is PUSH-5. Only a comment hook is left below.
+Delivery idempotency (PUSH-5): Cloud Functions are at-least-once, so this trigger
+can fire more than once for a single intent write. Before sending, we skip any intent
+that already carries a ``deliveredAt`` stamp. After every terminal outcome we stamp the
+intent doc (``users/{uid}/notificationIntents/{intentId}``) with ``deliveredAt`` and a
+``deliveryStatus`` of ``delivered`` / ``no_tokens`` / ``failed``. Stamp writes are
+best-effort: a stamp failure is logged, never raised.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from google.cloud import firestore  # type: ignore[import-untyped]
@@ -26,6 +31,41 @@ _TRIGGER = "onNotificationIntentCreated"
 
 # Optional intent fields that map straight into the FCM data payload (as strings).
 _OPTIONAL_DATA_KEYS = ("offerId", "matchId", "broadcastId")
+
+# Delivery status literals. functions/ must not import api/app, so these are kept
+# in sync with api.app.models.enums.DeliveryStatusEnum by hand.
+_STATUS_DELIVERED = "delivered"
+_STATUS_NO_TOKENS = "no_tokens"
+_STATUS_FAILED = "failed"
+
+_INTENTS_SUBCOLLECTION = "notificationIntents"
+
+
+def _stamp(client: firestore.Client, uid: str, intent_id: str, status: str) -> None:
+    # Best-effort delivery stamp on the INTENT doc (subcollection), not the user doc.
+    try:
+        (
+            client.collection("users")
+            .document(uid)
+            .collection(_INTENTS_SUBCOLLECTION)
+            .document(intent_id)
+            .update(
+                {
+                    "deliveredAt": datetime.now(timezone.utc),
+                    "deliveryStatus": status,
+                }
+            )
+        )
+    except Exception as exc:  # best-effort: a stamp failure must not raise
+        log_event(
+            trigger=_TRIGGER,
+            action="error",
+            reason="stamp_failed",
+            uid=uid,
+            intentId=intent_id,
+            deliveryStatus=status,
+            error=str(exc),
+        )
 
 
 def _extract_tokens(device_tokens: list[Any]) -> list[str]:
@@ -80,7 +120,17 @@ def deliver_notification_intent(
         )
         return
 
-    # PUSH-5: skip if intent.get("deliveredAt") is already set (idempotency guard).
+    # PUSH-5 idempotency guard: a non-null deliveredAt means a prior invocation already
+    # handled this intent (Cloud Functions are at-least-once). Skip without re-sending.
+    if intent.get("deliveredAt") is not None:
+        log_event(
+            trigger=_TRIGGER,
+            action="skip",
+            reason="already_delivered",
+            uid=uid,
+            intentId=intent_id,
+        )
+        return
 
     user_snap = client.collection("users").document(uid).get()
     user = (user_snap.to_dict() or {}) if user_snap.exists else {}
@@ -95,6 +145,7 @@ def deliver_notification_intent(
             uid=uid,
             intentId=intent_id,
         )
+        _stamp(client, uid, intent_id, _STATUS_NO_TOKENS)
         return
 
     data = _build_data(intent)
@@ -112,6 +163,7 @@ def deliver_notification_intent(
             intentId=intent_id,
             error=str(exc),
         )
+        _stamp(client, uid, intent_id, _STATUS_FAILED)
         return
 
     pruned_count = 0
@@ -128,6 +180,8 @@ def deliver_notification_intent(
                 intentId=intent_id,
                 error=str(exc),
             )
+
+    _stamp(client, uid, intent_id, _STATUS_DELIVERED)
 
     log_event(
         trigger=_TRIGGER,

@@ -27,6 +27,11 @@ def _user_doc_ref(client: MagicMock) -> MagicMock:
     return client.collection.return_value.document.return_value
 
 
+def _intent_doc_ref(client: MagicMock) -> MagicMock:
+    # users/{uid}/notificationIntents/{intentId} — the stamp target (subcollection).
+    return _user_doc_ref(client).collection.return_value.document.return_value
+
+
 @patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
 def test_delivers_to_all_tokens_with_payload_mapping(mock_send: MagicMock) -> None:
     mock_send.return_value = (2, [])
@@ -186,3 +191,100 @@ def test_prune_error_is_swallowed(mock_send: MagicMock) -> None:
 
     # The prune was attempted exactly once (and swallowed).
     _user_doc_ref(client).update.assert_called_once()
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_skips_when_already_delivered(mock_send: MagicMock) -> None:
+    """PUSH-5: a non-null deliveredAt means a prior invocation handled it — do not re-send."""
+    client = _make_client([{"token": "tok_a"}])
+
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={
+            "type": "match_confirmed",
+            "title": "t",
+            "body": "b",
+            "deliveredAt": "2026-06-25T10:00:00Z",
+            "deliveryStatus": "delivered",
+        },
+    )
+
+    mock_send.assert_not_called()
+    # No user read and no stamp write happened (guard returns before touching the client).
+    client.collection.assert_not_called()
+    _intent_doc_ref(client).update.assert_not_called()
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_stamps_delivered_after_successful_send(mock_send: MagicMock) -> None:
+    mock_send.return_value = (1, [])
+    client = _make_client([{"token": "tok_a"}])
+
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
+    )
+
+    mock_send.assert_called_once()
+    _intent_doc_ref(client).update.assert_called_once()
+    payload = _intent_doc_ref(client).update.call_args[0][0]
+    assert payload["deliveryStatus"] == "delivered"
+    assert payload["deliveredAt"] is not None
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_stamps_no_tokens(mock_send: MagicMock) -> None:
+    client = _make_client([])
+
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
+    )
+
+    mock_send.assert_not_called()
+    _intent_doc_ref(client).update.assert_called_once()
+    payload = _intent_doc_ref(client).update.call_args[0][0]
+    assert payload["deliveryStatus"] == "no_tokens"
+    assert payload["deliveredAt"] is not None
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_stamps_failed_on_send_error(mock_send: MagicMock) -> None:
+    mock_send.side_effect = RuntimeError("fcm down")
+    client = _make_client([{"token": "tok_a"}])
+
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
+    )
+
+    _intent_doc_ref(client).update.assert_called_once()
+    payload = _intent_doc_ref(client).update.call_args[0][0]
+    assert payload["deliveryStatus"] == "failed"
+    assert payload["deliveredAt"] is not None
+
+
+@patch("functions.notification_triggers.on_notification_intent.fcm_sender.send")
+def test_stamp_error_is_swallowed(mock_send: MagicMock) -> None:
+    """A failure while stamping the intent doc must be logged, not raised (best-effort)."""
+    mock_send.return_value = (1, [])
+    client = _make_client([{"token": "tok_a"}])
+    _intent_doc_ref(client).update.side_effect = RuntimeError("firestore unavailable")
+
+    # Must not raise even though the stamp write fails.
+    deliver_notification_intent(
+        client=client,
+        uid="u1",
+        intent_id="intent1",
+        intent={"type": "match_confirmed", "title": "t", "body": "b"},
+    )
+
+    _intent_doc_ref(client).update.assert_called_once()

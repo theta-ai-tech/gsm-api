@@ -151,3 +151,10 @@ class PlayNotificationIntentTypeEnum(StrEnum):
 class PlatformEnum(StrEnum):
     IOS = "ios"
     ANDROID = "android"
+
+
+class DeliveryStatusEnum(StrEnum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    NO_TOKENS = "no_tokens"
+    FAILED = "failed"
