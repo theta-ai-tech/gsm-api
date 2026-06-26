@@ -79,4 +79,11 @@ if [[ "$ENVIRONMENT" == "dev" ]]; then
   export FIREBASE_PROJECT_ID="$PROJECT"
 fi
 
-python -m tools.smoke_triggers --env "$ENVIRONMENT" --project "${PROJECT:-}"
+# Only forward --project when set: passing an empty value would make the Firestore
+# client build a "projects//databases/(default)" path. For emu the client falls back
+# to GOOGLE_CLOUD_PROJECT (exported above) when --project is omitted.
+if [[ -n "$PROJECT" ]]; then
+  python -m tools.smoke_triggers --env "$ENVIRONMENT" --project "$PROJECT"
+else
+  python -m tools.smoke_triggers --env "$ENVIRONMENT"
+fi

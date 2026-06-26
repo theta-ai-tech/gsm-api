@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore  # type: ignore[import-untyped]
@@ -10,6 +11,11 @@ from functions.match_triggers.main import (
     handle_match_write_migrate_on_completion,
     handle_match_write_update_upcoming_cache,
 )
+
+# Notification-delivery smoke tuning. The deployed onNotificationIntentCreated trigger
+# stamps a no-tokens intent within a couple of seconds; poll briefly rather than forever.
+_NOTIFICATION_POLL_TIMEOUT_SECONDS = 30.0
+_NOTIFICATION_POLL_INTERVAL_SECONDS = 1.0
 
 
 def _require(value: bool, message: str) -> None:
@@ -120,8 +126,82 @@ def smoke(env: str, project: str | None) -> None:
         user_ref.delete()
 
 
+def smoke_notification_delivery(env: str, project: str | None) -> None:
+    """Prove the deployed onNotificationIntentCreated trigger fires — without FCM creds.
+
+    Writes a ``notificationIntents`` doc for a user that has NO device tokens, then polls
+    the intent doc. When the deployed trigger runs it takes the no-tokens path and stamps
+    ``deliveryStatus == "no_tokens"`` plus ``deliveredAt`` — neither of which needs FCM
+    credentials. This is the honest, credential-free proof that the trigger is live.
+
+    Triggers only run when a Functions runtime is attached (deployed ``dev`` or a running
+    Functions emulator). Under ``--env emu`` we only have the Firestore emulator, so no
+    trigger fires; this step SKIPS gracefully instead of hanging on a doc that never stamps.
+    """
+    if env != "dev":
+        print(
+            "Notification-delivery smoke SKIPPED (env="
+            f"{env}): the onNotificationIntentCreated trigger only runs under a Functions "
+            "runtime (deployed dev). The Firestore-only emulator does not execute triggers, "
+            "so there is nothing to poll here."
+        )
+        return
+
+    client = firestore.Client(project=project)
+    suffix = _now_utc().strftime("%Y%m%d%H%M%S")
+    uid = f"smoke_notify_user_{suffix}"
+    intent_id = f"smoke_notify_intent_{suffix}"
+
+    user_ref = client.collection("users").document(uid)
+    intent_ref = user_ref.collection("notificationIntents").document(intent_id)
+
+    try:
+        # User intentionally has NO deviceTokens so the trigger takes the no_tokens path.
+        _create_user_doc(client, uid)
+
+        intent_ref.set(
+            {
+                "type": "match_scheduled",
+                "targetUid": uid,
+                "title": "Smoke notification",
+                "body": "Notification-delivery smoke (no tokens expected)",
+                "matchId": f"smoke_notify_match_{suffix}",
+                "dedupeKey": f"match_scheduled:smoke_notify_match_{suffix}:{uid}",
+                "createdAt": _now_utc(),
+                "deliveryStatus": "pending",
+            }
+        )
+
+        deadline = time.monotonic() + _NOTIFICATION_POLL_TIMEOUT_SECONDS
+        intent_doc: dict = {}
+        while time.monotonic() < deadline:
+            intent_doc = intent_ref.get().to_dict() or {}
+            if intent_doc.get("deliveredAt") is not None:
+                break
+            time.sleep(_NOTIFICATION_POLL_INTERVAL_SECONDS)
+
+        _require(
+            intent_doc.get("deliveredAt") is not None,
+            "notification intent was not stamped with deliveredAt within "
+            f"{_NOTIFICATION_POLL_TIMEOUT_SECONDS:.0f}s — is the trigger deployed?",
+        )
+        _require(
+            intent_doc.get("deliveryStatus") == "no_tokens",
+            f"expected deliveryStatus 'no_tokens', got {intent_doc.get('deliveryStatus')!r}",
+        )
+
+        print(
+            f"Notification smoke OK ({env}) for intent {intent_id} (deliveryStatus=no_tokens)"
+        )
+    finally:
+        intent_ref.delete()
+        user_ref.delete()
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Smoke test match trigger cache behavior.")
+    parser = argparse.ArgumentParser(
+        description="Smoke test match trigger cache behavior."
+    )
     parser.add_argument("--env", choices=["emu", "dev"], required=True)
     parser.add_argument("--project", default=None)
     args = parser.parse_args()
@@ -131,6 +211,7 @@ def main() -> int:
         return 1
 
     smoke(args.env, args.project)
+    smoke_notification_delivery(args.env, args.project)
     return 0
 
 
