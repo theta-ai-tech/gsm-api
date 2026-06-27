@@ -119,9 +119,9 @@ assert_eq "all leagues indexes have queryScope=COLLECTION" "$SCOPE_OK" "yes"
 
 # ── Tests — DATA_DICTIONARY.md has required composite indexes section ────────
 echo ""
-echo "── wiki/DATA_DICTIONARY.md — leagues indexes documentation ─────────────"
+echo "── docs/data/data-dictionary.md — leagues indexes documentation ─────────────"
 
-DICT_FILE="$REPO_ROOT/wiki/DATA_DICTIONARY.md"
+DICT_FILE="$REPO_ROOT/docs/data/data-dictionary.md"
 LEAGUES_BLOCK=$(awk '/^## Collection: leagues/,/^## Collection: courts/' "$DICT_FILE")
 
 assert_contains "leagues section has Required composite indexes heading" \

@@ -1,0 +1,43 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Kinetic · states
+    - generic [ref=e6] [cursor=pointer]: Idle · Intent feed
+    - generic [ref=e7] [cursor=pointer]: Find · Intent detail
+    - generic [ref=e8] [cursor=pointer]: Proposed · Request sent
+    - generic [ref=e9] [cursor=pointer]: Proposed · Incoming
+    - generic [ref=e10] [cursor=pointer]: Confirmed · Upcoming
+    - generic [ref=e11] [cursor=pointer]: Score entry
+    - generic [ref=e12] [cursor=pointer]: Pending confirmation
+    - generic [ref=e13] [cursor=pointer]: Result · Quiet win
+  - generic [ref=e14]:
+    - generic [ref=e17]:
+      - generic [ref=e19]: 9:41
+      - generic [ref=e20]:
+        - img [ref=e21]
+        - img [ref=e26]
+        - img [ref=e30]
+    - generic [ref=e226]:
+      - generic [ref=e227]: New request
+      - generic [ref=e228]: Maria wants to play you
+      - generic [ref=e229]:
+        - generic [ref=e230]:
+          - generic [ref=e231]: MK
+          - generic [ref=e232]:
+            - generic [ref=e233]: Maria Kosta
+            - generic [ref=e234]:
+              - generic [ref=e237]: Intermediate
+              - generic [ref=e239]: 2,340 pts
+        - generic [ref=e241]:
+          - generic [ref=e242]:
+            - generic [ref=e243]: 20:00
+            - generic [ref=e244]: When
+          - generic [ref=e245]:
+            - generic [ref=e246]: Today
+            - generic [ref=e247]: Day
+          - generic [ref=e248]:
+            - generic [ref=e249]: Theirs
+            - generic [ref=e250]: Court
+      - generic [ref=e251]:
+        - generic [ref=e252] [cursor=pointer]: Accept · let's play
+        - generic [ref=e253] [cursor=pointer]: Not this time
+  - generic [ref=e166]: GSM · Play · Kinetic Performance · calm authority
