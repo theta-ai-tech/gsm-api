@@ -1,6 +1,6 @@
-# Functions Deployment (D5)
+# Functions Deployment
 
-This doc covers the D5 operational workflow for Firebase Functions: versioned deploys,
+This doc covers the operational workflow for Firebase Functions: versioned deploys,
 rollback, and post-deploy smoke checks. The goal is safe iteration with a quick rollback path.
 
 ---
@@ -24,7 +24,7 @@ rollback, and post-deploy smoke checks. The goal is safe iteration with a quick 
 
 ---
 
-## Versioned deploy (D5.1)
+## Versioned deploy
 
 Script:
 ```bash
@@ -49,7 +49,7 @@ make deploy-functions
 
 ---
 
-## Rollback (D5.2)
+## Rollback
 
 Rollback script:
 ```bash
@@ -68,7 +68,7 @@ Behavior:
 
 ---
 
-## Post-deploy smoke checks (D5.3)
+## Post-deploy smoke checks
 
 Smoke script:
 ```bash

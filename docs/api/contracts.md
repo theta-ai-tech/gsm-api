@@ -1008,6 +1008,6 @@ On success: creates `leagues/{id}/members/{uid}` document and atomically increme
 
 8. **League match creation — no dedicated endpoint:** League matches are not created via a
    dedicated endpoint. They use the standard offer flow (`POST /me/offers` with `league_id` set,
-   introduced in LGM-1 / PR #333). The league must be `active` (not `open` or `upcoming`), and
+   introduced in PR #333). The league must be `active` (not `open` or `upcoming`), and
    both offer sender and recipient must be active members of the league. The resulting match carries
    `league_id` and counts toward league standings once completed.

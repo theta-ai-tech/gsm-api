@@ -32,10 +32,10 @@ Each document represents one intent for the user identified by `uid`. The `inten
 | `offerId` | string | conditional | Set for `incoming_offer`. |
 | `matchId` | string | conditional | Set for `match_scheduled` and `score_confirm_required`. |
 | `broadcastId` | string | optional | Source broadcast ID, if applicable. |
-| `deliveryStatus` | string (enum) | yes | Delivery-layer state: `pending` (written at creation), `delivered`, `no_tokens`, or `failed`. Stamped by the delivery trigger (PUSH-5) after each send attempt. |
+| `deliveryStatus` | string (enum) | yes | Delivery-layer state: `pending` (written at creation), `delivered`, `no_tokens`, or `failed`. Stamped by the delivery trigger after each send attempt. |
 | `deliveredAt` | timestamp | optional | UTC timestamp when the delivery trigger finished handling the intent. Absent until a send attempt completes. Acts as the delivery-layer idempotency guard. |
 
-### Delivery idempotency (PUSH-5)
+### Delivery idempotency
 
 Cloud Functions triggers are at-least-once, so the delivery trigger
 (`functions/notification_triggers/on_notification_intent.py`) may fire more than once for a

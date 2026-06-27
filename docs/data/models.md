@@ -1,6 +1,6 @@
-# Core Models & Enums (C1)
+# Core Models & Enums
 
-This summarizes the shared value objects, enums, and resource models introduced in the C1 epic.
+This summarizes the shared value objects, enums, and resource models.
 
 ## Enums
 - Sports & levels: `SportEnum` (`tennis`, `padel`, `pickleball`), `LevelEnum` (`beginner`, `intermediate`, `advanced`, `pro`).
@@ -44,7 +44,7 @@ Request/response models for Tab 1 PLAY endpoints:
 - `OfferActionResponse`: Accept/decline/cancel offer responses
 
 Core domain models:
-- `Broadcast`: Full broadcast document with owner, sport, availability, court status, optional `venue_ref`, location (hybrid area/geo), TTL, and DBL-3 doubles fields (`match_type`, `broadcast_type`, `partner_uid`)
+- `Broadcast`: Full broadcast document with owner, sport, availability, court status, optional `venue_ref`, location (hybrid area/geo), TTL, and doubles fields (`match_type`, `broadcast_type`, `partner_uid`)
 - `Offer`: Full offer document with sender/recipient, sport, proposed time, TTL, status, optional match linkage
 - `GeoLocation`, `BroadcastLocation`: Location support (area codes + lat/lng/radius)
 

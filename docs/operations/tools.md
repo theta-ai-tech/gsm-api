@@ -40,7 +40,7 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 - **Prereq:** emulator running and seeded.
 - **Trigger:** manual local.
 
-### 3) Cache rebuilder (D6.1)
+### 3) Cache rebuilder
 - **Command (single user dry-run):**
   - `python -m tools.rebuild_caches --env emu --uid <uid> --dry-run`
 - **Command (all users apply):**
@@ -49,7 +49,7 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 - **Trigger:** manual local.
 - **Safety:** use `--dry-run` first.
 
-### 3b) Cache integrity checker (D6.4)
+### 3b) Cache integrity checker
 - **Command (sample):**
   - `python -m tools.check_cache_integrity --env emu --limit 50`
 - **Command (single user):**
@@ -59,7 +59,7 @@ Run location for CLI commands in this document: repo root (`gsm-api`).
 - **Behavior:** read-only; exits non-zero on violations.
 - **Coverage:** upcoming/completed match caches, league summary references, and `journalRecent` invariants (cap/duplicates/existence/not-deleted).
 
-### 3c) Journal field migration tool (EX06)
+### 3c) Journal field migration tool
 - **Command (dry-run):**
   - `python -m tools.migrate_journal_fields --env emu --dry-run`
 - **Command (single user apply):**

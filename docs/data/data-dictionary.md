@@ -22,7 +22,7 @@ It is versioned in repo and should be updated alongside schema/query changes.
   - Example: `orderBy scheduledAt ASC, __name__ ASC` then `startAfter(last_scheduledAt, last_id)`.
 
 ## Enums
-Values below match the C1 enums in code.
+Values below match the enums in code.
 
 ### sport
 - Firestore representation: string
@@ -408,7 +408,7 @@ Purpose: scheduled and completed match records; supports user and league match q
 - All timestamps are stored in UTC.
 
 ### Required composite indexes
-Indexes are defined in `firestore.indexes.json` and required for C3 queries:
+Indexes are defined in `firestore.indexes.json` and required for the documented queries:
 - Upcoming matches by user: `participantUids` (array-contains), `status` (ASC), `scheduledAt` (ASC)
 - Completed matches by user: `participantUids` (array-contains), `status` (ASC), `finishedAt` (DESC)
 - Upcoming matches by league: `leagueId` (ASC), `status` (ASC), `scheduledAt` (ASC)
@@ -453,11 +453,11 @@ Purpose: league metadata, configuration, and lifecycle.
 | season | string | optional | — | canonical | — | Season label (e.g., "Autumn 2025"). |
 | status | string | required | leagueStatus | canonical | index=filter | League lifecycle state. |
 | ownerUid | string | required | — | canonical | — | League owner uid. |
-| region | string | optional | — | canonical | index=filter | Named region (e.g. "athens"). Matches region format used by leaderboards. Used by PL-L1 browser filter (`?region=athens`). |
-| maxPlayers | number | optional | — | canonical | — | Hard cap on total players. Used by PL-L1 card ("8/12 spots"). |
-| currentPlayers | number | optional | — | cache | — | Denormalized count of active members. Updated on join/leave. Used by PL-L1 progress bar. |
-| startDate | timestamp | optional | — | canonical | — | When play begins. Displayed on PL-L1 card ("Starts May 1"). |
-| endDate | timestamp | optional | — | canonical | — | When the season ends. Displayed on PL-L2 detail view. |
+| region | string | optional | — | canonical | index=filter | Named region (e.g. "athens"). Matches region format used by leaderboards. Used by the league browser filter (`?region=athens`). |
+| maxPlayers | number | optional | — | canonical | — | Hard cap on total players. Used by the league card ("8/12 spots"). |
+| currentPlayers | number | optional | — | cache | — | Denormalized count of active members. Updated on join/leave. Used by the league progress bar. |
+| startDate | timestamp | optional | — | canonical | — | When play begins. Displayed on the league card ("Starts May 1"). |
+| endDate | timestamp | optional | — | canonical | — | When the season ends. Displayed on the league detail view. |
 | tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
 | meta | map | optional | — | canonical | — | Free-form metadata. |
 
@@ -806,7 +806,7 @@ Unknown tags (not in `tagMap`) are silently ignored during aggregation.
 Path: `config/tierAverages`
 
 Purpose: pre-computed average Skill DNA scores per tier and sport. Powers the "Show Next Level"
-comparison mode on the radar chart. Recomputed by the D7 scheduled function.
+comparison mode on the radar chart. Recomputed by the scheduled function.
 
 ### Fields: config/tierAverages
 | Field | Type | Required | Enum | Canonical\|Cache | Index | Notes |
