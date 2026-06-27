@@ -30,6 +30,20 @@ Emulator env vars used by integration work:
 
 Seed sample data into the emulator with `make seed-emu` (see `tools/README.md`).
 
+## Run in Docker
+
+The container ships its own Python and dependencies — it does not use your local venv.
+
+```bash
+make docker-build           # or: make docker-build-amd64 (Apple Silicon → amd64)
+make docker-run             # serves on http://127.0.0.1:8080
+make docker-stop            # stop the local container
+```
+
+Health and interactive docs: `http://127.0.0.1:8080/health` and `/docs`. If `localhost` doesn't
+load, use `127.0.0.1` (IPv6 vs IPv4). On macOS, `make docker-up` / `make docker-down` start/stop
+Docker Desktop.
+
 ## Auth testing
 
 | Scenario | How | Expect |

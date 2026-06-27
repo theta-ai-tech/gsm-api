@@ -60,7 +60,11 @@ Common codes across the API:
 | `403` | Authenticated but not allowed (e.g. accessing another user's resource; insufficient league role). |
 | `404` | Resource not found (no profile for uid; unknown league/match). |
 | `409` | Conflict / idempotency guard (e.g. profile already exists for this uid). |
+| `429` | Rate-limited. `POST /me/journal` has a per-user spam guard (`JOURNAL_CREATE_RATE_LIMIT_PER_HOUR`, default 50 per rolling hour). |
 | `503` | Dependency unavailable (e.g. `GET /ready` when Firestore is unreachable). |
+
+All responses, including errors, are JSON — there are no HTML error pages, and 500s return a generic
+message with no stack trace.
 
 Per-endpoint error tables are in [`endpoints.md`](endpoints.md); the frozen create/offer flows list
 their exact codes in [`contracts.md`](contracts.md).
