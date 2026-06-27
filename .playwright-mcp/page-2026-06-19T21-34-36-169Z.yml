@@ -1,0 +1,104 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Kinetic · states
+    - generic [ref=e6] [cursor=pointer]: Idle · Intent feed
+    - generic [ref=e7] [cursor=pointer]: Find · Intent detail
+    - generic [ref=e8] [cursor=pointer]: Proposed · Request sent
+    - generic [ref=e9] [cursor=pointer]: Proposed · Incoming
+    - generic [ref=e10] [cursor=pointer]: Confirmed · Upcoming
+    - generic [ref=e11] [cursor=pointer]: Score entry
+    - generic [ref=e12] [cursor=pointer]: Pending confirmation
+    - generic [ref=e13] [cursor=pointer]: Result · Quiet win
+  - generic [ref=e14]:
+    - generic [ref=e17]:
+      - generic [ref=e19]: 9:41
+      - generic [ref=e20]:
+        - img [ref=e21]
+        - img [ref=e26]
+        - img [ref=e30]
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - generic [ref=e40]: Play
+          - generic [ref=e41]: Athens
+        - generic [ref=e42]:
+          - generic [ref=e43] [cursor=pointer]: Tennis
+          - generic [ref=e44] [cursor=pointer]: Padel
+          - generic [ref=e46] [cursor=pointer]: Pickleball
+      - generic [ref=e50] [cursor=pointer]:
+        - img [ref=e52]
+        - generic [ref=e55]:
+          - generic [ref=e56]: View intents on the map
+          - generic [ref=e57]: 4 clubs active nearby
+        - img [ref=e58]
+      - generic [ref=e60]:
+        - generic [ref=e61]:
+          - generic [ref=e62]: Today
+          - generic [ref=e63]:
+            - generic [ref=e64] [cursor=pointer]:
+              - generic [ref=e65]:
+                - generic [ref=e66]: MK
+                - generic [ref=e67]: 2,340
+              - generic [ref=e68]:
+                - generic [ref=e70]: Maria Kosta
+                - generic [ref=e73]: Today · 20:00
+                - generic [ref=e74]: Booked · Kolonaki T.C.
+              - img [ref=e76]
+            - generic [ref=e78] [cursor=pointer]:
+              - generic [ref=e79]:
+                - generic [ref=e80]: YR
+                - generic [ref=e81]: 1,150
+              - generic [ref=e82]:
+                - generic [ref=e84]: Yannis Roussos
+                - generic [ref=e87]: Today · 21:30
+                - generic [ref=e88]: Needs court · near Glyfada
+              - img [ref=e90]
+        - generic [ref=e92]:
+          - generic [ref=e93]: Tomorrow
+          - generic [ref=e94]:
+            - generic [ref=e95] [cursor=pointer]:
+              - generic [ref=e96]:
+                - generic [ref=e97]: NV
+                - generic [ref=e98]: 3,120
+              - generic [ref=e99]:
+                - generic [ref=e101]: Nikos Vassiliou
+                - generic [ref=e104]: Tomorrow · 18:00
+                - generic [ref=e105]: Booked · Glyfada Padel
+              - img [ref=e107]
+            - generic [ref=e109] [cursor=pointer]:
+              - generic [ref=e110]:
+                - generic [ref=e111]: SA
+                - generic [ref=e112]: 2,510
+              - generic [ref=e113]:
+                - generic [ref=e115]: Sofia Andreou
+                - generic [ref=e118]: Tomorrow · 19:30
+                - generic [ref=e119]: Booked · Marousi Club
+              - img [ref=e121]
+        - generic [ref=e123]:
+          - generic [ref=e124]: Weekend
+          - generic [ref=e126] [cursor=pointer]:
+            - generic [ref=e127]:
+              - generic [ref=e128]: ED
+              - generic [ref=e129]: 4,020
+            - generic [ref=e130]:
+              - generic [ref=e132]: Elena Dimas
+              - generic [ref=e135]: Weekend · 11:00
+              - generic [ref=e136]: Booked · Faliro Courts
+            - img [ref=e138]
+      - generic [ref=e141] [cursor=pointer]:
+        - img [ref=e142]
+        - text: I'm in
+      - generic [ref=e144]:
+        - generic [ref=e145] [cursor=pointer]:
+          - img [ref=e146]
+          - generic [ref=e149]: Play
+        - generic [ref=e150] [cursor=pointer]:
+          - img [ref=e151]
+          - generic [ref=e155]: Leagues
+        - generic [ref=e156] [cursor=pointer]:
+          - img [ref=e157]
+          - generic [ref=e160]: Journal
+        - generic [ref=e161] [cursor=pointer]:
+          - img [ref=e162]
+          - generic [ref=e165]: Profile
+  - generic [ref=e166]: GSM · Play · Kinetic Performance · calm authority

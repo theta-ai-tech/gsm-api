@@ -166,11 +166,14 @@ The two modes are not exclusive — you can start one manually, abandon the PR, 
 - `make docker-down`: stop Docker Desktop (macOS)
 
 ## Documentation
-- `wiki/DATA_DICTIONARY.md`: canonical Firestore schema and conventions
-- `wiki/functions.md`: D-series trigger behavior and design notes
 
-## Architecture
-- `arch/match_lifecycle.md`: match status lifecycle and trigger flow
+All product/engineering docs live under [`docs/`](docs/README.md) — start at the index, which
+routes you by audience (client/iOS, backend, operations). Highlights:
+
+- **Calling the API (iOS/clients):** [`docs/api/README.md`](docs/api/README.md) → [`docs/api/ios-integration.md`](docs/api/ios-integration.md), [`docs/api/endpoints.md`](docs/api/endpoints.md), [`docs/api/contracts.md`](docs/api/contracts.md)
+- **Architecture:** [`docs/architecture/overview.md`](docs/architecture/overview.md), [`docs/architecture/diagrams.md`](docs/architecture/diagrams.md), [`docs/architecture/triggers.md`](docs/architecture/triggers.md), [`docs/architecture/match-lifecycle.md`](docs/architecture/match-lifecycle.md)
+- **Data model:** [`docs/data/data-dictionary.md`](docs/data/data-dictionary.md) (canonical), [`docs/data/models.md`](docs/data/models.md), [`docs/data/queries-and-indexes.md`](docs/data/queries-and-indexes.md)
+- **Operations & development:** [`docs/operations/`](docs/operations/), [`docs/development/`](docs/development/)
 
 ### Authenticated request (Firebase ID token)
 - Required env: `FIREBASE_PROJECT_ID=<your-project-id>`
@@ -372,8 +375,8 @@ Notes:
 - Never commit Service Account JSON files or `.env.local` to Git.
 
 ## Firestore Query Contract
-- See `wiki/queries.md` for the agreed Firestore query shapes (profiles, matches, journals) and index expectations.
-- Query-to-index mapping: `wiki/firestore-queries-and-indexes.md`.
+- See `docs/data/queries-and-indexes.md` for the agreed Firestore query shapes (profiles, matches, journals) and index expectations.
+- Query-to-index mapping: `docs/data/queries-and-indexes.md`.
 
 ## Deploying Firestore Indexes
 - Local emulator reads `firestore.indexes.json` via `firebase.json`; keep both files in sync.
