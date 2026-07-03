@@ -42,8 +42,9 @@ Values below match the C1 enums in code.
 ### leagueStatus
 - Firestore representation: string
 - API/Pydantic representation: string enum
-- Allowed values: `active`, `completed`, `upcoming`, `open`
+- Allowed values: `active`, `completed`, `dividing`, `upcoming`, `open`
   - `open`: registration is open, play has not yet started (distinct from `upcoming` which may be pre-registration)
+  - `dividing`: transient kickoff state while a league's flat member pool is being assigned to divisions
 
 ### journalVisibility
 - Firestore representation: string
@@ -459,7 +460,28 @@ Purpose: league metadata, configuration, and lifecycle.
 | startDate | timestamp | optional | — | canonical | — | When play begins. Displayed on PL-L1 card ("Starts May 1"). |
 | endDate | timestamp | optional | — | canonical | — | When the season ends. Displayed on PL-L2 detail view. |
 | tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
+| divisionConfig | map | optional | — | canonical | — | League Divisions configuration. Missing on legacy/non-divided leagues. |
+| divisionConfig.targetSize | number | optional | — | canonical | — | Target players per division. Defaults to `6` (`DIVISION_TARGET_SIZE`). |
+| divisionConfig.maxDivisions | number | optional | — | canonical | — | Optional cap for division count. Null means no explicit cap. |
 | meta | map | optional | — | canonical | — | Free-form metadata. |
+
+## Subcollection: leagues/{leagueId}/divisions
+Path: `leagues/{leagueId}/divisions/{divisionId}`
+
+Purpose: metadata-only League Divisions records created at kickoff. Members remain in the flat
+`leagues/{leagueId}/members/{uid}` pool and reference their assigned division by `divisionId`;
+there is no per-division members subcollection.
+
+### Fields: leagues/{leagueId}/divisions/{divisionId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| name | string | required | — | canonical | — | Division display name (e.g., "Division 1"). |
+| ordinal | number | required | — | canonical | index=order-by | Stable display/query order; `DivisionsRepo.list_for_league` orders by this field. |
+| ratingRange | map | required | — | canonical | — | Descriptive rating band computed at kickoff; not an enforcement rule. |
+| ratingRange.min | number | required | — | canonical | — | Lowest player rating in the division at kickoff. |
+| ratingRange.max | number | required | — | canonical | — | Highest player rating in the division at kickoff. |
+| currentPlayers | number | required | — | cache | — | Count of members assigned to this division. |
+| status | string | required | leagueStatus | canonical | — | Uses `active` for MVP division metadata. |
 
 ## Subcollection: leagues/{leagueId}/members
 Path: `leagues/{leagueId}/members/{uid}`
@@ -479,6 +501,7 @@ Purpose: membership record for a user in a league.
 | status | string | required | leagueMemberStatus | canonical | — | Membership state. |
 | joinedAt | timestamp | required | — | canonical | index=order-by | When the user joined. |
 | stats | map | optional | — | canonical | — | Optional per-user league stats. |
+| divisionId | string | optional | — | canonical | index=filter | Nullable until kickoff. Points to `leagues/{leagueId}/divisions/{divisionId}` after assignment. |
 
 ### Common queries
 - List members of a league ordered by `joinedAt` ASC.
@@ -503,10 +526,28 @@ Indexes are defined in `firestore.indexes.json` and required for browse queries:
   "region": "athens",
   "maxPlayers": 12,
   "currentPlayers": 4,
+  "divisionConfig": {
+    "targetSize": 6,
+    "maxDivisions": null
+  },
   "startDate": "2026-06-01T00:00:00Z",
   "endDate": "2026-08-31T00:00:00Z",
   "tier": "intermediate",
   "meta": {}
+}
+```
+
+### leagues/{leagueId}/divisions/{divisionId}
+```json
+{
+  "name": "Division 1",
+  "ordinal": 1,
+  "ratingRange": {
+    "min": 980,
+    "max": 1420
+  },
+  "currentPlayers": 6,
+  "status": "active"
 }
 ```
 
@@ -516,7 +557,8 @@ Indexes are defined in `firestore.indexes.json` and required for browse queries:
   "role": "player",
   "status": "active",
   "joinedAt": "2024-10-01T12:00:00Z",
-  "stats": {}
+  "stats": {},
+  "divisionId": null
 }
 ```
 
