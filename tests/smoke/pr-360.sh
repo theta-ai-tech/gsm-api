@@ -40,17 +40,16 @@ else
   no "API reachable at \$API_BASE_URL/health" "set API_BASE_URL to the PR worktree API"
 fi
 
-if curl -fsS "http://$FIRESTORE_EMULATOR_HOST/v1/projects/$GOOGLE_CLOUD_PROJECT/databases/(default)/documents/" >/dev/null 2>&1; then
-  ok "Firestore emulator reachable"
-else
-  no "Firestore emulator reachable" "set FIRESTORE_EMULATOR_HOST or start make emu-all"
-fi
-
 if [ -x "$VENV/bin/python" ] && [ -x "$VENV/bin/pytest" ]; then
   ok "main repo venv available"
 else
   no "main repo venv available" "missing $VENV/bin/python or $VENV/bin/pytest"
 fi
+
+run_check "Firestore emulator reachable" env \
+  FIRESTORE_EMULATOR_HOST="$FIRESTORE_EMULATOR_HOST" \
+  GOOGLE_CLOUD_PROJECT="$GOOGLE_CLOUD_PROJECT" \
+  "$VENV/bin/python" -c "from google.cloud import firestore; list(firestore.Client(project='$GOOGLE_CLOUD_PROJECT').collections())"
 
 run_check "worktree app import wins" env \
   PYTHONPATH="$REPO_ROOT/api" \
