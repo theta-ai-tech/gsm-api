@@ -49,7 +49,15 @@ from app.models.journal import (
     MatchReflection,
     UpdateJournalEntryRequest,
 )
-from app.models.league import League, LeagueBrowseCard, LeagueMember, StandingsEntry
+from app.models.league import (
+    Division,
+    DivisionConfig,
+    League,
+    LeagueBrowseCard,
+    LeagueMember,
+    RatingRange,
+    StandingsEntry,
+)
 from app.models.match import Match, MatchParticipant, compute_participant_pair
 from app.models.play import Broadcast, Offer, BroadcastLocation, GeoLocation
 from app.models.share import ShareCardData
@@ -124,6 +132,9 @@ __all__ = [
     "CreateJournalEntryResponse",
     "UpdateJournalEntryRequest",
     # league
+    "Division",
+    "DivisionConfig",
+    "RatingRange",
     "League",
     "LeagueBrowseCard",
     "LeagueMember",

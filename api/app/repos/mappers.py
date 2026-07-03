@@ -4,6 +4,7 @@ from typing import Any, List, Optional
 
 from pydantic import ValidationError
 
+from app.constants import DIVISION_TARGET_SIZE
 from app.models import (
     AvailabilityEnum,
     Broadcast,
@@ -12,6 +13,8 @@ from app.models import (
     BroadcastTypeEnum,
     CourtStatusEnum,
     CursorBundle,
+    Division,
+    DivisionConfig,
     GeoCoordinates,
     GeoLocation,
     JournalEntry,
@@ -44,6 +47,7 @@ from app.models import (
     PointHistoryReasonEnum,
     PrivateUserProfile,
     PublicUserProfile,
+    RatingRange,
     ScoutingProfile,
     ScoutingSportData,
     ScoutingTagCount,
@@ -415,6 +419,7 @@ def to_league(doc: dict[str, Any], league_id: str | None = None) -> League:
         start_date=doc.get("startDate"),
         end_date=doc.get("endDate"),
         tier=doc.get("tier"),
+        division_config=_parse_division_config(doc.get("divisionConfig")),
         meta=doc.get("meta"),
     )
 
@@ -445,6 +450,32 @@ def to_league_member(doc: dict[str, Any], uid: str | None = None) -> LeagueMembe
         joined_at=_require(doc, "joinedAt"),
         stats=doc.get("stats"),
         display_name=doc.get("displayName"),
+        division_id=doc.get("divisionId"),
+    )
+
+
+def _parse_division_config(data: dict[str, Any] | None) -> DivisionConfig | None:
+    if data is None:
+        return None
+    return DivisionConfig(
+        target_size=int(data.get("targetSize") or data.get("target_size") or DIVISION_TARGET_SIZE),
+        max_divisions=data.get("maxDivisions") or data.get("max_divisions"),
+    )
+
+
+def _parse_rating_range(data: dict[str, Any]) -> RatingRange:
+    return RatingRange(min=int(_require(data, "min")), max=int(_require(data, "max")))
+
+
+def to_division(doc: dict[str, Any], division_id: str | None = None) -> Division:
+    status_val = _require(doc, "status")
+    return Division(
+        division_id=division_id or doc.get("id") or "",
+        name=doc.get("name", ""),
+        ordinal=int(_require(doc, "ordinal")),
+        rating_range=_parse_rating_range(_require(doc, "ratingRange")),
+        current_players=int(_require(doc, "currentPlayers")),
+        status=LeagueStatusEnum(status_val),
     )
 
 

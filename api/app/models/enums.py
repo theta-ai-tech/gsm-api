@@ -35,6 +35,7 @@ class BroadcastTypeEnum(StrEnum):
 class LeagueStatusEnum(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
+    DIVIDING = "dividing"
     UPCOMING = "upcoming"
     OPEN = "open"
 
