@@ -93,4 +93,9 @@ def get_notification_intent_repo() -> NotificationIntentRepo:
 
 
 def get_league_service() -> LeagueService:
-    return LeagueService(get_leagues_repo(), get_firestore_client())
+    return LeagueService(
+        get_leagues_repo(),
+        get_firestore_client(),
+        get_users_repo(),
+        get_divisions_repo(),
+    )

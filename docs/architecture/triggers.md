@@ -52,6 +52,21 @@ flowchart TD
 - **Removal** (delete or status → `left`/`banned`): remove the league entry from both lists.
   Idempotent under retries.
 
+## League kickoff and divisions
+
+League kickoff is API-driven, not a Firestore trigger. `POST /leagues/{leagueId}/kickoff`
+performs a small transaction to claim an `open` league by setting it to `dividing`, then writes
+division metadata and member `divisionId` assignments in bounded batches before marking the league
+`active` with `dividedAt`.
+
+The endpoint is retry-safe:
+- `open` starts a new kickoff.
+- `dividing` returns a conflict because another kickoff is already in progress.
+- `active` with `dividedAt` returns existing division docs as an idempotent no-op.
+
+The member updates produced by kickoff are normal `leagues/{leagueId}/members/{uid}` writes, so the
+league-member summary trigger may refresh user league caches after the API transaction completes.
+
 ## Push-notification delivery (`users/{uid}/notificationIntents/{intentId}` create)
 
 Handler: `functions/notification_triggers/on_notification_intent.deliver_notification_intent`.

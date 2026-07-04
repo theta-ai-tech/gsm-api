@@ -192,6 +192,11 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
         doc["endDate"] = league.end_date
     if league.tier is not None:
         doc["tier"] = league.tier
+    if league.division_config is not None:
+        doc["divisionConfig"] = {
+            "targetSize": league.division_config.target_size,
+            "maxDivisions": league.division_config.max_divisions,
+        }
     return doc
 
 
@@ -205,6 +210,8 @@ def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:
     }
     if member.display_name is not None:
         doc["displayName"] = member.display_name
+    if member.division_id is not None:
+        doc["divisionId"] = member.division_id
     return doc
 
 

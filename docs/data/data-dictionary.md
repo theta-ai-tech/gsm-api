@@ -459,6 +459,7 @@ Purpose: league metadata, configuration, and lifecycle.
 | currentPlayers | number | optional | — | cache | — | Denormalized count of active members. Updated on join/leave. Used by PL-L1 progress bar. |
 | startDate | timestamp | optional | — | canonical | — | When play begins. Displayed on PL-L1 card ("Starts May 1"). |
 | endDate | timestamp | optional | — | canonical | — | When the season ends. Displayed on PL-L2 detail view. |
+| dividedAt | timestamp | optional | — | canonical | — | Set by `POST /leagues/{leagueId}/kickoff` when division assignment completes. Missing before kickoff and on legacy leagues. |
 | tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
 | divisionConfig | map | optional | — | canonical | — | League Divisions configuration. Missing on legacy/non-divided leagues. |
 | divisionConfig.targetSize | number | optional | — | canonical | — | Target players per division. Defaults to `6` (`DIVISION_TARGET_SIZE`). |

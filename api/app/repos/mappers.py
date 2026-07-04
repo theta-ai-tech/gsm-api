@@ -418,6 +418,7 @@ def to_league(doc: dict[str, Any], league_id: str | None = None) -> League:
         current_players=doc.get("currentPlayers"),
         start_date=doc.get("startDate"),
         end_date=doc.get("endDate"),
+        divided_at=doc.get("dividedAt"),
         tier=doc.get("tier"),
         division_config=_parse_division_config(doc.get("divisionConfig")),
         meta=doc.get("meta"),

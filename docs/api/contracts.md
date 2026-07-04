@@ -71,6 +71,7 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/leagues/{id}/standings` | Get league standings (auth: member) |
 | `GET` | `/leagues/{id}/matches` | List upcoming or completed league matches (auth: member) |
 | `POST` | `/leagues/{id}/join` | Self-serve join a league |
+| `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members into divisions |
 
 ---
 
@@ -965,6 +966,56 @@ On success: creates `leagues/{id}/members/{uid}` document and atomically increme
 | `401` | Missing or invalid token |
 | `404` | League not found |
 | `409` | Already a member, league not `open`/`upcoming`, or league at full capacity |
+
+---
+
+### POST /leagues/{id}/kickoff
+
+**Auth:** Required; league owner, admin member, or global admin.
+
+**Request body:** None.
+
+Behavior:
+- Valid only for `open` leagues; success transitions `open → dividing → active` and stamps
+  `dividedAt`.
+- Sorts active members by `users/{uid}.rankings.{sport}.pts` descending; missing ranking data
+  counts as `0`.
+- Creates division docs under `leagues/{id}/divisions` and sets each member's `divisionId` only
+  when unset.
+- Division count is `1` for fewer than 5 active members, otherwise `round(N / targetSize)`.
+  Default `targetSize` is `6`.
+- Re-running after success is idempotent and returns existing divisions with
+  `already_kicked_off: true`.
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "league_abc",
+  "division_count": 2,
+  "division_ids": ["div-1", "div-2"],
+  "divisions": [
+    {
+      "division_id": "div-1",
+      "name": "Division 1",
+      "ordinal": 1,
+      "rating_range": {"min": 1350, "max": 1800},
+      "current_players": 6,
+      "status": "active"
+    }
+  ],
+  "already_kicked_off": false
+}
+```
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `403` | Caller is not a league admin/owner/global admin |
+| `404` | League not found |
+| `409` | League is not open and not already kicked off, or has no active members |
 
 ---
 
