@@ -76,11 +76,12 @@ run_check "seed division read fixture" env \
   GOOGLE_CLOUD_PROJECT="$GOOGLE_CLOUD_PROJECT" \
   "$VENV/bin/python" - "$LEAGUE_ID" "$PENDING_LEAGUE_ID" "$USER_UID" <<'PY'
 from datetime import datetime, timezone
+import os
 import sys
 from google.cloud import firestore
 
 league_id, pending_league_id, uid = sys.argv[1:4]
-db = firestore.Client(project="gsm-dev-f70d0")
+db = firestore.Client(project=os.environ.get("GOOGLE_CLOUD_PROJECT", "gsm-dev-f70d0"))
 match_ids = [
     "pr-362-upcoming-div1",
     "pr-362-upcoming-div2",
