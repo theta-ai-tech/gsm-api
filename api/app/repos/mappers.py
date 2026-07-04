@@ -134,6 +134,7 @@ def _parse_league_summary(data: dict[str, Any]) -> LeagueSummary:
         sport=SportEnum(_require(data, "sport")),
         status=LeagueStatusEnum(_require(data, "status")),
         role=LeagueRoleEnum(role) if role else None,
+        division_id=data.get("divisionId"),
     )
 
 

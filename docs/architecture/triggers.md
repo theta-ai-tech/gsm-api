@@ -46,9 +46,10 @@ flowchart TD
     F -->|no| H["No removal update"]
 ```
 
-- **Upsert** (active membership, role/status changed): compose `{leagueId, sport, status, name, role}`
-  and upsert into `leaguesActive` (league status `active`) or `leaguesCompleted` (otherwise),
-  removing from the other list to keep them disjoint. Deduped by `leagueId`, capped at 20, no-op-safe.
+- **Upsert** (active membership, role/status/divisionId changed): compose
+  `{leagueId, sport, status, name, role, divisionId}` and upsert into `leaguesActive` (league status
+  `active`) or `leaguesCompleted` (otherwise), removing from the other list to keep them disjoint.
+  Deduped by `leagueId`, capped at 20, no-op-safe.
 - **Removal** (delete or status → `left`/`banned`): remove the league entry from both lists.
   Idempotent under retries.
 
@@ -65,7 +66,12 @@ The endpoint is retry-safe:
 - `active` with `dividedAt` returns existing division docs as an idempotent no-op.
 
 The member updates produced by kickoff are normal `leagues/{leagueId}/members/{uid}` writes, so the
-league-member summary trigger may refresh user league caches after the API transaction completes.
+league-member summary trigger refreshes user league caches after the API transaction completes,
+including the member's assigned `divisionId`.
+
+The scoring trigger is unchanged by division support. It routes stat updates by `match.leagueId` to
+the flat `leagues/{leagueId}/members/{uid}` member document; `matches.divisionId` is not consulted
+for stat routing.
 
 ## Push-notification delivery (`users/{uid}/notificationIntents/{intentId}` create)
 

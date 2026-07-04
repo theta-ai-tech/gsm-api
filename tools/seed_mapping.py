@@ -74,6 +74,7 @@ def _league_summary_to_dict(summary: LeagueSummary) -> Dict[str, Any]:
         "sport": summary.sport.value,
         "status": summary.status.value,
         "role": summary.role.value if summary.role else None,
+        "divisionId": summary.division_id,
     }
 
 
