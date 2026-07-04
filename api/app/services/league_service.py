@@ -296,9 +296,7 @@ class LeagueService:
                     batch.set(doc_ref, data)
             batch.commit()
 
-    def get_standings(self, league_id: str) -> list[StandingsEntry]:
-        members = self.leagues_repo.list_members(league_id)
-
+    def _rank_members(self, members: list[LeagueMember]) -> list[StandingsEntry]:
         # Build sortable rows: (wins, losses, display_name, uid)
         # display_name falls back to uid when not stored in member doc
         rows: list[tuple[int, int, str, str]] = []
@@ -332,3 +330,14 @@ class LeagueService:
             )
 
         return result
+
+    def get_standings(self, league_id: str) -> list[StandingsEntry]:
+        return self._rank_members(self.leagues_repo.list_members(league_id))
+
+    def get_division_standings(self, league_id: str, division_id: str) -> list[StandingsEntry]:
+        members = [
+            member
+            for member in self.leagues_repo.list_members(league_id, limit=None)
+            if member.division_id == division_id
+        ]
+        return self._rank_members(members)

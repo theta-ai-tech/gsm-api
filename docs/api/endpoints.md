@@ -523,6 +523,181 @@ curl -s -X POST \
 
 ---
 
+## `GET /leagues/{league_id}/divisions`
+
+### Purpose
+List the divisions created by league kickoff, ordered by `ordinal`.
+
+### Auth
+Required (Firebase Bearer token). Caller must be a member of the league.
+
+### Path parameters
+- `league_id` — string identifier of the league
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-divisions-open-2026/divisions
+```
+
+### Example success response (`200`)
+```json
+{
+  "league_id": "padel-divisions-open-2026",
+  "divisions": [
+    {
+      "division_id": "div-1",
+      "name": "Division 1",
+      "ordinal": 1,
+      "rating_range": {"min": 1350, "max": 1800},
+      "current_players": 6,
+      "status": "active"
+    },
+    {
+      "division_id": "div-2",
+      "name": "Division 2",
+      "ordinal": 2,
+      "rating_range": {"min": 0, "max": 1260},
+      "current_players": 5,
+      "status": "active"
+    }
+  ]
+}
+```
+
+### Behavior
+- Reads `leagues/{league_id}/divisions` directly; there is no per-division members subcollection.
+- Pre-kickoff leagues return `409` with detail `league not yet divided`.
+
+### Common error responses
+- `401` missing/invalid token
+- `403` caller is not a league member
+- `404` league not found
+- `409` league has not completed division kickoff
+
+---
+
+## `GET /leagues/{league_id}/divisions/{division_id}/standings`
+
+### Purpose
+Returns the current standings for one league division. Uses the same dense-ranking rules as league
+standings, but only includes members whose member doc has the requested `divisionId`.
+
+### Auth
+Required (Firebase Bearer token). Caller must be a member of the league.
+
+### Path parameters
+- `league_id` — string identifier of the league
+- `division_id` — string identifier of the division
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-divisions-open-2026/divisions/div-1/standings
+```
+
+### Example success response (`200`)
+```json
+{
+  "league_id": "padel-divisions-open-2026",
+  "standings": [
+    {
+      "rank": 1,
+      "uid": "user_ignatios",
+      "display_name": "Ignatios",
+      "wins": 5,
+      "losses": 1,
+      "tier_ring": null
+    },
+    {
+      "rank": 2,
+      "uid": "user_sam",
+      "display_name": "Sam",
+      "wins": 3,
+      "losses": 2,
+      "tier_ring": null
+    }
+  ]
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `403` caller is not a league member
+- `404` league or division not found
+- `409` league has not completed division kickoff
+
+---
+
+## `GET /leagues/{league_id}/divisions/{division_id}/matches`
+
+### Purpose
+List upcoming or completed matches for one league division. Requires league membership.
+
+### Auth
+Required (Firebase Bearer token). Caller must be a member of the league.
+
+### Path parameters
+- `league_id` — string identifier of the league
+- `division_id` — string identifier of the division
+
+### Query parameters
+| Param | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | `upcoming \| completed` | No | `upcoming` | Which match bucket to return |
+| `limit` | int (1–50) | No | 10 | Max matches per page |
+| `cursor` | string | No | — | Opaque pagination token from previous response |
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/leagues/padel-divisions-open-2026/divisions/div-1/matches?type=upcoming&limit=5"
+```
+
+### Example success response (`200`)
+```json
+{
+  "matches": [
+    {
+      "match_id": "match_123",
+      "sport": "padel",
+      "status": "scheduled",
+      "scheduled_at": "2026-06-10T18:00:00+00:00",
+      "finished_at": null,
+      "league_id": "padel-divisions-open-2026",
+      "division_id": "div-1",
+      "court_id": null,
+      "participants": [
+        {"uid": "user_ignatios", "team": null, "role": "player", "result": null},
+        {"uid": "user_sam", "team": null, "role": "player", "result": null}
+      ],
+      "participant_uids": ["user_ignatios", "user_sam"],
+      "result_by_user": null,
+      "score": null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### Behavior
+- `type=upcoming`: filters by `leagueId`, `divisionId`, `status=scheduled`; ordered by `scheduledAt` ASC.
+- `type=completed`: filters by `leagueId`, `divisionId`, `status=completed`; ordered by `finishedAt` DESC.
+- Cursor tokens are opaque (base64-encoded). Treat `next_cursor` as opaque — do not parse it.
+- Returns `200` with `matches: []` when no matches — never `404`.
+
+### Common error responses
+- `400` invalid cursor token
+- `401` missing/invalid token
+- `403` caller is not a league member
+- `404` league or division not found
+- `409` league has not completed division kickoff
+
+---
+
 ## `GET /leagues/{league_id}/matches`
 
 ### Purpose

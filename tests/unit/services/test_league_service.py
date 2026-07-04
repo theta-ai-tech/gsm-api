@@ -286,6 +286,7 @@ def _make_member_with_stats(
     wins: int = 0,
     losses: int = 0,
     display_name: str | None = None,
+    division_id: str | None = None,
 ) -> LeagueMember:
     return LeagueMember(
         uid=uid,
@@ -294,6 +295,7 @@ def _make_member_with_stats(
         joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         stats={"wins": wins, "losses": losses},
         display_name=display_name,
+        division_id=division_id,
     )
 
 
@@ -549,3 +551,19 @@ class TestGetStandings:
         assert result[1].uid == "zara_uid"
         assert result[0].rank == 1
         assert result[1].rank == 1
+
+    def test_division_standings_filters_members_before_ranking(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("div1_a", wins=2, losses=0, division_id="div-1"),
+            _make_member_with_stats("div2_a", wins=5, losses=0, division_id="div-2"),
+            _make_member_with_stats("div1_b", wins=1, losses=1, division_id="div-1"),
+            _make_member_with_stats("unassigned", wins=9, losses=0, division_id=None),
+        ]
+
+        result = league_service.get_division_standings("lg1", "div-1")
+
+        assert [entry.uid for entry in result] == ["div1_a", "div1_b"]
+        assert [entry.rank for entry in result] == [1, 2]
+        mock_leagues_repo.list_members.assert_called_once_with("lg1", limit=None)

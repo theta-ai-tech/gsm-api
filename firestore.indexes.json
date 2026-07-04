@@ -84,6 +84,26 @@
       ]
     },
     {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leagueId", "mode": "ASCENDING" },
+        { "fieldPath": "divisionId", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "scheduledAt", "mode": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leagueId", "mode": "ASCENDING" },
+        { "fieldPath": "divisionId", "mode": "ASCENDING" },
+        { "fieldPath": "status", "mode": "ASCENDING" },
+        { "fieldPath": "finishedAt", "mode": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "pointHistory",
       "queryScope": "COLLECTION",
       "fields": [

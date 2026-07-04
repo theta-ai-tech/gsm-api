@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies.repos import (
+    get_divisions_repo,
     get_league_service,
     get_leagues_repo,
     get_matches_repo,
@@ -100,6 +101,17 @@ def _make_league(
         owner_uid=owner_uid,
         start_date=start_date,
         **kwargs,
+    )
+
+
+def _make_division(division_id: str = "div-1", ordinal: int = 1) -> Division:
+    return Division(
+        division_id=division_id,
+        name=f"Division {ordinal}",
+        ordinal=ordinal,
+        rating_range=RatingRange(min=900, max=1400),
+        current_players=6,
+        status=LeagueStatusEnum.ACTIVE,
     )
 
 
@@ -668,12 +680,14 @@ def _make_match(
     scheduled_at: datetime | None = datetime(2026, 7, 1, tzinfo=timezone.utc),
     finished_at: datetime | None = None,
     league_id: str = "lg1",
+    division_id: str | None = None,
 ) -> Match:
     return Match(
         match_id=match_id,
         sport=SportEnum.PADEL,
         status=status,
         league_id=league_id,
+        division_id=division_id,
         scheduled_at=scheduled_at,
         finished_at=finished_at,
         participant_uids=["uid1", "uid2"],
@@ -682,6 +696,191 @@ def _make_match(
             MatchParticipant(uid="uid2", role=ParticipantRoleEnum.PLAYER),
         ],
     )
+
+
+class TestLeagueDivisionEndpoints:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+            uid=_UID, email="test@gsm.local"
+        )
+
+        leagues_repo = Mock(
+            spec_set=[
+                "list_by_filter",
+                "get_by_id",
+                "list_members",
+                "get_member_count",
+                "increment_member_count",
+            ]
+        )
+        leagues_repo.get_by_id.return_value = _make_league(
+            "lg1",
+            status=LeagueStatusEnum.ACTIVE,
+            divided_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+        app.dependency_overrides[get_leagues_repo] = lambda: leagues_repo
+
+        divisions_repo = Mock(spec_set=["list_for_league", "get_by_id"])
+        divisions_repo.list_for_league.return_value = [
+            _make_division("div-1", 1),
+            _make_division("div-2", 2),
+        ]
+        divisions_repo.get_by_id.return_value = _make_division("div-1", 1)
+        app.dependency_overrides[get_divisions_repo] = lambda: divisions_repo
+
+        league_service = Mock(spec=LeagueService)
+        league_service.get_division_standings.return_value = [
+            StandingsEntry(
+                rank=1,
+                uid="user_a",
+                display_name="Alice",
+                wins=3,
+                losses=0,
+            )
+        ]
+        app.dependency_overrides[get_league_service] = lambda: league_service
+
+        matches_repo = Mock(
+            spec_set=[
+                "list_upcoming_for_league",
+                "list_completed_for_league",
+                "list_upcoming_for_division",
+                "list_completed_for_division",
+            ]
+        )
+        matches_repo.list_upcoming_for_division.return_value = []
+        matches_repo.list_completed_for_division.return_value = []
+        app.dependency_overrides[get_matches_repo] = lambda: matches_repo
+
+        role_service = Mock(
+            spec_set=[
+                "is_league_member",
+                "get_league_member_role",
+                "get_league_owner_uid",
+            ]
+        )
+        role_service.is_league_member.return_value = True
+        role_service.get_league_owner_uid.return_value = None
+        app.dependency_overrides[get_role_service] = lambda: role_service
+
+        self.leagues_repo = leagues_repo
+        self.divisions_repo = divisions_repo
+        self.league_service = league_service
+        self.matches_repo = matches_repo
+        self.role_service = role_service
+        self.client = TestClient(app)
+
+        yield
+
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides.pop(get_leagues_repo, None)
+        app.dependency_overrides.pop(get_divisions_repo, None)
+        app.dependency_overrides.pop(get_league_service, None)
+        app.dependency_overrides.pop(get_matches_repo, None)
+        app.dependency_overrides.pop(get_role_service, None)
+
+    def test_list_divisions_returns_ordered_divisions(self):
+        resp = self.client.get("/leagues/lg1/divisions")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["league_id"] == "lg1"
+        assert [division["division_id"] for division in body["divisions"]] == [
+            "div-1",
+            "div-2",
+        ]
+        self.divisions_repo.list_for_league.assert_called_once_with("lg1")
+
+    def test_divisions_missing_league_returns_404(self):
+        self.leagues_repo.get_by_id.return_value = None
+
+        resp = self.client.get("/leagues/missing/divisions")
+
+        assert resp.status_code == 404
+
+    def test_divisions_non_member_returns_403(self):
+        self.role_service.is_league_member.return_value = False
+
+        resp = self.client.get("/leagues/lg1/divisions")
+
+        assert resp.status_code == 403
+
+    def test_divisions_no_auth_returns_401(self):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+
+        resp = c.get("/leagues/lg1/divisions")
+
+        assert resp.status_code == 401
+
+    def test_pre_kickoff_returns_409(self):
+        self.leagues_repo.get_by_id.return_value = _make_league(
+            "lg1", status=LeagueStatusEnum.OPEN, divided_at=None
+        )
+
+        resp = self.client.get("/leagues/lg1/divisions")
+
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "league not yet divided"
+
+    def test_division_standings_filters_by_division(self):
+        resp = self.client.get("/leagues/lg1/divisions/div-1/standings")
+
+        assert resp.status_code == 200
+        assert resp.json()["standings"][0]["uid"] == "user_a"
+        self.divisions_repo.get_by_id.assert_called_with("lg1", "div-1")
+        self.league_service.get_division_standings.assert_called_once_with(
+            "lg1", "div-1"
+        )
+
+    def test_unknown_division_standings_returns_404(self):
+        self.divisions_repo.get_by_id.return_value = None
+
+        resp = self.client.get("/leagues/lg1/divisions/missing/standings")
+
+        assert resp.status_code == 404
+
+    def test_division_matches_delegates_to_upcoming_query(self):
+        self.matches_repo.list_upcoming_for_division.return_value = [
+            _make_match("m1", division_id="div-1")
+        ]
+
+        resp = self.client.get("/leagues/lg1/divisions/div-1/matches")
+
+        assert resp.status_code == 200
+        assert resp.json()["matches"][0]["division_id"] == "div-1"
+        self.matches_repo.list_upcoming_for_division.assert_called_once()
+        self.matches_repo.list_completed_for_division.assert_not_called()
+
+    def test_division_matches_delegates_to_completed_query(self):
+        self.matches_repo.list_completed_for_division.return_value = [
+            _make_match(
+                "m1",
+                status=MatchStatusEnum.COMPLETED,
+                scheduled_at=None,
+                finished_at=datetime(2026, 8, 2, tzinfo=timezone.utc),
+                division_id="div-1",
+            )
+        ]
+
+        resp = self.client.get(
+            "/leagues/lg1/divisions/div-1/matches", params={"type": "completed"}
+        )
+
+        assert resp.status_code == 200
+        self.matches_repo.list_completed_for_division.assert_called_once()
+        self.matches_repo.list_upcoming_for_division.assert_not_called()
+
+    def test_division_matches_forwards_limit_plus_one(self):
+        resp = self.client.get(
+            "/leagues/lg1/divisions/div-1/matches", params={"limit": 5}
+        )
+
+        assert resp.status_code == 200
+        assert (
+            self.matches_repo.list_upcoming_for_division.call_args.kwargs["limit"] == 6
+        )
 
 
 class TestGetLeagueMatches:

@@ -392,6 +392,7 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         scheduled_at=doc.get("scheduledAt"),
         finished_at=doc.get("finishedAt"),
         league_id=doc.get("leagueId"),
+        division_id=doc.get("divisionId"),
         court_id=doc.get("courtId"),
         venue_ref=_parse_venue_ref(doc.get("venueRef")),
         score=_parse_score(doc.get("score", {})),

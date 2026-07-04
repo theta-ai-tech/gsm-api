@@ -26,6 +26,7 @@ from app.repos.mappers import (
     to_league,
     to_league_browse_card,
     to_league_member,
+    to_match,
     to_offer,
 )
 from app.models.journal import JournalEntry, MatchReflection
@@ -759,6 +760,22 @@ class TestLeagueDivisionSchemaMappers:
         assert division.rating_range.max == 1400
         assert division.current_players == 6
         assert division.status == LeagueStatusEnum.ACTIVE
+
+    def test_to_match_maps_optional_division_id(self):
+        scheduled_at = datetime.now(timezone.utc)
+        doc = {
+            "sport": "padel",
+            "status": "scheduled",
+            "matchType": "singles",
+            "scheduledAt": scheduled_at,
+            "leagueId": "league_1",
+            "divisionId": "div-1",
+            "participantUids": ["user_a", "user_b"],
+        }
+
+        match = to_match(doc, match_id="match_1")
+
+        assert match.division_id == "div-1"
 
 
 # ── to_league_browse_card ─────────────────────────────────────────────────────

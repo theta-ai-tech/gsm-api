@@ -252,6 +252,7 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
         "scheduledAt": match.scheduled_at,
         "finishedAt": match.finished_at,
         "leagueId": match.league_id,
+        "divisionId": match.division_id,
         "courtId": match.court_id,
         "participants": [_participant_to_dict(p) for p in match.participants],
         "participantUids": match.participant_uids,
