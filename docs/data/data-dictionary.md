@@ -340,6 +340,7 @@ Purpose: scheduled and completed match records; supports user and league match q
 | participants[].role | string | optional | — | canonical | — | Participant role (defaults to player). |
 | participants[].result | string | optional | — | canonical | — | Per-participant result (W/L/D). |
 | leagueId | string | optional | — | canonical | index=filter | Optional league reference. |
+| divisionId | string | optional | — | canonical | index=filter | Optional division reference for division-scoped fixtures. Not used for score/stat routing. |
 | courtId | string | optional | — | canonical | — | Optional court reference. |
 | scheduledAt | timestamp | optional | — | canonical | index=order-by | Required for scheduled/pending/completed. |
 | finishedAt | timestamp | optional | — | canonical | index=order-by | Required for completed. |
@@ -414,6 +415,8 @@ Indexes are defined in `firestore.indexes.json` and required for C3 queries:
 - Completed matches by user: `participantUids` (array-contains), `status` (ASC), `finishedAt` (DESC)
 - Upcoming matches by league: `leagueId` (ASC), `status` (ASC), `scheduledAt` (ASC)
 - Completed matches by league: `leagueId` (ASC), `status` (ASC), `finishedAt` (DESC)
+- Upcoming matches by league division: `leagueId` (ASC), `divisionId` (ASC), `status` (ASC), `scheduledAt` (ASC)
+- Completed matches by league division: `leagueId` (ASC), `divisionId` (ASC), `status` (ASC), `finishedAt` (DESC)
 - Head-to-head history: `participantPair` (ASC), `finishedAt` (DESC)
 
 ### matches/{matchId}

@@ -70,6 +70,9 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/leagues/{id}` | Get full league detail |
 | `GET` | `/leagues/{id}/standings` | Get league standings (auth: member) |
 | `GET` | `/leagues/{id}/matches` | List upcoming or completed league matches (auth: member) |
+| `GET` | `/leagues/{id}/divisions` | List kickoff-created league divisions (auth: member) |
+| `GET` | `/leagues/{id}/divisions/{divisionId}/standings` | Get division standings (auth: member) |
+| `GET` | `/leagues/{id}/divisions/{divisionId}/matches` | List division upcoming or completed matches (auth: member) |
 | `POST` | `/leagues/{id}/join` | Self-serve join a league |
 | `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members into divisions |
 
@@ -927,6 +930,141 @@ MVP notes: `display_name` falls back to `uid` (will be fixed in issue #325); `ti
 | `401` | Missing or invalid token |
 | `403` | Caller is not a member of the league |
 | `404` | League not found |
+
+---
+
+### GET /leagues/{id}/divisions
+
+**Auth:** Required. Caller must be an active member of the league.
+
+**Path parameter:** `id` — league ID.
+
+**Request body:** None.
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "padel-divisions-open-2026",
+  "divisions": [
+    {
+      "division_id": "div-1",
+      "name": "Division 1",
+      "ordinal": 1,
+      "rating_range": {"min": 1350, "max": 1800},
+      "current_players": 6,
+      "status": "active"
+    }
+  ]
+}
+```
+
+Divisions are returned in `ordinal` order from `leagues/{id}/divisions`. Pre-kickoff leagues return
+`409` with detail `league not yet divided`.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `403` | Caller is not a member of the league |
+| `404` | League not found |
+| `409` | League has not completed division kickoff |
+
+---
+
+### GET /leagues/{id}/divisions/{divisionId}/standings
+
+**Auth:** Required. Caller must be an active member of the league.
+
+**Path parameters:**
+- `id` — league ID.
+- `divisionId` — division ID.
+
+**Request body:** None.
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "padel-divisions-open-2026",
+  "standings": [
+    {
+      "rank": 1,
+      "uid": "user_abc",
+      "display_name": "user_abc",
+      "wins": 5,
+      "losses": 1,
+      "tier_ring": null
+    }
+  ]
+}
+```
+
+Uses the same dense-ranking rules as league standings, but only includes members whose member doc
+has the requested `divisionId`.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `401` | Missing or invalid token |
+| `403` | Caller is not a member of the league |
+| `404` | League or division not found |
+| `409` | League has not completed division kickoff |
+
+---
+
+### GET /leagues/{id}/divisions/{divisionId}/matches
+
+**Auth:** Required. Caller must be an active member of the league.
+
+**Path parameters:**
+- `id` — league ID.
+- `divisionId` — division ID.
+
+**Query parameters:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `upcoming\|completed` | No | Match filter (default: `upcoming`) |
+| `limit` | int (1–50) | No | Max results per page (default: `10`) |
+| `cursor` | string | No | Opaque pagination token from previous response |
+
+**Response (`200`):**
+
+```json
+{
+  "matches": [
+    {
+      "match_id": "match_abc",
+      "league_id": "padel-divisions-open-2026",
+      "division_id": "div-1",
+      "sport": "padel",
+      "match_type": "singles",
+      "status": "scheduled",
+      "scheduled_at": "2026-06-10T18:00:00Z",
+      "finished_at": null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Upcoming matches are filtered by `matches.leagueId`, `matches.divisionId`, and `status=scheduled`,
+then ordered by `scheduledAt` ascending. Completed matches use `status=completed` and
+`finishedAt` descending. `next_cursor` is opaque. Returns `200` with `matches: []` when no results
+match.
+
+**Key error codes:**
+
+| Code | Condition |
+|------|-----------|
+| `400` | Invalid cursor token |
+| `401` | Missing or invalid token |
+| `403` | Caller is not a member of the league |
+| `404` | League or division not found |
+| `409` | League has not completed division kickoff |
 
 ---
 

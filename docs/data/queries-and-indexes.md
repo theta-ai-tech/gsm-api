@@ -21,6 +21,8 @@ schema evolve behind a stable, testable API.
 | `MatchesRepo.list_completed_for_user(uid, …)` | Q3 |
 | `MatchesRepo.list_upcoming_for_league(league_id, …)` | Q4 (upcoming) |
 | `MatchesRepo.list_completed_for_league(league_id, …)` | Q4 (completed) |
+| `MatchesRepo.list_upcoming_for_division(league_id, division_id, …)` | Q4D (upcoming division fixtures) |
+| `MatchesRepo.list_completed_for_division(league_id, division_id, …)` | Q4D (completed division fixtures) |
 | `JournalRepo.list_entries(uid, …)` | Q5 |
 
 > The repo set has grown well beyond Q1–Q5 (broadcasts, offers, leagues, scouting, stats,
@@ -58,6 +60,13 @@ schema evolve behind a stable, testable API.
 - **Completed:** `leagueId == {leagueId}`, `status == "completed"`, `orderBy finishedAt DESC` → `MatchesRepo.list_completed_for_league`
   - **Index:** `leagueId` (ASC), `status` (ASC), `finishedAt` (DESC)
 
+### Q4D — Matches by league division
+- **Collection:** `matches`
+- **Upcoming:** `leagueId == {leagueId}`, `divisionId == {divisionId}`, `status == "scheduled"`, `orderBy scheduledAt ASC` → `MatchesRepo.list_upcoming_for_division`
+  - **Index:** `leagueId` (ASC), `divisionId` (ASC), `status` (ASC), `scheduledAt` (ASC)
+- **Completed:** `leagueId == {leagueId}`, `divisionId == {divisionId}`, `status == "completed"`, `orderBy finishedAt DESC` → `MatchesRepo.list_completed_for_division`
+  - **Index:** `leagueId` (ASC), `divisionId` (ASC), `status` (ASC), `finishedAt` (DESC)
+
 ### Q5 — Journal entries for a user
 - **Path:** `users/{uid}/journalEntries`
 - **Filters:** none
@@ -71,6 +80,7 @@ schema evolve behind a stable, testable API.
 - `matches.status` — string enum
 - `matches.scheduledAt`, `matches.finishedAt` — timestamps
 - `matches.leagueId` — string or null
+- `matches.divisionId` — optional string; used only for division-scoped fixtures, not scoring
 - `users/{uid}/journalEntries.createdAt` — timestamp
 
 Field names use the camelCase convention shared with seeding/mapping.
