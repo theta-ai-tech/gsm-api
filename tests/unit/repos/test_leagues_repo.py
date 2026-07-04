@@ -148,6 +148,32 @@ class TestLeaguesRepoListByFilter:
         assert results == []
 
 
+class TestLeaguesRepoListMembers:
+    def test_list_members_can_stream_without_limit(
+        self, leagues_repo, mock_firestore_client
+    ):
+        joined_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        mock_doc = Mock()
+        mock_doc.id = "user_1"
+        mock_doc.to_dict.return_value = {
+            "role": "player",
+            "status": "active",
+            "joinedAt": joined_at,
+        }
+        mock_query = Mock()
+        mock_query.order_by.return_value = mock_query
+        mock_query.stream.return_value = [mock_doc]
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value
+        ) = mock_query
+
+        results = leagues_repo.list_members("league_1", limit=None)
+
+        assert len(results) == 1
+        assert results[0].uid == "user_1"
+        mock_query.limit.assert_not_called()
+
+
 class TestLeaguesRepoGetMemberCount:
     def test_get_member_count_from_field(self, leagues_repo, mock_firestore_client):
         mock_doc = Mock()

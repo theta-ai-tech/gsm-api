@@ -188,7 +188,7 @@ class LeagueService:
 
         members = [
             member
-            for member in self.leagues_repo.list_members(league_id, limit=500)
+            for member in self.leagues_repo.list_members(league_id, limit=None)
             if member.status == LeagueMemberStatusEnum.ACTIVE
         ]
         if not members:

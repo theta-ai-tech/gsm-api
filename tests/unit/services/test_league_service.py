@@ -430,6 +430,7 @@ class TestKickoffLeague:
                 service.kickoff_league("lg1")
 
         league_ref.update.assert_any_call({"status": LeagueStatusEnum.OPEN.value})
+        mock_leagues_repo.list_members.assert_called_once_with("lg1", limit=None)
 
 
 class TestGetStandings:
