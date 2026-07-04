@@ -13,7 +13,12 @@ from app.models.enums import (
     SportEnum,
 )
 from app.repos.leagues_repo import LeaguesRepo
-from app.services.league_service import LeagueService
+from app.services.league_service import (
+    LeagueKickoffConflictError,
+    LeagueService,
+    RankedLeagueMember,
+    split_into_divisions,
+)
 
 
 @pytest.fixture
@@ -186,6 +191,7 @@ class TestJoinLeague:
         written_data = set_calls[0][0][1]
         assert written_data.get("uid") == "uid1"
         assert written_data.get("displayName") == "Alice"
+        assert written_data.get("divisionId") is None
 
     def test_open_league_can_join(
         self,
@@ -280,6 +286,7 @@ def _make_member_with_stats(
     wins: int = 0,
     losses: int = 0,
     display_name: str | None = None,
+    division_id: str | None = None,
 ) -> LeagueMember:
     return LeagueMember(
         uid=uid,
@@ -288,7 +295,144 @@ def _make_member_with_stats(
         joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         stats={"wins": wins, "losses": losses},
         display_name=display_name,
+        division_id=division_id,
     )
+
+
+def _make_ranked_member(uid: str, pts: int) -> RankedLeagueMember:
+    return RankedLeagueMember(
+        member=LeagueMember(
+            uid=uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            stats=None,
+        ),
+        pts=pts,
+    )
+
+
+class TestSplitIntoDivisions:
+    def test_four_members_stays_single_division(self) -> None:
+        splits = split_into_divisions(
+            [_make_ranked_member(f"u{i}", 1000 - i) for i in range(4)]
+        )
+
+        assert len(splits) == 1
+        assert splits[0].division_id == "div-1"
+        assert [item.member.uid for item in splits[0].members] == [
+            "u0",
+            "u1",
+            "u2",
+            "u3",
+        ]
+
+    def test_eleven_members_split_near_even_at_target_six(self) -> None:
+        splits = split_into_divisions(
+            [_make_ranked_member(f"u{i}", 2000 - i) for i in range(11)]
+        )
+
+        assert [len(split.members) for split in splits] == [6, 5]
+        assert splits[0].rating_max == 2000
+        assert splits[0].rating_min == 1995
+        assert splits[1].rating_max == 1994
+        assert splits[1].rating_min == 1990
+
+    def test_exact_target_size_stays_single_division(self) -> None:
+        splits = split_into_divisions(
+            [_make_ranked_member(f"u{i}", 1200 - i) for i in range(6)]
+        )
+
+        assert len(splits) == 1
+        assert len(splits[0].members) == 6
+
+    def test_tied_pts_are_preserved_in_sorted_order(self) -> None:
+        members = [
+            _make_ranked_member("u_a", 1200),
+            _make_ranked_member("u_b", 1200),
+            _make_ranked_member("u_c", 1100),
+            _make_ranked_member("u_d", 1100),
+            _make_ranked_member("u_e", 1000),
+        ]
+
+        splits = split_into_divisions(members)
+
+        assert [item.member.uid for item in splits[0].members] == [
+            "u_a",
+            "u_b",
+            "u_c",
+            "u_d",
+            "u_e",
+        ]
+        assert splits[0].rating_min == 1000
+        assert splits[0].rating_max == 1200
+
+    def test_max_divisions_caps_split_count(self) -> None:
+        splits = split_into_divisions(
+            [_make_ranked_member(f"u{i}", 1400 - i) for i in range(18)],
+            max_divisions=2,
+        )
+
+        assert [len(split.members) for split in splits] == [9, 9]
+
+
+class TestKickoffLeague:
+    def test_member_pts_missing_profile_or_ranking_defaults_to_zero(
+        self, mock_leagues_repo: Mock, mock_firestore_client: Mock
+    ) -> None:
+        users_repo = Mock()
+        users_repo.get_user_doc.side_effect = [
+            None,
+            {"rankings": {}},
+            {"rankings": {"tennis": {"pts": 1240}}},
+        ]
+        service = LeagueService(
+            mock_leagues_repo, mock_firestore_client, users_repo=users_repo
+        )
+
+        assert service._member_pts("missing", "tennis") == 0
+        assert service._member_pts("unranked", "tennis") == 0
+        assert service._member_pts("ranked", "tennis") == 1240
+
+    def test_dividing_league_blocks_duplicate_kickoff_claim(
+        self, mock_leagues_repo: Mock, mock_firestore_client: Mock
+    ) -> None:
+        league_ref = Mock()
+        league_doc = Mock()
+        league_doc.exists = True
+        league_doc.to_dict.return_value = {"status": "dividing"}
+        league_ref.get.return_value = league_doc
+        mock_firestore_client.collection.return_value.document.return_value = league_ref
+        mock_leagues_repo.get_by_id.return_value = _make_league(
+            status=LeagueStatusEnum.DIVIDING
+        )
+
+        with patch("app.services.league_service.firestore.transactional", lambda f: f):
+            service = LeagueService(mock_leagues_repo, mock_firestore_client)
+            with pytest.raises(LeagueKickoffConflictError, match="in progress"):
+                service.kickoff_league("lg1")
+
+        mock_leagues_repo.list_members.assert_not_called()
+
+    def test_empty_member_pool_restores_open_status(
+        self, mock_leagues_repo: Mock, mock_firestore_client: Mock
+    ) -> None:
+        league_ref = Mock()
+        league_doc = Mock()
+        league_doc.exists = True
+        league_doc.to_dict.return_value = {"status": "open"}
+        league_ref.get.return_value = league_doc
+        mock_firestore_client.collection.return_value.document.return_value = league_ref
+        mock_leagues_repo.get_by_id.return_value = _make_league()
+        mock_leagues_repo.list_members.return_value = []
+
+        with patch("app.services.league_service.firestore.transactional", lambda f: f):
+            service = LeagueService(mock_leagues_repo, mock_firestore_client)
+            with pytest.raises(LeagueKickoffConflictError, match="no active members"):
+                service.kickoff_league("lg1")
+
+        league_ref.update.assert_any_call({"status": LeagueStatusEnum.OPEN.value})
+        mock_leagues_repo.list_members.assert_called_once_with("lg1", limit=None)
 
 
 class TestGetStandings:
@@ -407,3 +551,19 @@ class TestGetStandings:
         assert result[1].uid == "zara_uid"
         assert result[0].rank == 1
         assert result[1].rank == 1
+
+    def test_division_standings_filters_members_before_ranking(
+        self, league_service: LeagueService, mock_leagues_repo: Mock
+    ) -> None:
+        mock_leagues_repo.list_members.return_value = [
+            _make_member_with_stats("div1_a", wins=2, losses=0, division_id="div-1"),
+            _make_member_with_stats("div2_a", wins=5, losses=0, division_id="div-2"),
+            _make_member_with_stats("div1_b", wins=1, losses=1, division_id="div-1"),
+            _make_member_with_stats("unassigned", wins=9, losses=0, division_id=None),
+        ]
+
+        result = league_service.get_division_standings("lg1", "div-1")
+
+        assert [entry.uid for entry in result] == ["div1_a", "div1_b"]
+        assert [entry.rank for entry in result] == [1, 2]
+        mock_leagues_repo.list_members.assert_called_once_with("lg1", limit=None)

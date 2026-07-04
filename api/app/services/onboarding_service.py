@@ -79,6 +79,7 @@ class OnboardingService:
             "cursors": None,
             "northStarGoal": None,
             "skillDna": {},
+            "deviceTokens": [],
             "playTab": {
                 "state": "DISCOVERY",
                 "activeBroadcastId": None,

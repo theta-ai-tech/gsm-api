@@ -1,0 +1,59 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Kinetic · states
+    - generic [ref=e6] [cursor=pointer]: Idle · Intent feed
+    - generic [ref=e7] [cursor=pointer]: Find · Intent detail
+    - generic [ref=e8] [cursor=pointer]: Proposed · Request sent
+    - generic [ref=e9] [cursor=pointer]: Proposed · Incoming
+    - generic [ref=e10] [cursor=pointer]: Confirmed · Upcoming
+    - generic [ref=e11] [cursor=pointer]: Score entry
+    - generic [ref=e12] [cursor=pointer]: Pending confirmation
+    - generic [ref=e13] [cursor=pointer]: Result · Quiet win
+  - generic [ref=e14]:
+    - generic [ref=e17]:
+      - generic [ref=e19]: 9:41
+      - generic [ref=e20]:
+        - img [ref=e21]
+        - img [ref=e26]
+        - img [ref=e30]
+    - generic [ref=e167]:
+      - generic [ref=e169]: Play
+      - generic [ref=e170]:
+        - generic [ref=e171]: Your next game
+        - generic [ref=e172]:
+          - generic [ref=e173]: Today · 20:00
+          - generic [ref=e174]: Kolonaki T.C. · Padel
+          - generic [ref=e176]:
+            - generic [ref=e177]: MK
+            - generic [ref=e178]:
+              - generic [ref=e179]: Maria Kosta
+              - generic [ref=e180]:
+                - generic [ref=e183]: Intermediate
+                - generic [ref=e185]: 2,340 pts
+          - generic [ref=e186]:
+            - generic [ref=e187] [cursor=pointer]:
+              - img [ref=e188]
+              - text: Directions
+            - generic [ref=e191] [cursor=pointer]:
+              - img [ref=e192]
+              - text: Message
+        - generic [ref=e194] [cursor=pointer]:
+          - img [ref=e196]
+          - generic [ref=e198]:
+            - generic [ref=e199]: Already played?
+            - generic [ref=e200]: Log the score in a few taps.
+          - img [ref=e201]
+      - generic [ref=e203]:
+        - generic [ref=e204] [cursor=pointer]:
+          - img [ref=e205]
+          - generic [ref=e208]: Play
+        - generic [ref=e209] [cursor=pointer]:
+          - img [ref=e210]
+          - generic [ref=e214]: Leagues
+        - generic [ref=e215] [cursor=pointer]:
+          - img [ref=e216]
+          - generic [ref=e219]: Journal
+        - generic [ref=e220] [cursor=pointer]:
+          - img [ref=e221]
+          - generic [ref=e224]: Profile
+  - generic [ref=e166]: GSM · Play · Kinetic Performance · calm authority

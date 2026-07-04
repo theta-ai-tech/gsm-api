@@ -29,6 +29,7 @@ from app.models.enums import (
     ParticipantRoleEnum,
     PlayNotificationIntentTypeEnum,
     PlayTabStateEnum,
+    SportEnum,
 )
 from app.models.notification import PlayNotificationIntent
 from app.repos.notification_intent_repo import NotificationIntentRepo
@@ -40,6 +41,8 @@ from app.models.play import (
     CreateBroadcastResponse,
     DiscoveryAnnotations,
     DiscoveryBroadcastCard,
+    DiscoveryFeedItem,
+    DiscoveryFeedResponse,
     DiscoveryPayload,
     IncomingOfferPayload,
     MatchDisputedPayload,
@@ -63,6 +66,7 @@ from app.repos.leagues_repo import LeaguesRepo
 from app.repos.mappers import _parse_sport_ranking
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
+from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.users_repo import UsersRepo
 
 logger = logging.getLogger(__name__)
@@ -110,6 +114,7 @@ class PlayService:
         firestore_client: firestore.Client,
         notification_intent_repo: NotificationIntentRepo | None = None,
         leagues_repo: LeaguesRepo | None = None,
+        region_config_repo: RegionConfigRepo | None = None,
     ):
         self.users_repo = users_repo
         self.broadcasts_repo = broadcasts_repo
@@ -118,6 +123,7 @@ class PlayService:
         self.client = firestore_client
         self.notification_intent_repo = notification_intent_repo
         self.leagues_repo = leagues_repo
+        self.region_config_repo = region_config_repo
 
     def _emit_notification_intent(self, intent: PlayNotificationIntent) -> None:
         if self.notification_intent_repo is None:
@@ -312,6 +318,87 @@ class PlayService:
             find_fourth_count=find_fourth_count,
         )
         return DiscoveryPayload(broadcasts=cards), annotations
+
+    # ===== GET /me/discovery =====
+
+    def build_discovery_feed(
+        self,
+        uid: str,
+        sport: SportEnum | None = None,
+        match_type: MatchTypeEnum | None = None,
+    ) -> DiscoveryFeedResponse:
+        """Return the full browsable list of active intents regardless of caller's play state.
+
+        Enriches each broadcast card with the owner's self-assessed skill level (from
+        their private profile preferences) and a human-readable area name (resolved from
+        the region config). Callers in any play state can call this — unlike the DISCOVERY
+        payload embedded in /me/state which is only present when mode == DISCOVERY.
+        """
+        broadcasts = self.broadcasts_repo.list_active(
+            sport=sport.value if sport else None,
+            match_type=match_type,
+            limit=DISCOVERY_FEED_DEFAULT_LIMIT,
+        )
+        broadcasts = [b for b in broadcasts if b.owner_uid != uid]
+
+        mapping: dict[str, str] = {}
+        if self.region_config_repo is not None:
+            try:
+                mapping = self.region_config_repo.get().mapping
+            except ValueError:
+                mapping = {}
+
+        # Dedupe owner profile reads — one Firestore read per unique owner uid
+        owner_profiles: dict[str, Any] = {}
+        for b in broadcasts:
+            if b.owner_uid not in owner_profiles:
+                owner_profiles[b.owner_uid] = self.users_repo.get_private_profile(b.owner_uid)
+
+        items: list[DiscoveryFeedItem] = []
+        for b in broadcasts:
+            profile = owner_profiles.get(b.owner_uid)
+            level = None
+            if profile and profile.preferences and profile.preferences.levels:
+                level = getattr(profile.preferences.levels, b.sport.value, None)
+
+            venue_ref = b.venue_ref if b.court_status == CourtStatusEnum.HAVE_COURT else None
+            area_name: str | None = None
+            if (
+                b.court_status == CourtStatusEnum.NEED_COURT
+                and b.location
+                and b.location.area is not None
+            ):
+                area_name = mapping.get(str(b.location.area))
+
+            items.append(
+                DiscoveryFeedItem(
+                    toUid=b.owner_uid,
+                    name=b.owner_name,
+                    ranking=b.owner_ranking,
+                    level=level,
+                    sport=b.sport,
+                    matchType=b.match_type,
+                    broadcastType=b.broadcast_type,
+                    availability=b.availability,
+                    courtStatus=b.court_status,
+                    venueRef=venue_ref,
+                    areaName=area_name,
+                    expiresAt=b.expires_at,
+                    createdAt=b.created_at,
+                    broadcastId=b.broadcast_id,
+                )
+            )
+
+        distinct_areas = {
+            b.location.area for b in broadcasts if b.location and b.location.area is not None
+        }
+        active_clubs_nearby = len(distinct_areas) if distinct_areas else len(items)
+
+        return DiscoveryFeedResponse(
+            serverTime=datetime.now(timezone.utc),
+            activeClubsNearby=active_clubs_nearby,
+            intents=items,
+        )
 
     def _build_state_response(
         self,

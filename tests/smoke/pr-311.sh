@@ -37,12 +37,12 @@ assert_file_exists() {
   fi
 }
 
-CONTRACTS="$REPO_ROOT/spec/api-launch-contracts.md"
-ENDPOINTS="$REPO_ROOT/wiki/endpoints.md"
-PAYLOADS="$REPO_ROOT/spec/tab1-play-payloads.md"
+CONTRACTS="$REPO_ROOT/docs/api/contracts.md"
+ENDPOINTS="$REPO_ROOT/docs/api/endpoints.md"
+PAYLOADS="$REPO_ROOT/docs/design/tab1-play-payloads.md"
 
 echo ""
-echo "── spec/api-launch-contracts.md ──────────────────────────────────────────────"
+echo "── docs/api/contracts.md ──────────────────────────────────────────────"
 
 assert_file_exists "api-launch-contracts.md exists" "$CONTRACTS"
 assert_contains "POST /me/broadcast documented" "$CONTRACTS" "POST /me/broadcast"
@@ -74,7 +74,7 @@ assert_contains "verify-score naming clarification present" "$CONTRACTS" "result
 assert_contains "broadcast location uses radius_km not radiusKm" "$CONTRACTS" '"radius_km"'
 
 echo ""
-echo "── wiki/endpoints.md ─────────────────────────────────────────────────────────"
+echo "── docs/api/endpoints.md ─────────────────────────────────────────────────────────"
 
 assert_contains "GET /venues/search section exists" "$ENDPOINTS" "GET \`/venues/search\`\|## \`GET /venues/search\`"
 assert_contains "GET /venues/search has query param q" "$ENDPOINTS" "| \`q\`\| q "
@@ -103,7 +103,7 @@ assert_not_contains "verify-score does NOT use camelCase p1Games" "$ENDPOINTS" '
 assert_not_contains "verify-score does NOT use camelCase winnerUid in score sets" "$ENDPOINTS" '"winnerUid"'
 
 echo ""
-echo "── spec/tab1-play-payloads.md ────────────────────────────────────────────────"
+echo "── docs/design/tab1-play-payloads.md ────────────────────────────────────────────────"
 
 assert_contains "BROADCAST_ACTIVE doubles variant present" "$PAYLOADS" "Doubles variant\|doubles variant"
 assert_contains "BROADCAST_ACTIVE doubles has match_type" "$PAYLOADS" "match_type.*doubles\|doubles.*match_type"

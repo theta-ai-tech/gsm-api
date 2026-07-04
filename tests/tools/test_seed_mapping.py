@@ -2,6 +2,9 @@ from datetime import datetime, timezone
 
 from app.models import (
     JournalVisibilityEnum,
+    LeagueRoleEnum,
+    LeagueStatusEnum,
+    LeagueSummary,
     JournalEntry,
     Match,
     MatchParticipant,
@@ -58,6 +61,27 @@ def test_user_mapping_basic():
     assert doc["rankings"]["padel"]["pts"] == 100
     assert doc["preferences"]["sports"] == ["padel"]
     assert doc["preferences"]["feedOptOut"] is False
+
+
+def test_user_mapping_includes_league_summary_division_id():
+    user = _sample_user().model_copy(
+        update={
+            "leagues_active": [
+                LeagueSummary(
+                    league_id="league_1",
+                    name="Athens League",
+                    sport=SportEnum.PADEL,
+                    status=LeagueStatusEnum.ACTIVE,
+                    role=LeagueRoleEnum.PLAYER,
+                    division_id="div-1",
+                )
+            ]
+        }
+    )
+
+    doc = user_to_firestore_doc(user)
+
+    assert doc["leaguesActive"][0]["divisionId"] == "div-1"
 
 
 def test_match_mapping_includes_score_and_participants():

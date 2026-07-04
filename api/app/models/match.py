@@ -144,6 +144,7 @@ class Match(GsmBaseModel):
     scheduled_at: datetime | None = None
     finished_at: datetime | None = None
     league_id: str | None = None
+    division_id: str | None = None
     court_id: str | None = None
     venue_ref: VenueRef | None = None
     score: MatchScore | None = None

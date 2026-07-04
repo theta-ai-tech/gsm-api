@@ -4,6 +4,7 @@ from typing import Any, List, Optional
 
 from pydantic import ValidationError
 
+from app.constants import DIVISION_TARGET_SIZE
 from app.models import (
     AvailabilityEnum,
     Broadcast,
@@ -12,6 +13,8 @@ from app.models import (
     BroadcastTypeEnum,
     CourtStatusEnum,
     CursorBundle,
+    Division,
+    DivisionConfig,
     GeoCoordinates,
     GeoLocation,
     JournalEntry,
@@ -44,6 +47,7 @@ from app.models import (
     PointHistoryReasonEnum,
     PrivateUserProfile,
     PublicUserProfile,
+    RatingRange,
     ScoutingProfile,
     ScoutingSportData,
     ScoutingTagCount,
@@ -61,6 +65,8 @@ from app.models import (
     VenueRef,
     VenueSummary,
 )
+from app.models.enums import PlatformEnum
+from app.models.user import DeviceToken
 from app.models.leaderboard import LeaderboardEntry, LeaderboardSnapshot, RisingStarEntry
 from app.models.ticker import TickerEvent
 
@@ -128,6 +134,7 @@ def _parse_league_summary(data: dict[str, Any]) -> LeagueSummary:
         sport=SportEnum(_require(data, "sport")),
         status=LeagueStatusEnum(_require(data, "status")),
         role=LeagueRoleEnum(role) if role else None,
+        division_id=data.get("divisionId"),
     )
 
 
@@ -181,6 +188,15 @@ def _parse_match_reflection(data: dict[str, Any] | None) -> Optional[MatchReflec
         opponent_strong=data.get("opponentStrong", []),
         ai_summary=data.get("aiSummary"),
         reflection_version=data.get("reflectionVersion"),
+    )
+
+
+def _parse_device_token(data: dict[str, Any]) -> DeviceToken:
+    return DeviceToken(
+        token=data["token"],
+        platform=PlatformEnum(data["platform"]),
+        created_at=data["createdAt"],
+        last_seen_at=data["lastSeenAt"],
     )
 
 
@@ -278,6 +294,7 @@ def to_private_user_profile(doc: dict[str, Any]) -> PrivateUserProfile:
         ],
         cursors=_parse_cursors(doc.get("cursors")),
         north_star_goal=_parse_north_star_goal(doc.get("northStarGoal")),
+        device_tokens=[_parse_device_token(t) for t in (doc.get("deviceTokens") or [])],
     )
 
 
@@ -376,6 +393,7 @@ def to_match(doc: dict[str, Any], match_id: str | None = None) -> Match:
         scheduled_at=doc.get("scheduledAt"),
         finished_at=doc.get("finishedAt"),
         league_id=doc.get("leagueId"),
+        division_id=doc.get("divisionId"),
         court_id=doc.get("courtId"),
         venue_ref=_parse_venue_ref(doc.get("venueRef")),
         score=_parse_score(doc.get("score", {})),
@@ -402,7 +420,9 @@ def to_league(doc: dict[str, Any], league_id: str | None = None) -> League:
         current_players=doc.get("currentPlayers"),
         start_date=doc.get("startDate"),
         end_date=doc.get("endDate"),
+        divided_at=doc.get("dividedAt"),
         tier=doc.get("tier"),
+        division_config=_parse_division_config(doc.get("divisionConfig")),
         meta=doc.get("meta"),
     )
 
@@ -433,6 +453,32 @@ def to_league_member(doc: dict[str, Any], uid: str | None = None) -> LeagueMembe
         joined_at=_require(doc, "joinedAt"),
         stats=doc.get("stats"),
         display_name=doc.get("displayName"),
+        division_id=doc.get("divisionId"),
+    )
+
+
+def _parse_division_config(data: dict[str, Any] | None) -> DivisionConfig | None:
+    if data is None:
+        return None
+    return DivisionConfig(
+        target_size=int(data.get("targetSize") or data.get("target_size") or DIVISION_TARGET_SIZE),
+        max_divisions=data.get("maxDivisions") or data.get("max_divisions"),
+    )
+
+
+def _parse_rating_range(data: dict[str, Any]) -> RatingRange:
+    return RatingRange(min=int(_require(data, "min")), max=int(_require(data, "max")))
+
+
+def to_division(doc: dict[str, Any], division_id: str | None = None) -> Division:
+    status_val = _require(doc, "status")
+    return Division(
+        division_id=division_id or doc.get("id") or "",
+        name=doc.get("name", ""),
+        ordinal=int(_require(doc, "ordinal")),
+        rating_range=_parse_rating_range(_require(doc, "ratingRange")),
+        current_players=int(_require(doc, "currentPlayers")),
+        status=LeagueStatusEnum(status_val),
     )
 
 

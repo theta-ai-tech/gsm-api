@@ -61,15 +61,16 @@ ops/Makefile       # All make targets (included by root Makefile)
 deploy/            # Deployment config (last_good_revision_dev.txt etc.)
 infra/             # Infrastructure config (Cloud Run, Artifact Registry)
 
-# Documentation
-wiki/              # Internal reference docs: DATA_DICTIONARY.md, endpoints.md,
-                   #   dbschema.md, models.md, repositories.md, functions.md,
-                   #   me-state.md, auth.md, queries.md, observability.md, etc.
-arch/              # Architecture docs: match_lifecycle.md, me_state_machine.md,
-                   #   league_member_triggers.md
-spec/              # Product specs: functional-tab-spec-v1.4.md, PRD, tab descriptions
-                   #   (tab1-play, tab2-improve, tab3-lab, tab4-clubhouse), playbooks
-plans/             # Implementation plans per feature area (e.g. plan-tab1.md)
+# Documentation — single docs/ tree (see docs/README.md for the index)
+docs/
+  README.md        # Documentation index; audience-based routing (start here)
+  api/             # ★ Client/iOS-facing: README, endpoints, contracts,
+                   #   play-tab-state-machine, notifications, ios-integration
+  architecture/    # overview, diagrams, security, triggers, match-lifecycle
+  data/            # data-dictionary (canonical), models, queries-and-indexes
+  operations/      # runbook, deployment, observability, credentials, tools
+  development/      # local-setup, testing
+  design/          # Non-canonical design & decision records (historical)
 ```
 
 ## Setup
@@ -137,7 +138,7 @@ Only handle simple/quick tasks directly (file reads, one-liner edits, answering 
 | Agent | Delegate when | Do NOT delegate |
 |-------|--------------|-----------------|
 | `gsm-backend-developer` | New features, bug fixes, issue implementation, PRs, tests, smoke script generation | Quick file reads, one-liner edits, answering questions |
-| `gsm-tpm` | Backend architectural review, data-model design, gap analysis vs existing models/triggers/collections, stewarding `spec/` + `wiki/` docs | Implementation, cross-stream planning, sprint scheduling, product decisions, issue decomposition — those belong to `gsm-backend-developer`, `gsm-planner`, `gsm-scheduler`, `gsm-ceo`, and `gsm-stream-planner` respectively |
+| `gsm-tpm` | Backend architectural review, data-model design, gap analysis vs existing models/triggers/collections, stewarding `docs/` (esp. `docs/data/` + `docs/api/`) | Implementation, cross-stream planning, sprint scheduling, product decisions, issue decomposition — those belong to `gsm-backend-developer`, `gsm-planner`, `gsm-scheduler`, `gsm-ceo`, and `gsm-stream-planner` respectively |
 | `gsm-qa-tester` | Running smoke tests against the emulator, posting QA results to a PR as `iggy-theta-tech` | Implementation, code review, approvals |
 | `gsm-code-reviewer` | Claude-backed adversarial PR review — correctness, regressions, edge cases, security, Firestore cost, test coverage — inline + summary comments as `iggy-theta-tech` tagged `[Claude review]` | Implementation, fixing code, running tests, approving/requesting changes |
 | `gsm-codex-reviewer` | Codex-backed PR review — same contract as `gsm-code-reviewer` but reasons via Codex/GPT — inline + summary comments tagged `[Codex review]` | Same exclusions as `gsm-code-reviewer`; additionally, don't reason about the diff natively — delegate to Codex |

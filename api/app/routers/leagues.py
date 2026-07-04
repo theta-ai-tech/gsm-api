@@ -7,16 +7,33 @@ from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies.repos import get_league_service, get_leagues_repo, get_matches_repo
+from app.dependencies.repos import (
+    get_divisions_repo,
+    get_league_service,
+    get_leagues_repo,
+    get_matches_repo,
+)
 from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
-from app.models.league import League, LeagueBrowseCard, LeagueMember, StandingsEntry
+from app.models.league import (
+    Division,
+    League,
+    LeagueBrowseCard,
+    LeagueMember,
+    StandingsEntry,
+)
 from app.models.match import Match
+from app.repos.divisions_repo import DivisionsRepo
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
 from app.security import CurrentUser, require_league_member, require_membership
-from app.services.league_service import LeagueService
+from app.services.league_service import (
+    LeagueKickoffConflictError,
+    LeagueKickoffNotFoundError,
+    LeagueKickoffResult,
+    LeagueService,
+)
 from app.services.role_service import RoleService
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
@@ -35,6 +52,19 @@ class LeagueMatchesResponse(GsmBaseModel):
 class StandingsResponse(GsmBaseModel):
     league_id: str
     standings: list[StandingsEntry]
+
+
+class KickoffLeagueResponse(GsmBaseModel):
+    league_id: str
+    division_count: int
+    division_ids: list[str]
+    divisions: list[Division]
+    already_kicked_off: bool = False
+
+
+class DivisionsResponse(GsmBaseModel):
+    league_id: str
+    divisions: list[Division]
 
 
 def _league_to_browse_card(league: League) -> LeagueBrowseCard:
@@ -121,6 +151,24 @@ def _require_league_member_or_404(
     require_membership(current_user=current_user, league_id=league_id, role_service=role_service)
 
 
+def _get_divided_league_or_409(league_id: str, leagues_repo: LeaguesRepo) -> League:
+    league = leagues_repo.get_by_id(league_id)
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+    if league.status != LeagueStatusEnum.ACTIVE or league.divided_at is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league not yet divided")
+    return league
+
+
+def _get_existing_division_or_404(
+    league_id: str, division_id: str, divisions_repo: DivisionsRepo
+) -> Division:
+    division = divisions_repo.get_by_id(league_id, division_id)
+    if division is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Division not found")
+    return division
+
+
 # --- Endpoints ---
 
 
@@ -172,6 +220,33 @@ def join_league(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
 
 
+def _kickoff_result_to_response(result: LeagueKickoffResult) -> KickoffLeagueResponse:
+    return KickoffLeagueResponse(
+        league_id=result.league_id,
+        division_count=len(result.divisions),
+        division_ids=[division.division_id for division in result.divisions],
+        divisions=result.divisions,
+        already_kicked_off=result.already_kicked_off,
+    )
+
+
+@router.post(
+    "/{league_id}/kickoff",
+    response_model=KickoffLeagueResponse,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def kickoff_league(
+    league_id: str,
+    league_service: LeagueService = Depends(get_league_service),
+) -> KickoffLeagueResponse:
+    try:
+        return _kickoff_result_to_response(league_service.kickoff_league(league_id))
+    except LeagueKickoffNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except LeagueKickoffConflictError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
 @router.post(
     "/{league_id}/members",
     status_code=status.HTTP_501_NOT_IMPLEMENTED,
@@ -200,6 +275,70 @@ def get_league_standings(
 ) -> StandingsResponse:
     standings = league_service.get_standings(league_id)
     return StandingsResponse(league_id=league_id, standings=standings)
+
+
+@router.get("/{league_id}/divisions", response_model=DivisionsResponse)
+def list_league_divisions(
+    league_id: str,
+    _auth: None = Depends(_require_league_member_or_404),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    divisions_repo: DivisionsRepo = Depends(get_divisions_repo),
+) -> DivisionsResponse:
+    _get_divided_league_or_409(league_id, leagues_repo)
+    divisions = divisions_repo.list_for_league(league_id)
+    if not divisions:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="league not yet divided")
+    return DivisionsResponse(league_id=league_id, divisions=divisions)
+
+
+@router.get(
+    "/{league_id}/divisions/{division_id}/standings",
+    response_model=StandingsResponse,
+)
+def get_division_standings(
+    league_id: str,
+    division_id: str,
+    _auth: None = Depends(_require_league_member_or_404),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    divisions_repo: DivisionsRepo = Depends(get_divisions_repo),
+    league_service: LeagueService = Depends(get_league_service),
+) -> StandingsResponse:
+    _get_divided_league_or_409(league_id, leagues_repo)
+    _get_existing_division_or_404(league_id, division_id, divisions_repo)
+    standings = league_service.get_division_standings(league_id, division_id)
+    return StandingsResponse(league_id=league_id, standings=standings)
+
+
+@router.get(
+    "/{league_id}/divisions/{division_id}/matches",
+    response_model=LeagueMatchesResponse,
+)
+def get_division_matches(
+    league_id: str,
+    division_id: str,
+    match_type: Literal["upcoming", "completed"] = Query(default="upcoming", alias="type"),
+    limit: int = Query(default=10, ge=1, le=50),
+    cursor: Optional[str] = Query(default=None),
+    _auth: None = Depends(_require_league_member_or_404),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    divisions_repo: DivisionsRepo = Depends(get_divisions_repo),
+    matches_repo: MatchesRepo = Depends(get_matches_repo),
+) -> LeagueMatchesResponse:
+    _get_divided_league_or_409(league_id, leagues_repo)
+    _get_existing_division_or_404(league_id, division_id, divisions_repo)
+    cursor_dict = _decode_match_cursor(cursor, match_type) if cursor else None
+    if match_type == "upcoming":
+        results = matches_repo.list_upcoming_for_division(
+            league_id, division_id, limit=limit + 1, cursor=cursor_dict
+        )
+    else:
+        results = matches_repo.list_completed_for_division(
+            league_id, division_id, limit=limit + 1, cursor=cursor_dict
+        )
+    has_more = len(results) > limit
+    page = results[:limit]
+    next_cursor = _encode_match_cursor(page[-1], match_type) if has_more and page else None
+    return LeagueMatchesResponse(matches=page, next_cursor=next_cursor)
 
 
 @router.get("/{league_id}/matches", response_model=LeagueMatchesResponse)

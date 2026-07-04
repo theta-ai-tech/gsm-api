@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.models import (
     CursorBundle,
+    DivisionConfig,
     JournalEntry,
     JournalEntrySummary,
     LeaderboardEntry,
@@ -278,7 +279,110 @@ USER_DIANA = PrivateUserProfile(
     },
 )
 
-SAMPLE_USERS = [USER_IGNATIOS, USER_ALICE, USER_BOB, USER_DIANA]
+
+def _padel_seed_user(uid: str, name: str, pts: int) -> PrivateUserProfile:
+    return PrivateUserProfile(
+        uid=uid,
+        name=name,
+        email=f"{uid}@example.com",
+        phone=None,
+        profile_url=None,
+        rankings=PerSportRankings(
+            padel=SportRanking(
+                sport=SportEnum.PADEL,
+                pts=pts,
+                global_ranking=None,
+                tier=TierEnum.AMATEUR,
+                registration_tier=TierEnum.AMATEUR,
+                last_updated=utc(2026, 3, 1, 12, 0),
+                personal_best=pts,
+                current_streak=0,
+                best_streak=0,
+            )
+        ),
+        preferences=UserPreferences(
+            area=101,
+            levels=PerSportLevels(padel=LevelEnum.INTERMEDIATE),
+            sports=[SportEnum.PADEL],
+        ),
+        leagues_active=[],
+        leagues_completed=[],
+        upcoming_matches=[],
+        completed_matches=[],
+        journal_recent=[],
+        cursors=None,
+        skill_dna=None,
+    )
+
+
+USER_ELENA = _padel_seed_user("user_elena", "Elena", 1380)
+USER_FOTIS = _padel_seed_user("user_fotis", "Fotis", 1250)
+USER_GIANNIS = _padel_seed_user("user_giannis", "Giannis", 1110)
+USER_HELEN = _padel_seed_user("user_helen", "Helen", 870)
+
+SAMPLE_USERS = [
+    USER_IGNATIOS,
+    USER_ALICE,
+    USER_BOB,
+    USER_DIANA,
+    USER_ELENA,
+    USER_FOTIS,
+    USER_GIANNIS,
+    USER_HELEN,
+]
+
+# --- Broadcasts ---
+# Sample active broadcasts for testing GET /me/discovery.
+# Written as raw Firestore dicts (camelCase) because broadcasts are
+# created by the service and stored in camelCase format.
+# user_alice: HAVE_COURT padel broadcast with venue reference
+_NOW = datetime.now(timezone.utc)
+BROADCAST_ALICE_PADEL: dict = {
+    "ownerUid": USER_ALICE.uid,
+    "ownerName": USER_ALICE.name,
+    "ownerRanking": None,
+    "sport": "padel",
+    "matchType": "singles",
+    "broadcastType": "find_opponent",
+    "partnerUid": None,
+    "availability": "today",
+    "courtStatus": "have_court",
+    "courtLocation": "Glyfada Padel Club",
+    "venueRef": {
+        "venueId": "venue_glyfada_padel",
+        "placeId": None,
+        "name": "Glyfada Padel Club",
+        "coordinates": {"lat": 37.8788, "lng": 23.7537},
+    },
+    "status": "active",
+    "expiresAt": _NOW + timedelta(days=7),
+    "createdAt": _NOW,
+    "location": {"area": None, "geo": None, "radiusKm": None},
+}
+
+# user_bob: NEED_COURT padel broadcast with area=101 (→ "athens" via region config)
+BROADCAST_BOB_PADEL: dict = {
+    "ownerUid": USER_BOB.uid,
+    "ownerName": USER_BOB.name,
+    "ownerRanking": None,
+    "sport": "padel",
+    "matchType": "singles",
+    "broadcastType": "find_opponent",
+    "partnerUid": None,
+    "availability": "weekend",
+    "courtStatus": "need_court",
+    "courtLocation": None,
+    "venueRef": None,
+    "status": "active",
+    "expiresAt": _NOW + timedelta(days=7),
+    "createdAt": _NOW - timedelta(minutes=5),
+    "location": {"area": 101, "geo": None, "radiusKm": None},
+}
+
+SAMPLE_BROADCASTS: list[tuple[str, dict]] = [
+    ("broadcast_seed_alice_padel", BROADCAST_ALICE_PADEL),
+    ("broadcast_seed_bob_padel", BROADCAST_BOB_PADEL),
+]
 
 # --- Leagues ---
 # Sample leagues referencing the users above.
@@ -330,7 +434,29 @@ LEAGUE_TENNIS_COMPLETED = League(
     meta=None,
 )
 
-SAMPLE_LEAGUES = [LEAGUE_PADEL_LOCAL, LEAGUE_TENNIS_LOCAL, LEAGUE_TENNIS_COMPLETED]
+LEAGUE_PADEL_DIVISIONS_OPEN = League(
+    league_id="padel-divisions-open-2026",
+    name="Padel Divisions Open 2026",
+    sport=SportEnum.PADEL,
+    season="Spring 2026",
+    status=LeagueStatusEnum.OPEN,
+    owner_uid=USER_IGNATIOS.uid,
+    region="athens",
+    max_players=12,
+    current_players=8,
+    start_date=utc(2026, 4, 1),
+    end_date=utc(2026, 6, 30),
+    tier="intermediate",
+    division_config=DivisionConfig(target_size=6, max_divisions=None),
+    meta={},
+)
+
+SAMPLE_LEAGUES = [
+    LEAGUE_PADEL_LOCAL,
+    LEAGUE_TENNIS_LOCAL,
+    LEAGUE_TENNIS_COMPLETED,
+    LEAGUE_PADEL_DIVISIONS_OPEN,
+]
 
 # --- League members (leagues/{leagueId}/members/{uid}) ---
 SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
@@ -394,6 +520,64 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2024, 8, 20),
             display_name="Ignatios",
+        ),
+    ],
+    "padel-divisions-open-2026": [
+        LeagueMember(
+            uid=USER_IGNATIOS.uid,
+            role=LeagueRoleEnum.ADMIN,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 1),
+            display_name="Ignatios",
+        ),
+        LeagueMember(
+            uid=USER_ELENA.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 2),
+            display_name="Elena",
+        ),
+        LeagueMember(
+            uid=USER_FOTIS.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 3),
+            display_name="Fotis",
+        ),
+        LeagueMember(
+            uid=USER_GIANNIS.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 4),
+            display_name="Giannis",
+        ),
+        LeagueMember(
+            uid=USER_DIANA.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 5),
+            display_name="Diana",
+        ),
+        LeagueMember(
+            uid=USER_BOB.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 6),
+            display_name="Bob",
+        ),
+        LeagueMember(
+            uid=USER_HELEN.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 7),
+            display_name="Helen",
+        ),
+        LeagueMember(
+            uid=USER_ALICE.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 3, 8),
+            display_name="Alice",
         ),
     ],
 }

@@ -45,14 +45,15 @@ class LeaguesRepo(RepoBase):
             return None
         return to_league_member(data, uid=uid)
 
-    def list_members(self, league_id: str, limit: int = 200) -> List[LeagueMember]:
+    def list_members(self, league_id: str, limit: Optional[int] = 200) -> List[LeagueMember]:
         query = (
             self.client.collection("leagues")
             .document(league_id)
             .collection("members")
             .order_by("joinedAt")
-            .limit(limit)
         )
+        if limit is not None:
+            query = query.limit(limit)
         docs = query.stream()
         return [to_league_member(doc.to_dict() or {}, uid=doc.id) for doc in docs]
 
