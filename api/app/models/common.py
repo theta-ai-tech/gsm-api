@@ -152,6 +152,7 @@ class LeagueSummary(GsmBaseModel):
     sport: SportEnum
     status: LeagueStatusEnum
     role: LeagueRoleEnum | None = None
+    division_id: str | None = None
 
 
 class MatchOpponentSummary(GsmBaseModel):

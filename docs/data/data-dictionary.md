@@ -99,8 +99,8 @@ Purpose: canonical user profile data with denormalized summaries for fast reads.
 
 ### Cache fields (denormalized summaries)
 These fields are denormalized summaries for fast reads. Treat as cache with capped lengths.
-- `leaguesActive[]`: `{leagueId, name, sport, status, role}` (cache, cap <= 20)
-- `leaguesCompleted[]`: `{leagueId, name, sport, status, role}` (cache, cap <= 20)
+- `leaguesActive[]`: `{leagueId, name, sport, status, role, divisionId?}` (cache, cap <= 20)
+- `leaguesCompleted[]`: `{leagueId, name, sport, status, role, divisionId?}` (cache, cap <= 20)
 - `upcomingMatches[]`: `{matchId, sport, scheduledAt, leagueId?, courtId?, opponents[]}` (cache, cap <= 10)
 - `completedMatches[]`: `{matchId, sport, finishedAt, result?, scoreText?, leagueId?}` (cache, cap <= 10)
 - `journalRecent[]`: `{entryId, createdAt, title, matchId?, sport?, entryType?}` (cache, cap <= 10)
@@ -139,8 +139,8 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | preferences.defaultGeo.lat | number | required | — | canonical | — | Latitude (WGS84). |
 | preferences.defaultGeo.lng | number | required | — | canonical | — | Longitude (WGS84). |
 | preferences.defaultRadiusKm | number | optional | — | canonical | — | Default search radius in km (default 15). |
-| leaguesActive | array<map> | optional | — | cache | — | Active league summaries (cap <= 20). |
-| leaguesCompleted | array<map> | optional | — | cache | — | Completed league summaries (cap <= 20). |
+| leaguesActive | array<map> | optional | — | cache | — | Active league summaries (cap <= 20), including optional `divisionId`. |
+| leaguesCompleted | array<map> | optional | — | cache | — | Completed league summaries (cap <= 20), including optional `divisionId`. |
 | upcomingMatches | array<map> | optional | — | cache | — | Upcoming match summaries (cap <= 10). |
 | completedMatches | array<map> | optional | — | cache | — | Completed match summaries (cap <= 10). |
 | journalRecent | array<map> | optional | — | cache | — | Recent journal summaries (cap <= 10). |

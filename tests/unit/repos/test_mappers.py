@@ -28,9 +28,55 @@ from app.repos.mappers import (
     to_league_member,
     to_match,
     to_offer,
+    to_private_user_profile,
 )
 from app.models.journal import JournalEntry, MatchReflection
 from tools.seed_mapping import journal_entry_to_firestore_doc
+
+
+class TestLeagueSummaryMapping:
+    def test_private_profile_league_summary_maps_division_id(self):
+        profile = to_private_user_profile(
+            {
+                "uid": "user_1",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "preferences": {"levels": {}, "sports": []},
+                "leaguesActive": [
+                    {
+                        "leagueId": "league_1",
+                        "name": "Athens League",
+                        "sport": "padel",
+                        "status": "active",
+                        "role": "player",
+                        "divisionId": "div-1",
+                    }
+                ],
+            }
+        )
+
+        assert profile.leagues_active[0].division_id == "div-1"
+
+    def test_private_profile_legacy_league_summary_defaults_division_id_none(self):
+        profile = to_private_user_profile(
+            {
+                "uid": "user_1",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "preferences": {"levels": {}, "sports": []},
+                "leaguesActive": [
+                    {
+                        "leagueId": "league_1",
+                        "name": "Athens League",
+                        "sport": "padel",
+                        "status": "active",
+                        "role": "player",
+                    }
+                ],
+            }
+        )
+
+        assert profile.leagues_active[0].division_id is None
 
 
 class TestToBroadcast:
