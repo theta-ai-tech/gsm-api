@@ -457,6 +457,72 @@ curl -s -X POST \
 
 ---
 
+## `POST /leagues/{league_id}/kickoff`
+
+### Purpose
+Admin-only kickoff flow for League Divisions. Converts an `open` league from one flat member
+pool into deterministic division metadata and stamps each active member with a `divisionId`.
+
+### Auth
+Required. The caller must be the league owner, an admin member, or a global admin.
+
+### Behavior
+- Accepts no request body.
+- Transitions the league `open → dividing → active` and stamps `dividedAt`.
+- Sorts active members by `users/{uid}.rankings.{sport}.pts` descending; missing profile/ranking
+  data counts as `0`.
+- Creates `leagues/{league_id}/divisions/{divisionId}` documents named `div-1`, `div-2`, etc.
+  The highest-ranked players are assigned to `div-1`.
+- Uses `divisionConfig.targetSize` when present, otherwise the default target size is `6`.
+  Leagues with fewer than 5 active members stay in one division; otherwise the division count is
+  `round(member_count / targetSize)`.
+- Member documents are updated only when `divisionId` is unset.
+- Re-running kickoff after a successful kickoff is a documented no-op: the endpoint returns the
+  existing divisions with `already_kicked_off: true` and does not create duplicates.
+
+### Example call
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-divisions-open-2026/kickoff
+```
+
+### Example response
+```json
+{
+  "league_id": "padel-divisions-open-2026",
+  "division_count": 2,
+  "division_ids": ["div-1", "div-2"],
+  "divisions": [
+    {
+      "division_id": "div-1",
+      "name": "Division 1",
+      "ordinal": 1,
+      "rating_range": {"min": 1350, "max": 1800},
+      "current_players": 6,
+      "status": "active"
+    },
+    {
+      "division_id": "div-2",
+      "name": "Division 2",
+      "ordinal": 2,
+      "rating_range": {"min": 0, "max": 1260},
+      "current_players": 5,
+      "status": "active"
+    }
+  ],
+  "already_kicked_off": false
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `403` authenticated user is not a league admin/owner/global admin
+- `404` league does not exist
+- `409` league is not open and has not already completed kickoff, or it has no active members
+
+---
+
 ## `GET /leagues/{league_id}/matches`
 
 ### Purpose

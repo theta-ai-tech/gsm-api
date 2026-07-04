@@ -37,6 +37,7 @@ class League(GsmBaseModel):
     current_players: int | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
+    divided_at: datetime | None = None
     tier: str | None = None
     division_config: DivisionConfig | None = None
     meta: dict[str, Any] | None = None

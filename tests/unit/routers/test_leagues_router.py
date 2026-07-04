@@ -25,10 +25,21 @@ from app.models.enums import (
     ParticipantRoleEnum,
     SportEnum,
 )
-from app.models.league import League, LeagueMember, StandingsEntry
+from app.models.league import (
+    Division,
+    League,
+    LeagueMember,
+    RatingRange,
+    StandingsEntry,
+)
 from app.models.match import Match, MatchParticipant
 from app.security import CurrentUser
-from app.services.league_service import LeagueService
+from app.services.league_service import (
+    LeagueKickoffConflictError,
+    LeagueKickoffNotFoundError,
+    LeagueKickoffResult,
+    LeagueService,
+)
 
 _UID = "user_test"
 
@@ -351,6 +362,108 @@ class TestPostLeagueJoin:
         c = TestClient(app, raise_server_exceptions=False)
         resp = c.post("/leagues/lg1/join")
         assert resp.status_code == 401
+
+
+class TestKickoffLeague:
+    @pytest.fixture()
+    def _override_role_service_admin(self):
+        mock_rs = Mock()
+        mock_rs.get_league_owner_uid.return_value = _UID
+        app.dependency_overrides[get_role_service] = lambda: mock_rs
+        yield mock_rs
+        app.dependency_overrides.pop(get_role_service, None)
+
+    @pytest.fixture()
+    def client_admin(self, _override_auth, _override_role_service_admin):
+        return TestClient(app)
+
+    def _make_division(self, division_id: str = "div-1") -> Division:
+        return Division(
+            division_id=division_id,
+            name="Division 1",
+            ordinal=1,
+            rating_range=RatingRange(min=900, max=1400),
+            current_players=6,
+            status=LeagueStatusEnum.ACTIVE,
+        )
+
+    def test_returns_kickoff_summary(
+        self, client_admin: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.kickoff_league.return_value = LeagueKickoffResult(
+            league_id="lg1",
+            divisions=[self._make_division("div-1")],
+        )
+
+        resp = client_admin.post("/leagues/lg1/kickoff")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["league_id"] == "lg1"
+        assert body["division_count"] == 1
+        assert body["division_ids"] == ["div-1"]
+        assert body["already_kicked_off"] is False
+        assert body["divisions"][0]["rating_range"] == {"min": 900, "max": 1400}
+
+    def test_idempotent_active_league_returns_already_kicked_off(
+        self, client_admin: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.kickoff_league.return_value = LeagueKickoffResult(
+            league_id="lg1",
+            divisions=[self._make_division("div-1")],
+            already_kicked_off=True,
+        )
+
+        resp = client_admin.post("/leagues/lg1/kickoff")
+
+        assert resp.status_code == 200
+        assert resp.json()["already_kicked_off"] is True
+
+    def test_missing_league_returns_404(
+        self, client_admin: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.kickoff_league.side_effect = LeagueKickoffNotFoundError(
+            "League 'lg1' not found"
+        )
+
+        resp = client_admin.post("/leagues/lg1/kickoff")
+
+        assert resp.status_code == 404
+
+    def test_non_open_conflict_returns_409(
+        self, client_admin: TestClient, mock_league_service: Mock
+    ):
+        mock_league_service.kickoff_league.side_effect = LeagueKickoffConflictError(
+            "League 'lg1' already kicked off"
+        )
+
+        resp = client_admin.post("/leagues/lg1/kickoff")
+
+        assert resp.status_code == 409
+
+    def test_no_auth_returns_401(self, mock_league_service: Mock):
+        app.dependency_overrides.pop(get_current_user, None)
+        c = TestClient(app, raise_server_exceptions=False)
+
+        resp = c.post("/leagues/lg1/kickoff")
+
+        assert resp.status_code == 401
+
+    def test_non_admin_returns_403(self, _override_auth, mock_league_service: Mock):
+        mock_rs = Mock()
+        mock_rs.get_league_owner_uid.return_value = None
+        mock_rs.is_league_member.return_value = True
+        mock_rs.get_league_member_role.return_value = LeagueRoleEnum.PLAYER.value
+        app.dependency_overrides[get_role_service] = lambda: mock_rs
+        c = TestClient(app, raise_server_exceptions=False)
+
+        try:
+            resp = c.post("/leagues/lg1/kickoff")
+        finally:
+            app.dependency_overrides.pop(get_role_service, None)
+
+        assert resp.status_code == 403
+        mock_league_service.kickoff_league.assert_not_called()
 
 
 class TestLeagueMemberEndpoints:

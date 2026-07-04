@@ -11,12 +11,23 @@ from app.dependencies.repos import get_league_service, get_leagues_repo, get_mat
 from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
 from app.models.enums import LeagueStatusEnum, SportEnum
-from app.models.league import League, LeagueBrowseCard, LeagueMember, StandingsEntry
+from app.models.league import (
+    Division,
+    League,
+    LeagueBrowseCard,
+    LeagueMember,
+    StandingsEntry,
+)
 from app.models.match import Match
 from app.repos.leagues_repo import LeaguesRepo
 from app.repos.matches_repo import MatchesRepo
 from app.security import CurrentUser, require_league_member, require_membership
-from app.services.league_service import LeagueService
+from app.services.league_service import (
+    LeagueKickoffConflictError,
+    LeagueKickoffNotFoundError,
+    LeagueKickoffResult,
+    LeagueService,
+)
 from app.services.role_service import RoleService
 
 router = APIRouter(prefix="/leagues", tags=["leagues"])
@@ -35,6 +46,14 @@ class LeagueMatchesResponse(GsmBaseModel):
 class StandingsResponse(GsmBaseModel):
     league_id: str
     standings: list[StandingsEntry]
+
+
+class KickoffLeagueResponse(GsmBaseModel):
+    league_id: str
+    division_count: int
+    division_ids: list[str]
+    divisions: list[Division]
+    already_kicked_off: bool = False
 
 
 def _league_to_browse_card(league: League) -> LeagueBrowseCard:
@@ -170,6 +189,33 @@ def join_league(
         if "not found" in error_msg:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
+
+
+def _kickoff_result_to_response(result: LeagueKickoffResult) -> KickoffLeagueResponse:
+    return KickoffLeagueResponse(
+        league_id=result.league_id,
+        division_count=len(result.divisions),
+        division_ids=[division.division_id for division in result.divisions],
+        divisions=result.divisions,
+        already_kicked_off=result.already_kicked_off,
+    )
+
+
+@router.post(
+    "/{league_id}/kickoff",
+    response_model=KickoffLeagueResponse,
+    dependencies=[Depends(require_league_member(required_role="admin"))],
+)
+def kickoff_league(
+    league_id: str,
+    league_service: LeagueService = Depends(get_league_service),
+) -> KickoffLeagueResponse:
+    try:
+        return _kickoff_result_to_response(league_service.kickoff_league(league_id))
+    except LeagueKickoffNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except LeagueKickoffConflictError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
 @router.post(

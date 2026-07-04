@@ -669,11 +669,13 @@ class TestLeagueDivisionSchemaMappers:
         assert LeagueStatusEnum.DIVIDING.value == "dividing"
 
     def test_to_league_maps_division_config(self):
+        divided_at = datetime(2026, 7, 1, tzinfo=timezone.utc)
         doc = {
             "name": "Athens Divisions",
             "sport": "padel",
             "status": "open",
             "ownerUid": "owner_1",
+            "dividedAt": divided_at,
             "divisionConfig": {"targetSize": 8, "maxDivisions": 3},
         }
 
@@ -683,6 +685,7 @@ class TestLeagueDivisionSchemaMappers:
         assert league.division_config is not None
         assert league.division_config.target_size == 8
         assert league.division_config.max_divisions == 3
+        assert league.divided_at == divided_at
 
     def test_to_league_division_config_defaults_target_size(self):
         doc = {
