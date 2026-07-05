@@ -734,6 +734,8 @@ Ownership: owner-only (self); written by scoring engine / admin functions.
 
 Purpose: time-series audit log of every point change for a user. Powers the Progression Graph in Tab 3.
 
+See [`../operations/scoring.md`](../operations/scoring.md) for how `pts` and `delta` are computed.
+
 Ordering: `sport` filter + `createdAt` DESC with cursor-based pagination.
 
 ### pointHistoryReason
@@ -780,6 +782,9 @@ Ordering: `sport` filter + `createdAt` DESC with cursor-based pagination.
 Path: `config/tiers`
 
 Purpose: tier threshold configuration. Defines point boundaries for player tiers, allowing rebalancing without code changes.
+
+See [`../operations/scoring.md`](../operations/scoring.md) for how a player's tier is derived from
+these thresholds and how tier differences drive the upset bonus and penalty.
 
 ### Enums: tier
 - Firestore representation: string
