@@ -75,10 +75,35 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/leagues/{id}/divisions/{divisionId}/matches` | List division upcoming or completed matches (auth: member) |
 | `POST` | `/leagues/{id}/join` | Self-serve join a league |
 | `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members into divisions |
+| `DELETE` | `/me/account` | Permanently delete the caller's account (anonymize-in-place) |
 
 ---
 
 ## Contracts
+
+### DELETE /me/account
+
+**Auth:** Required (Firebase Bearer ID token). Self-only — no target `uid`.
+
+**Request body:** None.
+
+**Response:** `204 No Content`.
+
+**Behavior (anonymize-in-place, no cascade):**
+1. Revoke refresh tokens + delete the Firebase Auth user (idempotent if already gone).
+2. Hard-delete `users/{uid}/journalEntries`, `users/{uid}/pointHistory`, and device tokens.
+3. Tombstone `users/{uid}`: keep `uid` + `rankings`; set `name = "Deleted Player"`,
+   `profileUrl = null`, `isDeleted = true`, `deletedAt = now`; strip all PII.
+
+Match, scouting, ticker, leaderboard and opponents' point-history documents are **not**
+deleted or mutated. Opponents' rivalry/scouting/profile reads against the deleted uid keep
+returning `200` as "Deleted Player". Tombstoned users are excluded from the next scheduled
+leaderboard recompute.
+
+**Errors:**
+- `401` missing/invalid token.
+
+---
 
 ### POST /me/broadcast
 

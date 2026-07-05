@@ -250,6 +250,59 @@ class TestRemoveDeviceToken:
         user_ref.update.assert_not_called()
 
 
+class TestAnonymize:
+    def test_keeps_uid_and_rankings_strips_pii(self):
+        repo, client = _make_repo()
+        rankings = {"padel": {"sport": "padel", "pts": 1020}}
+        snap = _make_doc_snap(
+            {
+                "uid": "user_test",
+                "name": "Ignatios",
+                "email": "ignatios@example.com",
+                "phone": "+301111111111",
+                "profileUrl": "http://example.com/i.png",
+                "preferences": {"area": 101},
+                "deviceTokens": [{"token": "tok_abc"}],
+                "skillDna": {"padel": {}},
+                "rankings": rankings,
+            }
+        )
+        client.collection.return_value.document.return_value.get.return_value = snap
+
+        repo.anonymize("user_test")
+
+        user_ref = client.collection.return_value.document.return_value
+        user_ref.set.assert_called_once()
+        written = user_ref.set.call_args[0][0]
+        # Kept
+        assert written["uid"] == "user_test"
+        assert written["rankings"] == rankings
+        # Tombstone flags
+        assert written["name"] == "Deleted Player"
+        assert written["profileUrl"] is None
+        assert written["isDeleted"] is True
+        assert "deletedAt" in written
+        # PII / private fields stripped (full-document overwrite, no merge)
+        assert "email" not in written
+        assert "phone" not in written
+        assert "preferences" not in written
+        assert "deviceTokens" not in written
+        assert "skillDna" not in written
+
+    def test_missing_doc_writes_bare_tombstone(self):
+        repo, client = _make_repo()
+        snap = _make_doc_snap(None)
+        client.collection.return_value.document.return_value.get.return_value = snap
+
+        repo.anonymize("ghost_uid")
+
+        user_ref = client.collection.return_value.document.return_value
+        written = user_ref.set.call_args[0][0]
+        assert written["uid"] == "ghost_uid"
+        assert written["rankings"] == {}
+        assert written["isDeleted"] is True
+
+
 class TestListDeviceTokens:
     def test_returns_token_dicts(self):
         repo, client = _make_repo()

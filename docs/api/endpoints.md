@@ -241,6 +241,55 @@ No content.
 
 ---
 
+## `DELETE /me/account`
+
+### Purpose
+Permanently delete the caller's account (App Store in-app deletion requirement). Uses
+**anonymize-in-place**: the user is removed from Firebase Auth and all their private data
+is deleted, but the user document is tombstoned rather than cascade-deleted so other
+players' match histories keep rendering.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). Only the authenticated caller's own
+account is affected — there is no target `uid` parameter.
+
+### Behavior
+1. **Identity** — revokes the user's refresh tokens then deletes the Firebase Auth user. A
+   subsequent call with the old token is rejected. An already-deleted Auth user is tolerated
+   (idempotent).
+2. **Own private data** — hard-deletes `users/{uid}/journalEntries` and
+   `users/{uid}/pointHistory`; device tokens are dropped (push stops immediately).
+3. **Tombstone** — overwrites `users/{uid}` keeping only `uid` and `rankings`, setting
+   `name = "Deleted Player"`, `profileUrl = null`, `isDeleted = true`, `deletedAt = now`.
+   All PII (email, phone, preferences, deviceTokens) is stripped.
+
+**No cascade:** match documents, opponents' point history, scouting, ticker and leaderboard
+rows referencing the uid are left untouched. Opponents' rivalry/scouting/profile reads
+against the deleted uid still return `200` rendering "Deleted Player". Tombstoned users drop
+out of leaderboards on the next scheduled recompute.
+
+User-facing deletion statement: *"Your account, profile, journal, goals, and personal data
+(email, phone, devices) are permanently deleted. Your past match results remain in other
+players' records but are no longer linked to your name."*
+
+### Request body
+None.
+
+### Example call
+```bash
+curl -s -X DELETE \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/me/account
+```
+
+### Example success response (`204`)
+No content.
+
+### Common error responses
+- `401` missing/invalid token
+
+---
+
 ## `GET /users/{uid}`
 
 ### Purpose
