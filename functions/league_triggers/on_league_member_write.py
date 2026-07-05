@@ -35,7 +35,7 @@ def _get_member_uid(after: dict[str, Any] | None, before: dict[str, Any] | None)
 
 
 def _has_member_change(before: dict[str, Any], after: dict[str, Any]) -> bool:
-    for key in ("role", "status"):
+    for key in ("role", "status", "divisionId"):
         if before.get(key) != after.get(key):
             return True
     return False
@@ -318,6 +318,7 @@ def handle_league_member_upsert(
         "status": league_data.get("status"),
         "role": after.get("role"),
         "displayName": after.get("displayName"),
+        "divisionId": after.get("divisionId"),
     }
 
     if not summary.get("sport") or not summary.get("status"):

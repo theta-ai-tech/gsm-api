@@ -1,0 +1,70 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e5]: Kinetic · states
+    - generic [ref=e6] [cursor=pointer]: Idle · Intent feed
+    - generic [ref=e7] [cursor=pointer]: Find · Intent detail
+    - generic [ref=e8] [cursor=pointer]: Proposed · Request sent
+    - generic [ref=e9] [cursor=pointer]: Proposed · Incoming
+    - generic [ref=e10] [cursor=pointer]: Confirmed · Upcoming
+    - generic [ref=e11] [cursor=pointer]: Score entry
+    - generic [ref=e12] [cursor=pointer]: Pending confirmation
+    - generic [ref=e13] [cursor=pointer]: Result · Quiet win
+  - generic [ref=e14]:
+    - generic [ref=e17]:
+      - generic [ref=e19]: 9:41
+      - generic [ref=e20]:
+        - img [ref=e21]
+        - img [ref=e26]
+        - img [ref=e30]
+    - generic [ref=e275]:
+      - generic [ref=e276]:
+        - img [ref=e278] [cursor=pointer]
+        - generic [ref=e280]: Log score
+      - generic [ref=e281]:
+        - generic [ref=e282]: You vs Maria
+        - generic [ref=e283]: Enter games per set. Tap + / − — it'll feel right.
+        - generic [ref=e286]:
+          - generic [ref=e287]: You
+          - generic [ref=e288]: Maria
+        - generic [ref=e289]:
+          - generic [ref=e290]: Set 1
+          - generic [ref=e291]:
+            - generic [ref=e292]:
+              - generic [ref=e293] [cursor=pointer]: −
+              - generic [ref=e294]: "6"
+              - generic [ref=e295] [cursor=pointer]: +
+            - generic [ref=e296]:
+              - generic [ref=e297] [cursor=pointer]: −
+              - generic [ref=e298]: "4"
+              - generic [ref=e299] [cursor=pointer]: +
+        - generic [ref=e300]:
+          - generic [ref=e301]: Set 2
+          - generic [ref=e302]:
+            - generic [ref=e303]:
+              - generic [ref=e304] [cursor=pointer]: −
+              - generic [ref=e305]: "4"
+              - generic [ref=e306] [cursor=pointer]: +
+            - generic [ref=e307]:
+              - generic [ref=e308] [cursor=pointer]: −
+              - generic [ref=e309]: "6"
+              - generic [ref=e310] [cursor=pointer]: +
+        - generic [ref=e311]:
+          - generic [ref=e312]: Set 3
+          - generic [ref=e313]:
+            - generic [ref=e314]:
+              - generic [ref=e315] [cursor=pointer]: −
+              - generic [ref=e316]: "0"
+              - generic [ref=e317] [cursor=pointer]: +
+            - generic [ref=e318]:
+              - generic [ref=e319] [cursor=pointer]: −
+              - generic [ref=e320]: "0"
+              - generic [ref=e321] [cursor=pointer]: +
+        - generic [ref=e322] [cursor=pointer]: + Add set
+        - generic [ref=e323]:
+          - text: Even ·
+          - generic [ref=e324]: 1–1
+          - text: sets
+      - generic [ref=e325]:
+        - generic [ref=e326] [cursor=pointer]: Submit score
+        - generic [ref=e327]: Maria confirms · 24h window to dispute
+  - generic [ref=e166]: GSM · Play · Kinetic Performance · calm authority

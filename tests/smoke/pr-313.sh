@@ -50,9 +50,9 @@ assert_file_exists() {
 }
 
 echo ""
-echo "── Step 1: wiki/telemetry.md exists ───────────────────────────────────────"
-TELEMETRY="$REPO_ROOT/wiki/telemetry.md"
-assert_file_exists "wiki/telemetry.md exists" "$TELEMETRY"
+echo "── Step 1: docs/operations/observability.md exists ───────────────────────────────────────"
+TELEMETRY="$REPO_ROOT/docs/operations/observability.md"
+assert_file_exists "docs/operations/observability.md exists" "$TELEMETRY"
 
 echo ""
 echo "── Step 2: All 8 funnel event names are defined ───────────────────────────"
@@ -88,9 +88,9 @@ echo "── Step 5: Singles + doubles compatibility noted ───────
 assert_contains "doubles compatibility section" "$TELEMETRY" "[Dd]oubles"
 
 echo ""
-echo "── Step 6: wiki/observability.md cross-reference added ─────────────────────"
-OBSERVABILITY="$REPO_ROOT/wiki/observability.md"
-assert_file_exists "wiki/observability.md exists" "$OBSERVABILITY"
+echo "── Step 6: docs/operations/observability.md cross-reference added ─────────────────────"
+OBSERVABILITY="$REPO_ROOT/docs/operations/observability.md"
+assert_file_exists "docs/operations/observability.md exists" "$OBSERVABILITY"
 assert_contains "Funnel Telemetry Events section" "$OBSERVABILITY" "Funnel Telemetry Events"
 assert_contains "link to telemetry.md" "$OBSERVABILITY" "telemetry.md"
 

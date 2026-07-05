@@ -95,6 +95,46 @@ class MatchesRepo(RepoBase):
         docs = query.stream()
         return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in docs]
 
+    def list_upcoming_for_division(
+        self,
+        league_id: str,
+        division_id: str,
+        limit: int = 50,
+        cursor: Optional[dict] = None,
+    ) -> List[Match]:
+        query = (
+            self.client.collection("matches")
+            .where("leagueId", "==", league_id)
+            .where("divisionId", "==", division_id)
+            .where("status", "==", "scheduled")
+            .order_by("scheduledAt")
+            .order_by(FieldPath.document_id())
+            .limit(limit)
+        )
+        query = _apply_cursor(query, cursor, "scheduledAt", self.client)
+        docs = query.stream()
+        return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in docs]
+
+    def list_completed_for_division(
+        self,
+        league_id: str,
+        division_id: str,
+        limit: int = 50,
+        cursor: Optional[dict] = None,
+    ) -> List[Match]:
+        query = (
+            self.client.collection("matches")
+            .where("leagueId", "==", league_id)
+            .where("divisionId", "==", division_id)
+            .where("status", "==", "completed")
+            .order_by("finishedAt", direction=firestore.Query.DESCENDING)
+            .order_by(FieldPath.document_id(), direction=firestore.Query.DESCENDING)
+            .limit(limit)
+        )
+        query = _apply_cursor(query, cursor, "finishedAt", self.client)
+        docs = query.stream()
+        return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in docs]
+
     def list_head_to_head(self, pair: str, sport: SportEnum, limit: int = 10) -> List[Match]:
         """Return completed H2H matches for a pair ordered by finishedAt DESC.
 

@@ -531,3 +531,77 @@ class TestCancelOffer:
         response = client.post("/me/offers/offer123/cancel")
 
         assert response.status_code == 403
+
+
+class TestGetDiscoveryFeed:
+    def test_get_discovery_feed_success(self, client, mock_play_service):
+        """GET /me/discovery returns 200 with serverTime, activeClubsNearby, intents."""
+        from app.models.play import DiscoveryFeedResponse
+
+        now = datetime.now(timezone.utc)
+        mock_response = DiscoveryFeedResponse(
+            serverTime=now,
+            activeClubsNearby=1,
+            intents=[],
+        )
+        mock_play_service.build_discovery_feed.return_value = mock_response
+
+        response = client.get("/me/discovery")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "serverTime" in data
+        assert "activeClubsNearby" in data
+        assert "intents" in data
+        assert data["activeClubsNearby"] == 1
+        mock_play_service.build_discovery_feed.assert_called_once_with(
+            "test_user", sport=None, match_type=None
+        )
+
+    def test_get_discovery_feed_sport_filter(self, client, mock_play_service):
+        """?sport=padel passes SportEnum.PADEL to the service."""
+        from app.models.play import DiscoveryFeedResponse
+
+        now = datetime.now(timezone.utc)
+        mock_play_service.build_discovery_feed.return_value = DiscoveryFeedResponse(
+            serverTime=now,
+            activeClubsNearby=0,
+            intents=[],
+        )
+
+        response = client.get("/me/discovery?sport=padel")
+
+        assert response.status_code == 200
+        mock_play_service.build_discovery_feed.assert_called_once_with(
+            "test_user", sport=SportEnum.PADEL, match_type=None
+        )
+
+    def test_get_discovery_feed_match_type_filter(self, client, mock_play_service):
+        """?match_type=doubles passes MatchTypeEnum.DOUBLES to the service."""
+        from app.models.play import DiscoveryFeedResponse
+
+        now = datetime.now(timezone.utc)
+        mock_play_service.build_discovery_feed.return_value = DiscoveryFeedResponse(
+            serverTime=now,
+            activeClubsNearby=0,
+            intents=[],
+        )
+
+        response = client.get("/me/discovery?match_type=doubles")
+
+        assert response.status_code == 200
+        mock_play_service.build_discovery_feed.assert_called_once_with(
+            "test_user", sport=None, match_type=MatchTypeEnum.DOUBLES
+        )
+
+    def test_get_discovery_feed_invalid_sport(self, client, mock_play_service):
+        """Invalid ?sport value returns 422."""
+        response = client.get("/me/discovery?sport=badminton")
+
+        assert response.status_code == 422
+
+    def test_get_discovery_feed_invalid_match_type(self, client, mock_play_service):
+        """Invalid ?match_type value returns 422."""
+        response = client.get("/me/discovery?match_type=invalid_value")
+
+        assert response.status_code == 422

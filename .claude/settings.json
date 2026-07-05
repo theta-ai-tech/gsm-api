@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C * pull origin main)",
+      "Bash(git pull origin main)",
+      "Bash(git -C * fetch origin *)",
+      "Bash(git -C * worktree add *)",
+      "Bash(git -C * worktree remove * --force)",
+      "Bash(git worktree remove * --force)",
+      "Bash(git -C * branch -d *)",
+      "Bash(git -C * branch -D *)",
+      "Bash(git branch -d *)",
+      "Bash(git branch -D *)",
+      "Bash(git -C * push origin --delete *)",
+      "Bash(git push origin --delete *)",
+      "Bash(git -C * checkout main)",
+      "Bash(git -C * add *)",
+      "Bash(git -C * commit -m *)",
+      "Bash(git -C * push -u origin *)",
+      "Bash(git -C * push)",
+      "Bash(gh issue develop *)",
+      "Bash(curl -s --connect-timeout * http://127.0.0.1:8082*)",
+      "Bash(curl -fsS http://127.0.0.1:82*/health)",
+      "Bash(curl -fsS http://127.0.0.1:83*/health)",
+      "Bash(curl -fsS http://127.0.0.1:8082/v1/projects/*/databases/(default)/documents/*)",
+      "Bash(curl -sS http://127.0.0.1:8082/v1/projects/*/databases/(default)/documents/*)",
+      "Bash(make -C * VENV=* fmt format type)",
+      "Bash(PYTHONPATH=* make -C * VENV=* test)",
+      "Bash(FIRESTORE_EMULATOR_HOST=* GOOGLE_CLOUD_PROJECT=* PYTHONPATH=* make -C * VENV=* seed-emu)",
+      "Bash(FIRESTORE_EMULATOR_HOST=* FIREBASE_AUTH_EMULATOR_HOST=* GOOGLE_CLOUD_PROJECT=* bash tests/smoke/pr-*.sh)",
+      "Bash(API_BASE_URL=http://127.0.0.1:82* FIRESTORE_EMULATOR_HOST=* FIREBASE_AUTH_EMULATOR_HOST=* GOOGLE_CLOUD_PROJECT=* bash tests/smoke/pr-*.sh)",
+      "Bash(API_BASE_URL=http://127.0.0.1:83* FIRESTORE_EMULATOR_HOST=* FIREBASE_AUTH_EMULATOR_HOST=* GOOGLE_CLOUD_PROJECT=* bash tests/smoke/pr-*.sh)",
+      "Bash(GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr comment * --body-file *)",
+      "Bash(GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr review * --comment --body-file *)",
+      "Bash(GH_TOKEN=$GSM_REVIEWER_TOKEN gh pr review * --approve --body *)",
+      "Bash(GH_TOKEN=$GSM_REVIEWER_TOKEN gh api -X PUT repos/theta-ai-tech/gsm-api/pulls/*/merge -f sha=* -f merge_method=merge)"
+    ]
+  }
+}

@@ -6,7 +6,7 @@ from typing import Self
 from pydantic import model_validator
 
 from app.models.base import GsmBaseModel
-from app.models.enums import PlayNotificationIntentTypeEnum
+from app.models.enums import DeliveryStatusEnum, PlayNotificationIntentTypeEnum
 
 _REQUIRED_FIELDS: dict[PlayNotificationIntentTypeEnum, list[str]] = {
     PlayNotificationIntentTypeEnum.INCOMING_OFFER: ["offer_id"],
@@ -26,6 +26,8 @@ class PlayNotificationIntent(GsmBaseModel):
     broadcast_id: str | None = None
     dedupe_key: str
     created_at: datetime
+    delivered_at: datetime | None = None
+    delivery_status: DeliveryStatusEnum = DeliveryStatusEnum.PENDING
 
     @model_validator(mode="after")
     def _check_required_per_type(self) -> Self:

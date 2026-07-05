@@ -74,6 +74,7 @@ def _league_summary_to_dict(summary: LeagueSummary) -> Dict[str, Any]:
         "sport": summary.sport.value,
         "status": summary.status.value,
         "role": summary.role.value if summary.role else None,
+        "divisionId": summary.division_id,
     }
 
 
@@ -192,6 +193,11 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
         doc["endDate"] = league.end_date
     if league.tier is not None:
         doc["tier"] = league.tier
+    if league.division_config is not None:
+        doc["divisionConfig"] = {
+            "targetSize": league.division_config.target_size,
+            "maxDivisions": league.division_config.max_divisions,
+        }
     return doc
 
 
@@ -205,6 +211,8 @@ def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:
     }
     if member.display_name is not None:
         doc["displayName"] = member.display_name
+    if member.division_id is not None:
+        doc["divisionId"] = member.division_id
     return doc
 
 
@@ -245,6 +253,7 @@ def match_to_firestore_doc(match: Match) -> Dict[str, Any]:
         "scheduledAt": match.scheduled_at,
         "finishedAt": match.finished_at,
         "leagueId": match.league_id,
+        "divisionId": match.division_id,
         "courtId": match.court_id,
         "participants": [_participant_to_dict(p) for p in match.participants],
         "participantUids": match.participant_uids,

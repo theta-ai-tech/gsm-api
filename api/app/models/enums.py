@@ -35,6 +35,7 @@ class BroadcastTypeEnum(StrEnum):
 class LeagueStatusEnum(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
+    DIVIDING = "dividing"
     UPCOMING = "upcoming"
     OPEN = "open"
 
@@ -146,3 +147,15 @@ class PlayNotificationIntentTypeEnum(StrEnum):
     INCOMING_OFFER = "incoming_offer"
     MATCH_SCHEDULED = "match_scheduled"
     SCORE_CONFIRM_REQUIRED = "score_confirm_required"
+
+
+class PlatformEnum(StrEnum):
+    IOS = "ios"
+    ANDROID = "android"
+
+
+class DeliveryStatusEnum(StrEnum):
+    PENDING = "pending"
+    DELIVERED = "delivered"
+    NO_TOKENS = "no_tokens"
+    FAILED = "failed"

@@ -8,6 +8,7 @@ from app.models.enums import (
     CourtStatusEnum,
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
+    LeagueStatusEnum,
     MatchResultEnum,
     MatchTypeEnum,
     OfferStatusEnum,
@@ -20,12 +21,62 @@ from app.repos.mappers import (
     _parse_journal_entry_summary,
     _parse_sport_ranking,
     to_broadcast,
+    to_division,
     to_journal_entry,
+    to_league,
     to_league_browse_card,
+    to_league_member,
+    to_match,
     to_offer,
+    to_private_user_profile,
 )
 from app.models.journal import JournalEntry, MatchReflection
 from tools.seed_mapping import journal_entry_to_firestore_doc
+
+
+class TestLeagueSummaryMapping:
+    def test_private_profile_league_summary_maps_division_id(self):
+        profile = to_private_user_profile(
+            {
+                "uid": "user_1",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "preferences": {"levels": {}, "sports": []},
+                "leaguesActive": [
+                    {
+                        "leagueId": "league_1",
+                        "name": "Athens League",
+                        "sport": "padel",
+                        "status": "active",
+                        "role": "player",
+                        "divisionId": "div-1",
+                    }
+                ],
+            }
+        )
+
+        assert profile.leagues_active[0].division_id == "div-1"
+
+    def test_private_profile_legacy_league_summary_defaults_division_id_none(self):
+        profile = to_private_user_profile(
+            {
+                "uid": "user_1",
+                "name": "Alice",
+                "email": "alice@example.com",
+                "preferences": {"levels": {}, "sports": []},
+                "leaguesActive": [
+                    {
+                        "leagueId": "league_1",
+                        "name": "Athens League",
+                        "sport": "padel",
+                        "status": "active",
+                        "role": "player",
+                    }
+                ],
+            }
+        )
+
+        assert profile.leagues_active[0].division_id is None
 
 
 class TestToBroadcast:
@@ -655,6 +706,122 @@ class TestParseUserPreferences:
         prefs = UserPreferences(area=1, levels=PerSportLevels(), sports=[])
 
         assert prefs.feed_opt_out is False
+
+
+# ── league division schema mappers ────────────────────────────────────────────
+
+
+class TestLeagueDivisionSchemaMappers:
+    def test_league_status_dividing_serializes_to_firestore_value(self):
+        assert LeagueStatusEnum.DIVIDING.value == "dividing"
+
+    def test_to_league_maps_division_config(self):
+        divided_at = datetime(2026, 7, 1, tzinfo=timezone.utc)
+        doc = {
+            "name": "Athens Divisions",
+            "sport": "padel",
+            "status": "open",
+            "ownerUid": "owner_1",
+            "dividedAt": divided_at,
+            "divisionConfig": {"targetSize": 8, "maxDivisions": 3},
+        }
+
+        league = to_league(doc, league_id="league_divisions")
+
+        assert league.league_id == "league_divisions"
+        assert league.division_config is not None
+        assert league.division_config.target_size == 8
+        assert league.division_config.max_divisions == 3
+        assert league.divided_at == divided_at
+
+    def test_to_league_division_config_defaults_target_size(self):
+        doc = {
+            "name": "Athens Divisions",
+            "sport": "padel",
+            "status": "open",
+            "ownerUid": "owner_1",
+            "divisionConfig": {},
+        }
+
+        league = to_league(doc, league_id="league_divisions")
+
+        assert league.division_config is not None
+        assert league.division_config.target_size == 6
+        assert league.division_config.max_divisions is None
+
+    def test_to_league_legacy_doc_without_division_config_parses(self):
+        doc = {
+            "name": "Legacy League",
+            "sport": "tennis",
+            "status": "active",
+            "ownerUid": "owner_1",
+        }
+
+        league = to_league(doc, league_id="league_legacy")
+
+        assert league.division_config is None
+
+    def test_to_league_member_maps_division_id(self):
+        joined_at = datetime.now(timezone.utc)
+        doc = {
+            "role": "player",
+            "status": "active",
+            "joinedAt": joined_at,
+            "displayName": "Alice",
+            "divisionId": "div-1",
+        }
+
+        member = to_league_member(doc, uid="user_alice")
+
+        assert member.uid == "user_alice"
+        assert member.division_id == "div-1"
+
+    def test_to_league_member_legacy_doc_without_division_id_parses(self):
+        joined_at = datetime.now(timezone.utc)
+        doc = {
+            "role": "player",
+            "status": "active",
+            "joinedAt": joined_at,
+        }
+
+        member = to_league_member(doc, uid="user_legacy")
+
+        assert member.division_id is None
+
+    def test_to_division_maps_metadata_doc(self):
+        doc = {
+            "name": "Division 1",
+            "ordinal": 1,
+            "ratingRange": {"min": 980, "max": 1400},
+            "currentPlayers": 6,
+            "status": "active",
+        }
+
+        division = to_division(doc, division_id="div-1")
+
+        assert division.division_id == "div-1"
+        assert division.name == "Division 1"
+        assert division.ordinal == 1
+        assert division.rating_range.min == 980
+        assert division.rating_range.max == 1400
+        assert division.current_players == 6
+        assert division.status == LeagueStatusEnum.ACTIVE
+
+    def test_to_match_maps_optional_division_id(self):
+        scheduled_at = datetime.now(timezone.utc)
+        doc = {
+            "sport": "padel",
+            "status": "scheduled",
+            "matchType": "singles",
+            "scheduledAt": scheduled_at,
+            "leagueId": "league_1",
+            "divisionId": "div-1",
+            "participantUids": ["user_a", "user_b"],
+        }
+
+        match = to_match(doc, match_id="match_1")
+
+        assert match.division_id == "div-1"
 
 
 # ── to_league_browse_card ─────────────────────────────────────────────────────

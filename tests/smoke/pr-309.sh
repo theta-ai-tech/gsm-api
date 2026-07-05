@@ -3,7 +3,7 @@
 # Generated: 2026-05-27
 # Usage: bash tests/smoke/pr-309.sh
 #
-# Verifies wiki/operator-playbook.md exists and that all scripts it references
+# Verifies docs/operations/runbook.md exists and that all scripts it references
 # are present in the repo. No emulator or API required.
 
 set -uo pipefail
@@ -48,19 +48,19 @@ assert_dir_not_empty() {
 
 echo ""
 echo "━━━ Playbook file existence ━━━"
-assert_file_exists "wiki/operator-playbook.md exists" "$REPO_ROOT/wiki/operator-playbook.md"
+assert_file_exists "docs/operations/runbook.md exists" "$REPO_ROOT/docs/operations/runbook.md"
 
 echo ""
 echo "━━━ Required sections present ━━━"
-assert_file_contains "Section: Prerequisites"       "$REPO_ROOT/wiki/operator-playbook.md" "Prerequisites"
-assert_file_contains "Section: Quick Start"         "$REPO_ROOT/wiki/operator-playbook.md" "Quick Start"
-assert_file_contains "Section: Demo Users"          "$REPO_ROOT/wiki/operator-playbook.md" "Demo Users"
-assert_file_contains "Section: Demo Scenarios"      "$REPO_ROOT/wiki/operator-playbook.md" "Demo Scenarios"
-assert_file_contains "Section: Venues"              "$REPO_ROOT/wiki/operator-playbook.md" "Venues"
-assert_file_contains "Section: Leagues"             "$REPO_ROOT/wiki/operator-playbook.md" "Leagues"
-assert_file_contains "Section: Smoke Tests"         "$REPO_ROOT/wiki/operator-playbook.md" "Smoke Tests"
-assert_file_contains "Section: Reset"               "$REPO_ROOT/wiki/operator-playbook.md" "Reset"
-assert_file_contains "Section: Manual vs Automated" "$REPO_ROOT/wiki/operator-playbook.md" "Manual vs Automated"
+assert_file_contains "Section: Prerequisites"       "$REPO_ROOT/docs/operations/runbook.md" "Prerequisites"
+assert_file_contains "Section: Quick Start"         "$REPO_ROOT/docs/operations/runbook.md" "Quick Start"
+assert_file_contains "Section: Demo Users"          "$REPO_ROOT/docs/operations/runbook.md" "Demo Users"
+assert_file_contains "Section: Demo Scenarios"      "$REPO_ROOT/docs/operations/runbook.md" "Demo Scenarios"
+assert_file_contains "Section: Venues"              "$REPO_ROOT/docs/operations/runbook.md" "Venues"
+assert_file_contains "Section: Leagues"             "$REPO_ROOT/docs/operations/runbook.md" "Leagues"
+assert_file_contains "Section: Smoke Tests"         "$REPO_ROOT/docs/operations/runbook.md" "Smoke Tests"
+assert_file_contains "Section: Reset"               "$REPO_ROOT/docs/operations/runbook.md" "Reset"
+assert_file_contains "Section: Manual vs Automated" "$REPO_ROOT/docs/operations/runbook.md" "Manual vs Automated"
 
 echo ""
 echo "━━━ Referenced scripts exist ━━━"
@@ -82,9 +82,9 @@ assert_dir_not_empty "tests/smoke/ has scripts" "$REPO_ROOT/tests/smoke"
 
 echo ""
 echo "━━━ Playbook references correct seeded IDs ━━━"
-assert_file_contains "match_pending (underscore) referenced" "$REPO_ROOT/wiki/operator-playbook.md" "match_pending"
-assert_file_contains "padel-local-2025 league referenced"    "$REPO_ROOT/wiki/operator-playbook.md" "padel-local-2025"
-assert_file_contains "user_ignatios UID referenced"          "$REPO_ROOT/wiki/operator-playbook.md" "user_ignatios"
+assert_file_contains "match_pending (underscore) referenced" "$REPO_ROOT/docs/operations/runbook.md" "match_pending"
+assert_file_contains "padel-local-2025 league referenced"    "$REPO_ROOT/docs/operations/runbook.md" "padel-local-2025"
+assert_file_contains "user_ignatios UID referenced"          "$REPO_ROOT/docs/operations/runbook.md" "user_ignatios"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
