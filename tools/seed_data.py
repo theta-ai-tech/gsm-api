@@ -8,11 +8,14 @@ from app.models import (
     LeaderboardEntry,
     LeaderboardSnapshot,
     League,
+    LeagueFormatEnum,
     LeagueMember,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
     LeagueSummary,
     LeagueStatusEnum,
+    LeagueTeam,
+    LeagueTeamStatusEnum,
     LevelEnum,
     Match,
     MatchOpponentSummary,
@@ -451,12 +454,70 @@ LEAGUE_PADEL_DIVISIONS_OPEN = League(
     meta={},
 )
 
+LEAGUE_PADEL_DOUBLES_OPEN = League(
+    league_id="padel-doubles-open-2026",
+    name="Padel Doubles Open 2026",
+    sport=SportEnum.PADEL,
+    season="Summer 2026",
+    status=LeagueStatusEnum.OPEN,
+    owner_uid=USER_IGNATIOS.uid,
+    region="athens",
+    format=LeagueFormatEnum.DOUBLES,
+    # Capacity counts players: 2 active teams = 4 players. The pending
+    # team-elena-fotis invite consumes nothing until accepted.
+    max_players=8,
+    current_players=4,
+    start_date=utc(2026, 8, 1),
+    end_date=utc(2026, 10, 31),
+    tier="intermediate",
+    division_config=DivisionConfig(target_size=6, max_divisions=None),
+    meta={},
+)
+
 SAMPLE_LEAGUES = [
     LEAGUE_PADEL_LOCAL,
     LEAGUE_TENNIS_LOCAL,
     LEAGUE_TENNIS_COMPLETED,
     LEAGUE_PADEL_DIVISIONS_OPEN,
+    LEAGUE_PADEL_DOUBLES_OPEN,
 ]
+
+# --- League teams (leagues/{leagueId}/teams/{teamId}) — doubles leagues only ---
+# Two ACTIVE teams (member docs exist, capacity consumed) and one PENDING
+# invite (team doc only: no member docs, no capacity) for the accept/decline demo.
+SAMPLE_LEAGUE_TEAMS: dict[str, list[LeagueTeam]] = {
+    "padel-doubles-open-2026": [
+        LeagueTeam(
+            team_id="team-ignatios-diana",
+            status=LeagueTeamStatusEnum.ACTIVE,
+            captain_uid=USER_IGNATIOS.uid,
+            partner_uid=USER_DIANA.uid,
+            member_uids=[USER_IGNATIOS.uid, USER_DIANA.uid],
+            name="Ignatios / Diana",
+            created_at=utc(2026, 6, 1, 10, 0),
+            accepted_at=utc(2026, 6, 1, 12, 0),
+        ),
+        LeagueTeam(
+            team_id="team-alice-bob",
+            status=LeagueTeamStatusEnum.ACTIVE,
+            captain_uid=USER_ALICE.uid,
+            partner_uid=USER_BOB.uid,
+            member_uids=[USER_ALICE.uid, USER_BOB.uid],
+            name="Alice / Bob",
+            created_at=utc(2026, 6, 2, 9, 0),
+            accepted_at=utc(2026, 6, 2, 18, 30),
+        ),
+        LeagueTeam(
+            team_id="team-elena-fotis",
+            status=LeagueTeamStatusEnum.PENDING,
+            captain_uid=USER_ELENA.uid,
+            partner_uid=USER_FOTIS.uid,
+            member_uids=[USER_ELENA.uid, USER_FOTIS.uid],
+            name="Elena / Fotis",
+            created_at=utc(2026, 6, 10, 15, 0),
+        ),
+    ],
+}
 
 # --- League members (leagues/{leagueId}/members/{uid}) ---
 SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
@@ -578,6 +639,48 @@ SAMPLE_LEAGUE_MEMBERS: dict[str, list[LeagueMember]] = {
             status=LeagueMemberStatusEnum.ACTIVE,
             joined_at=utc(2026, 3, 8),
             display_name="Alice",
+        ),
+    ],
+    "padel-doubles-open-2026": [
+        LeagueMember(
+            uid=USER_IGNATIOS.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 6, 1, 12, 0),
+            display_name="Ignatios",
+            stats={"wins": 2, "losses": 1},
+            team_id="team-ignatios-diana",
+            partner_uid=USER_DIANA.uid,
+        ),
+        LeagueMember(
+            uid=USER_DIANA.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 6, 1, 12, 0),
+            display_name="Diana",
+            stats={"wins": 2, "losses": 1},
+            team_id="team-ignatios-diana",
+            partner_uid=USER_IGNATIOS.uid,
+        ),
+        LeagueMember(
+            uid=USER_ALICE.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 6, 2, 18, 30),
+            display_name="Alice",
+            stats={"wins": 1, "losses": 2},
+            team_id="team-alice-bob",
+            partner_uid=USER_BOB.uid,
+        ),
+        LeagueMember(
+            uid=USER_BOB.uid,
+            role=LeagueRoleEnum.PLAYER,
+            status=LeagueMemberStatusEnum.ACTIVE,
+            joined_at=utc(2026, 6, 2, 18, 30),
+            display_name="Bob",
+            stats={"wins": 1, "losses": 2},
+            team_id="team-alice-bob",
+            partner_uid=USER_ALICE.uid,
         ),
     ],
 }
@@ -1405,6 +1508,14 @@ SAMPLE_TICKER_EVENTS = [
 # League browse / join:
 #   GET /leagues?sport=padel&status=active → padel-local-2025 (athens, 4/12 members)
 #   POST /leagues/padel-local-2025/join    → any user not yet a member can join
+#
+# Doubles league join (teams):
+#   padel-doubles-open-2026 (format=doubles, open, 4/8 players)
+#   Active teams: team-ignatios-diana, team-alice-bob (member docs carry teamId/partnerUid)
+#   Pending invite: team-elena-fotis (Elena invited Fotis; no member docs yet)
+#   POST /leagues/padel-doubles-open-2026/join {"partner_uid": ...} → new pending team
+#   POST /leagues/padel-doubles-open-2026/teams/team-elena-fotis/accept as user_fotis → team active
+#   GET /players?search=el → Elena (nameLower prefix search)
 #
 # Rankings / progression:
 #   GET /me/lab/dashboard/padel as user_ignatios → 6 point history entries (incl. doubles), full skill DNA

@@ -18,6 +18,7 @@ from app.routers.matches import router as matches_router
 from app.routers.onboarding import router as onboarding_router
 from app.routers.play import router as play_router
 from app.routers.leagues import router as leagues_router
+from app.routers.players import router as players_router
 from app.routers.venues import router as venues_router
 from app.security import CurrentUser, require_self
 from app.settings import get_settings
@@ -39,6 +40,7 @@ app.include_router(matches_router)
 app.include_router(clubhouse_router)
 app.include_router(venues_router)
 app.include_router(leagues_router)
+app.include_router(players_router)
 app.include_router(device_tokens_router)
 app.include_router(account_router)
 

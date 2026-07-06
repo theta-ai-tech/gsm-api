@@ -3,7 +3,14 @@ from typing import Any
 
 from app.constants import DIVISION_TARGET_SIZE
 from app.models.base import GsmBaseModel
-from app.models.enums import LeagueMemberStatusEnum, LeagueRoleEnum, LeagueStatusEnum, SportEnum
+from app.models.enums import (
+    LeagueFormatEnum,
+    LeagueMemberStatusEnum,
+    LeagueRoleEnum,
+    LeagueStatusEnum,
+    LeagueTeamStatusEnum,
+    SportEnum,
+)
 
 
 class DivisionConfig(GsmBaseModel):
@@ -32,6 +39,7 @@ class League(GsmBaseModel):
     season: str | None = None
     status: LeagueStatusEnum
     owner_uid: str
+    format: LeagueFormatEnum = LeagueFormatEnum.SINGLES
     region: str | None = None
     max_players: int | None = None
     current_players: int | None = None
@@ -51,6 +59,21 @@ class LeagueMember(GsmBaseModel):
     stats: dict[str, Any] | None = None
     display_name: str | None = None
     division_id: str | None = None
+    team_id: str | None = None
+    partner_uid: str | None = None
+
+
+class LeagueTeam(GsmBaseModel):
+    team_id: str
+    status: LeagueTeamStatusEnum
+    captain_uid: str
+    partner_uid: str
+    member_uids: list[str]
+    name: str
+    created_at: datetime
+    accepted_at: datetime | None = None
+    rating_avg: int | None = None
+    division_id: str | None = None
 
 
 class LeagueBrowseCard(GsmBaseModel):
@@ -58,6 +81,7 @@ class LeagueBrowseCard(GsmBaseModel):
     name: str
     sport: SportEnum
     status: LeagueStatusEnum
+    format: LeagueFormatEnum = LeagueFormatEnum.SINGLES
     region: str | None = None
     tier: str | None = None
     max_players: int | None = None
@@ -72,3 +96,5 @@ class StandingsEntry(GsmBaseModel):
     wins: int
     losses: int
     tier_ring: str | None = None
+    team_id: str | None = None
+    member_uids: list[str] | None = None

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from app.models.enums import LeagueStatusEnum, SportEnum
+from app.models.enums import LeagueStatusEnum, LeagueTeamStatusEnum, SportEnum
 from app.repos.leagues_repo import LeaguesRepo
 
 
@@ -277,3 +277,110 @@ class TestLeaguesRepoIncrementMemberCount:
         mock_doc_ref.update.assert_called_once()
         call_args = mock_doc_ref.update.call_args[0][0]
         assert "currentPlayers" in call_args
+
+
+def _team_doc(status: str = "pending") -> dict:
+    return {
+        "status": status,
+        "captainUid": "user_captain",
+        "partnerUid": "user_partner",
+        "memberUids": ["user_captain", "user_partner"],
+        "name": "Captain / Partner",
+        "createdAt": datetime(2026, 2, 1, tzinfo=timezone.utc),
+    }
+
+
+class TestLeaguesRepoTeams:
+    def test_get_team_found(self, leagues_repo, mock_firestore_client):
+        mock_doc = Mock()
+        mock_doc.exists = True
+        mock_doc.id = "team_abc"
+        mock_doc.to_dict.return_value = _team_doc("active")
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value
+        ) = mock_doc
+
+        team = leagues_repo.get_team("league_1", "team_abc")
+
+        assert team is not None
+        assert team.team_id == "team_abc"
+        assert team.status == LeagueTeamStatusEnum.ACTIVE
+
+    def test_get_team_not_found(self, leagues_repo, mock_firestore_client):
+        mock_doc = Mock()
+        mock_doc.exists = False
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value.document.return_value.get.return_value
+        ) = mock_doc
+
+        assert leagues_repo.get_team("league_1", "nope") is None
+
+    def test_list_teams_filters_by_status(self, leagues_repo, mock_firestore_client):
+        mock_doc = Mock()
+        mock_doc.id = "team_abc"
+        mock_doc.to_dict.return_value = _team_doc("pending")
+        mock_query = Mock()
+        mock_query.where.return_value = mock_query
+        mock_query.stream.return_value = [mock_doc]
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value
+        ) = mock_query
+
+        teams = leagues_repo.list_teams("league_1", status=LeagueTeamStatusEnum.PENDING)
+
+        assert len(teams) == 1
+        mock_query.where.assert_called_once_with("status", "==", "pending")
+
+    def test_list_teams_no_status(self, leagues_repo, mock_firestore_client):
+        mock_doc = Mock()
+        mock_doc.id = "team_abc"
+        mock_doc.to_dict.return_value = _team_doc("active")
+        mock_query = Mock()
+        mock_query.where.return_value = mock_query
+        mock_query.stream.return_value = [mock_doc]
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value
+        ) = mock_query
+
+        teams = leagues_repo.list_teams("league_1")
+
+        assert len(teams) == 1
+        mock_query.where.assert_not_called()
+
+    def test_create_team_sets_doc(self, leagues_repo, mock_firestore_client):
+        mock_team_ref = Mock()
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value.document.return_value
+        ) = mock_team_ref
+
+        doc = _team_doc("pending")
+        leagues_repo.create_team("league_1", "team_abc", doc)
+
+        mock_team_ref.set.assert_called_once_with(doc)
+
+    def test_find_teams_for_user_filters_statuses_in_python(
+        self, leagues_repo, mock_firestore_client
+    ):
+        pending = Mock()
+        pending.id = "team_pending"
+        pending.to_dict.return_value = _team_doc("pending")
+        declined = Mock()
+        declined.id = "team_declined"
+        declined.to_dict.return_value = _team_doc("declined")
+        mock_query = Mock()
+        mock_query.where.return_value = mock_query
+        mock_query.stream.return_value = [pending, declined]
+        (
+            mock_firestore_client.collection.return_value.document.return_value.collection.return_value
+        ) = mock_query
+
+        teams = leagues_repo.find_teams_for_user(
+            "league_1",
+            "user_captain",
+            statuses=[LeagueTeamStatusEnum.PENDING, LeagueTeamStatusEnum.ACTIVE],
+        )
+
+        assert [t.team_id for t in teams] == ["team_pending"]
+        mock_query.where.assert_called_once_with(
+            "memberUids", "array_contains", "user_captain"
+        )

@@ -451,6 +451,12 @@ curl -s \
 ### Notes
 - `display_name` is the value stored in the member doc at join time (from the Firebase token `name` claim). Falls back to `uid` if no display name was available when the user joined.
 - `tier_ring` is always `null` for MVP.
+- **Doubles leagues (`format: doubles`): a row is a team, not a player.** Entries carry
+  `team_id` and `member_uids`; `display_name` is the team name ("Captain / Partner") and
+  `uid` is the captain uid (stable row key). Team wins/losses are the captain's member
+  stats — partners share identical league participation. Singles rows return
+  `team_id: null` / `member_uids: null`. The same shape applies to division-scoped
+  standings (teams filtered by their `divisionId`).
 
 ### Common error responses
 - `401` missing/invalid token
@@ -462,7 +468,15 @@ curl -s \
 ## `POST /leagues/{league_id}/join`
 
 ### Purpose
-Self-serve join flow. Adds the authenticated user as a `player` member of the league. No request body required.
+Self-serve join flow. Branches on the league's `format`:
+- **singles** (default when the field is absent): adds the authenticated user as a `player`
+  member. No request body required — identical to the pre-doubles behavior.
+- **doubles**: creates a **pending team invite** with a registered partner. Nobody becomes a
+  member and no capacity is consumed until the partner accepts
+  (`POST /leagues/{id}/teams/{teamId}/accept`).
+
+iOS must branch on the returned `format` field of the league (browse card / detail), not on
+the sport.
 
 ### Auth
 Required (Firebase Bearer token).
@@ -471,38 +485,234 @@ Required (Firebase Bearer token).
 - `league_id` — string identifier of the league
 
 ### Request body
-None.
+- Singles league: none (empty body or `{}`).
+- Doubles league (required): `{"partner_uid": "<registered uid>"}` — find partners via
+  `GET /players?search=`.
 
-### Example call
+### Example call — singles (unchanged)
 ```bash
 curl -s -X POST \
   -H "Authorization: Bearer $ID_TOKEN" \
   http://localhost:8000/leagues/padel-local-2025/join
 ```
 
-### Example success response (`201`)
+### Example success response — singles (`201`, LeagueMember)
 ```json
 {
   "uid": "user_ignatios",
   "role": "player",
   "status": "active",
   "joined_at": "2026-05-27T10:00:00+00:00",
-  "stats": null
+  "stats": null,
+  "display_name": "Ignatios",
+  "division_id": null,
+  "team_id": null,
+  "partner_uid": null
+}
+```
+
+### Example call — doubles team invite
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"partner_uid": "user_helen"}' \
+  http://localhost:8000/leagues/padel-doubles-open-2026/join
+```
+
+### Example success response — doubles (`201`, LeagueTeam)
+```json
+{
+  "team_id": "aUt0GeNeRaTeD",
+  "status": "pending",
+  "captain_uid": "user_ignatios",
+  "partner_uid": "user_helen",
+  "member_uids": ["user_ignatios", "user_helen"],
+  "name": "Ignatios / Helen",
+  "created_at": "2026-06-10T15:00:00+00:00",
+  "accepted_at": null,
+  "rating_avg": null,
+  "division_id": null
 }
 ```
 
 ### Behavior
-- Checks are performed transactionally:
+- **Singles** — checks performed transactionally:
   1. League must exist.
   2. League status must be `open` or `upcoming`.
   3. Caller must not already be a member.
   4. League must not be at full capacity (`currentPlayers >= maxPlayers`, if both are set).
-- On success: creates `leagues/{leagueId}/members/{uid}` doc and increments `currentPlayers` on the league doc in one Firestore transaction.
+  On success: creates `leagues/{leagueId}/members/{uid}` doc and increments `currentPlayers`
+  on the league doc in one Firestore transaction.
+- **Doubles** — pre-checks + transaction:
+  1. League must exist, be `format: doubles`, and be `open` or `upcoming`.
+  2. `partner_uid` must be present, registered, and not the caller.
+  3. Neither caller nor partner already a member, nor in another `pending`/`active` team in
+     this league (one team per user per league).
+  On success: creates `leagues/{leagueId}/teams/{teamId}` with status `pending` and sends a
+  `league_team_invite` push notification to the partner. **No member docs, no capacity
+  change** — those happen on accept.
+
+### Common error responses
+- `400` `partner_uid` sent to a singles league; missing `partner_uid` on a doubles league; partner is the caller
+- `401` missing/invalid token
+- `404` league not found; partner uid not registered
+- `409` caller/partner already a member; caller/partner already in a pending/active team; league not open/upcoming; league at full capacity
+
+---
+
+## `POST /leagues/{league_id}/teams/{team_id}/accept`
+
+### Purpose
+The invited partner accepts a pending doubles team. This is the moment the team becomes real:
+both players become league members and capacity is consumed.
+
+### Auth
+Required. Caller must be the team's `partner_uid` (the invited player) — `403` otherwise.
+
+### Behavior (single transaction)
+- Re-checks: team still `pending`; league still `open`/`upcoming`; neither player already a
+  member; capacity `currentPlayers + 2 <= maxPlayers` (when both set) — a doubles team
+  consumes **2 player slots**. Exact fit succeeds; overflow gets `409`.
+- Writes: team → `active` (+ `acceptedAt`); creates **both** member docs (each with `uid`,
+  `teamId`, cross-linked `partnerUid`); `currentPlayers += 2`.
+- Captain receives a `league_team_invite_accepted` push notification.
+
+### Example call
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/leagues/padel-doubles-open-2026/teams/team-elena-fotis/accept
+```
+
+### Response
+`200` with the `LeagueTeam` (`"status": "active"`, `accepted_at` set).
+
+### Common error responses
+- `401` missing/invalid token · `403` caller is not the invited partner · `404` team not found
+- `409` team not pending; league not open/upcoming; either player already a member; full capacity
+
+---
+
+## `POST /leagues/{league_id}/teams/{team_id}/decline`
+
+### Purpose
+The invited partner declines a pending team invite. Transactionally guarded — an invite the
+partner has already accepted cannot be declined afterwards.
+
+### Auth
+Required. Caller must be the team's `partner_uid` — `403` otherwise.
+
+### Response
+`200` with the `LeagueTeam` (`"status": "declined"`). Captain receives a
+`league_team_invite_declined` notification. Pending teams consume no capacity, so nothing is
+freed.
+
+### Common error responses
+`401` · `403` not the partner · `404` team not found · `409` team not pending
+
+---
+
+## `DELETE /leagues/{league_id}/teams/{team_id}`
+
+### Purpose
+The captain cancels their own pending invite (e.g. picked the wrong partner).
+
+### Auth
+Required. Caller must be the team's `captain_uid` — `403` otherwise. Only `pending` teams can
+be cancelled (`409` otherwise).
+
+### Response
+`200` with the `LeagueTeam` (`"status": "cancelled"`).
+
+---
+
+## `GET /leagues/{league_id}/teams`
+
+### Purpose
+List a league's doubles teams. With `mine=true`, the caller's own teams/invites — the surface
+an app uses on launch to show outstanding invites (alongside the push notification).
+
+### Auth
+Required. Without `mine=true` the caller must be a league member.
+
+### Query parameters
+- `mine` (bool, default `false`) — only teams where the caller is captain or partner. Without
+  an explicit `status`, defaults to actionable statuses (`pending` + `active`).
+- `status` — optional explicit filter: `pending|active|declined|cancelled`.
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/leagues/padel-doubles-open-2026/teams?mine=true"
+```
+
+### Example response (`200`)
+```json
+{
+  "league_id": "padel-doubles-open-2026",
+  "teams": [
+    {
+      "team_id": "team-elena-fotis",
+      "status": "pending",
+      "captain_uid": "user_elena",
+      "partner_uid": "user_fotis",
+      "member_uids": ["user_elena", "user_fotis"],
+      "name": "Elena / Fotis",
+      "created_at": "2026-06-10T15:00:00+00:00",
+      "accepted_at": null,
+      "rating_avg": null,
+      "division_id": null
+    }
+  ]
+}
+```
+
+### Common error responses
+`401` · `403` non-member without `mine=true` · `404` league not found
+
+---
+
+## `GET /players`
+
+### Purpose
+Registered-player search for the doubles partner picker. Case-insensitive **prefix** match on
+the player's name (backed by the indexed `nameLower` field — not substring search).
+
+### Auth
+Required. The calling user is excluded from results.
+
+### Query parameters
+- `search` — required name prefix (min length 1)
+- `sport` — optional (`tennis|padel|pickleball`); when given, results include the player's
+  `pts` for that sport
+- `limit` — optional, 1–20, default 10
+
+### Example call
+```bash
+curl -s \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  "http://localhost:8000/players?search=el&sport=padel"
+```
+
+### Example response (`200`)
+```json
+{
+  "players": [
+    { "uid": "user_elena", "display_name": "Elena", "profile_url": null, "pts": 1380 }
+  ]
+}
+```
 
 ### Common error responses
 - `401` missing/invalid token
-- `404` league not found
-- `409` already a member, league not open/upcoming, or league at full capacity
+- `422` missing/empty `search`, out-of-range `limit`, invalid `sport`
+
+### Notes
+- Prefix-only: `search=len` will NOT match "Elena". Matching is on the lowercased name.
+- Existing users seeded before this feature need the `nameLower` backfill (see
+  `docs/data/data-dictionary.md`); new registrations write it automatically.
 
 ---
 
@@ -526,6 +736,15 @@ Required. The caller must be the league owner, an admin member, or a global admi
   Leagues with fewer than 5 active members stay in one division; otherwise the division count is
   `round(member_count / targetSize)`.
 - Member documents are updated only when `divisionId` is unset.
+- **Doubles leagues (`format: doubles`):** the seeding unit is the **team** — and so is
+  `divisionConfig.targetSize` and the fewer-than-5 single-division floor: `targetSize: 6`
+  means 6 teams (12 players) per division, and a doubles league with fewer than 5 active
+  teams stays in one division. Author `divisionConfig` in team units for doubles leagues.
+  Team rating is the integer mean of the partners' `rankings.{sport}.pts`; teams sort by
+  that average and split into divisions, so teammates always share a division. `divisionId` is stamped on the
+  team doc and both member docs. Division `currentPlayers` counts players (2 × teams). A
+  doubles league with no `active` teams returns `409` ("no active teams") and reverts to
+  `open` — `pending` invites don't count.
 - Re-running kickoff after a successful kickoff is a documented no-op: the endpoint returns the
   existing divisions with `already_kicked_off: true` and does not create duplicates.
 

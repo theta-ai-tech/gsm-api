@@ -73,8 +73,13 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/leagues/{id}/divisions` | List kickoff-created league divisions (auth: member) |
 | `GET` | `/leagues/{id}/divisions/{divisionId}/standings` | Get division standings (auth: member) |
 | `GET` | `/leagues/{id}/divisions/{divisionId}/matches` | List division upcoming or completed matches (auth: member) |
-| `POST` | `/leagues/{id}/join` | Self-serve join a league |
-| `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members into divisions |
+| `POST` | `/leagues/{id}/join` | Self-serve join: singles self-join, or doubles team invite with a partner |
+| `POST` | `/leagues/{id}/teams/{teamId}/accept` | Invited partner accepts a pending team (auth: partner) |
+| `POST` | `/leagues/{id}/teams/{teamId}/decline` | Invited partner declines a pending team (auth: partner) |
+| `DELETE` | `/leagues/{id}/teams/{teamId}` | Captain cancels a pending team invite (auth: captain) |
+| `GET` | `/leagues/{id}/teams` | List league teams (`?mine=true` for the caller's invites/teams) |
+| `GET` | `/players` | Search registered players by name prefix (partner picker) |
+| `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members (or doubles teams) into divisions |
 | `DELETE` | `/me/account` | Permanently delete the caller's account (anonymize-in-place) |
 
 ---
@@ -914,6 +919,29 @@ collection until moderated.
 Sorted by wins (desc), losses (asc), net wins (desc), then name (asc). Dense ranking (tied players
 share a rank; next rank is `+1`, not `+gap`).
 
+**Doubles leagues (`format: "doubles"`): a standings row is a team, not a player.**
+Each entry additionally carries `team_id` and `member_uids`; `display_name` is the team
+name (`"Captain / Partner"`) and `uid` carries the captain uid as the stable row key.
+Team wins/losses are the captain's member stats — partners always share identical league
+match participation, so they are the team's record. Singles leagues return `team_id: null`
+and `member_uids: null` on every row.
+
+```json
+{
+  "rank": 1,
+  "uid": "user_alice",
+  "display_name": "Alice / Bob",
+  "wins": 5,
+  "losses": 1,
+  "tier_ring": null,
+  "team_id": "team-alice-bob",
+  "member_uids": ["user_alice", "user_bob"]
+}
+```
+
+The same doubles row shape applies to `GET /leagues/{id}/divisions/{divisionId}/standings`
+(rows filtered to teams whose `division_id` matches).
+
 MVP notes: `display_name` falls back to `uid` (will be fixed in issue #325); `tier_ring` is always
 `null` at MVP.
 
@@ -1114,7 +1142,13 @@ match.
 
 **Path parameter:** `id` — league ID.
 
-**Request body:** None.
+Behavior branches on the league's `format` field (`"singles"` — the default when absent —
+or `"doubles"`). iOS must read `format` from the league detail/browse card and must not
+derive it from the sport.
+
+#### Singles leagues (`format: "singles"`) — unchanged
+
+**Request body:** None (an empty JSON object is also accepted).
 
 **Response (`201`, LeagueMember):**
 
@@ -1124,7 +1158,11 @@ match.
   "role": "player",
   "status": "active",
   "joined_at": "2026-06-01T10:00:00Z",
-  "stats": null
+  "stats": null,
+  "display_name": "Alice",
+  "division_id": null,
+  "team_id": null,
+  "partner_uid": null
 }
 ```
 
@@ -1137,13 +1175,169 @@ Preconditions:
 On success: creates `leagues/{id}/members/{uid}` document and atomically increments
 `current_players` on the league document.
 
+#### Doubles leagues (`format: "doubles"`) — team invite
+
+**Request body (required):**
+
+```json
+{ "partner_uid": "user_partner" }
+```
+
+The partner must be a **registered** user (find one via `GET /players?search=`).
+Consent model: **pending team until accept** — this call creates a team in `pending`
+status and notifies the partner; nobody becomes a league member and **no capacity is
+consumed** until the partner accepts.
+
+**Response (`201`, LeagueTeam):**
+
+```json
+{
+  "team_id": "aUt0GeNeRaTeD",
+  "status": "pending",
+  "captain_uid": "user_captain",
+  "partner_uid": "user_partner",
+  "member_uids": ["user_captain", "user_partner"],
+  "name": "Cap Tain / Part Ner",
+  "created_at": "2026-06-10T15:00:00Z",
+  "accepted_at": null,
+  "rating_avg": null,
+  "division_id": null
+}
+```
+
+Preconditions:
+- League must exist and have `format: "doubles"`.
+- League `status` must be `open` or `upcoming`.
+- `partner_uid` must be present, a registered user, and different from the caller.
+- Neither caller nor partner may already be a member, or in another `pending`/`active`
+  team in this league (one team per user per league).
+
+**Key error codes (both formats):**
+
+| Code | Condition |
+|------|-----------|
+| `400` | `partner_uid` sent to a singles league; missing `partner_uid` on a doubles league; partner is the caller |
+| `401` | Missing or invalid token |
+| `404` | League not found; partner uid not a registered user |
+| `409` | Caller or partner already a member; caller or partner already in a pending/active team; league not `open`/`upcoming`; league at full capacity |
+
+iOS renders the `409` variants as the three calm states (already-in / season-underway /
+full); partner-side conflicts ("partner unavailable") surface inside the partner picker.
+
+---
+
+### POST /leagues/{id}/teams/{teamId}/accept
+
+**Auth:** Required; caller must be the invited partner (`partner_uid`) of the team.
+
+**Request body:** None.
+
+Transactionally re-checks: team still `pending`, league still `open`/`upcoming`, neither
+player already a member, and capacity — a doubles team consumes **2 player slots**, so the
+accept fails with `409` unless `current_players + 2 <= max_players` (when both are set).
+Two pending invites racing for the last slots are resolved here: the losing accept gets
+the capacity `409`.
+
+On success: sets the team `active` (+ `accepted_at`), creates **both** member documents
+(each carrying `team_id` and the cross-linked `partner_uid`), increments
+`current_players` by 2, and notifies the captain.
+
+**Response (`200`, LeagueTeam)** — same shape as above with `"status": "active"` and
+`accepted_at` set.
+
 **Key error codes:**
 
 | Code | Condition |
 |------|-----------|
 | `401` | Missing or invalid token |
-| `404` | League not found |
-| `409` | Already a member, league not `open`/`upcoming`, or league at full capacity |
+| `403` | Caller is not the invited partner |
+| `404` | Team (or league) not found |
+| `409` | Team not `pending`; league not `open`/`upcoming`; either player already a member; capacity would exceed `max_players` |
+
+---
+
+### POST /leagues/{id}/teams/{teamId}/decline
+
+**Auth:** Required; caller must be the invited partner.
+
+**Request body:** None.
+
+Sets the team `declined` (transactionally guarded — a team the partner has already
+accepted cannot be declined) and notifies the captain. Nothing to free: pending teams
+consume no capacity.
+
+**Response (`200`, LeagueTeam)** with `"status": "declined"`.
+
+Errors: `403` not the partner · `404` team not found · `409` team not `pending`.
+
+---
+
+### DELETE /leagues/{id}/teams/{teamId}
+
+**Auth:** Required; caller must be the team's captain. Only `pending` teams can be
+cancelled.
+
+**Response (`200`, LeagueTeam)** with `"status": "cancelled"`.
+
+Errors: `403` not the captain · `404` team not found · `409` team not `pending`.
+
+---
+
+### GET /leagues/{id}/teams
+
+**Auth:** Required.
+
+**Query parameters:**
+- `mine` (bool, default `false`) — when `true`, returns only teams where the caller is
+  captain or partner. Without an explicit `status`, defaults to actionable statuses
+  (`pending` + `active`) — this is the "outstanding invites on app launch" surface.
+- `status` (optional: `pending|active|declined|cancelled`) — explicit status filter.
+
+Without `mine=true` the caller must be a league member and gets all teams (optionally
+status-filtered).
+
+**Response (`200`):**
+
+```json
+{
+  "league_id": "padel-doubles-open-2026",
+  "teams": [ { "team_id": "…", "status": "pending", "captain_uid": "…",
+               "partner_uid": "…", "member_uids": ["…", "…"], "name": "…",
+               "created_at": "…", "accepted_at": null, "rating_avg": null,
+               "division_id": null } ]
+}
+```
+
+Errors: `401` · `403` (non-member without `mine=true`) · `404` league not found.
+
+---
+
+### GET /players
+
+**Auth:** Required.
+
+Player search for the doubles partner picker. **Prefix** match (case-insensitive) on the
+user's name — not substring search.
+
+**Query parameters:**
+- `search` (required, min length 1) — name prefix.
+- `sport` (optional: `tennis|padel|pickleball`) — when given, each result includes the
+  player's `pts` for that sport.
+- `limit` (optional, 1–20, default 10).
+
+The calling user is excluded from results.
+
+**Response (`200`):**
+
+```json
+{
+  "players": [
+    { "uid": "user_elena", "display_name": "Elena", "profile_url": null, "pts": 1380 }
+  ]
+}
+```
+
+Errors: `401` · `422` missing/empty `search`, out-of-range `limit`, or invalid `sport`.
 
 ---
 
@@ -1162,6 +1356,15 @@ Behavior:
   when unset.
 - Division count is `1` for fewer than 5 active members, otherwise `round(N / targetSize)`.
   Default `targetSize` is `6`.
+- **Doubles leagues:** the seeding unit is the **team**, never the individual — and
+  `divisionConfig.targetSize` (and the `<5 → 1 division` floor) count teams, not players:
+  `targetSize: 6` means 6 teams (12 players) per division. Team rating is the integer mean
+  of the two partners' `rankings.{sport}.pts`; teams are sorted by that average and split
+  into divisions, so teammates always land in the same division.
+  The `divisionId` is stamped on the team doc **and** both member docs. Division
+  `current_players` counts players (2 × teams), consistent with league capacity. A
+  doubles league with no `active` teams gets `409` ("no active teams") and reverts to
+  `open`; `pending` invites do not count.
 - Re-running after success is idempotent and returns existing divisions with
   `already_kicked_off: true`.
 
