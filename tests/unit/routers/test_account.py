@@ -53,11 +53,14 @@ class TestDeleteAccount:
 
         assert response.status_code == 204
         assert response.content == b""
-        auth_admin.revoke_refresh_tokens.assert_called_once_with(_UID)
-        auth_admin.delete_user.assert_called_once_with(_UID)
         journal_repo.delete_all_for_user.assert_called_once_with(_UID)
         point_history_repo.delete_all_for_user.assert_called_once_with(_UID)
         users_repo.anonymize.assert_called_once_with(_UID)
+        # delete_user is the single destructive Auth op — no separate token revoke,
+        # which would risk a revoked-but-not-deleted window. AuthAdmin exposes no
+        # revoke_refresh_tokens method, so the spec'd mock cannot call one.
+        auth_admin.delete_user.assert_called_once_with(_UID)
+        assert not hasattr(auth_admin, "revoke_refresh_tokens")
 
     def test_erasure_precedes_identity_deletion(self, client_and_mocks):
         # Recoverability guarantee: all Firestore erasure must complete before the
@@ -69,7 +72,6 @@ class TestDeleteAccount:
         parent.attach_mock(journal_repo.delete_all_for_user, "journal")
         parent.attach_mock(point_history_repo.delete_all_for_user, "point_history")
         parent.attach_mock(users_repo.anonymize, "anonymize")
-        parent.attach_mock(auth_admin.revoke_refresh_tokens, "revoke")
         parent.attach_mock(auth_admin.delete_user, "delete_user")
 
         response = client.request("DELETE", "/me/account")
@@ -80,7 +82,6 @@ class TestDeleteAccount:
             "journal",
             "point_history",
             "anonymize",
-            "revoke",
             "delete_user",
         ]
 
@@ -111,7 +112,6 @@ class TestDeleteAccount:
 
         assert response.status_code == 500
         # Identity must be left intact if erasure failed, so the request is retryable.
-        auth_admin.revoke_refresh_tokens.assert_not_called()
         auth_admin.delete_user.assert_not_called()
 
 

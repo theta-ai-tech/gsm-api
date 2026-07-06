@@ -16,12 +16,18 @@ class AuthAdmin:
     def __init__(self, app: firebase_admin.App) -> None:
         self._app = app
 
-    def revoke_refresh_tokens(self, uid: str) -> None:
-        """Invalidate all outstanding refresh tokens for the user."""
-        firebase_auth.revoke_refresh_tokens(uid, app=self._app)
-
     def delete_user(self, uid: str) -> None:
-        """Delete the Firebase Auth user record."""
+        """Delete the Firebase Auth user record.
+
+        This is the single destructive Auth operation for account deletion:
+        deleting the user removes their refresh tokens and causes the next
+        ``verify_id_token(..., check_revoked=True)`` to fail with
+        ``UserNotFoundError``, so the caller is locked out immediately. We
+        deliberately do NOT call ``revoke_refresh_tokens`` separately — a
+        standalone revoke that succeeds before a failed delete would leave the
+        Auth user (and its PII) present while signing the caller out, with no
+        way to retry.
+        """
         firebase_auth.delete_user(uid, app=self._app)
 
 

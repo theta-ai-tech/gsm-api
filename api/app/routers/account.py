@@ -33,8 +33,8 @@ def delete_account(
 
     Hard-deletes the caller's own journal and point-history subcollections and
     tombstones the user doc (preserving ``uid`` + ``rankings`` so opponents'
-    histories keep resolving), then revokes + deletes the Firebase Auth user last
-    so a mid-flow failure leaves the token valid and the request retryable.
+    histories keep resolving), then deletes the Firebase Auth user last so a
+    mid-flow failure leaves the token valid and the request retryable.
     """
     account_service.delete_account(
         current_user.uid,

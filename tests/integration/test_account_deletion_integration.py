@@ -43,11 +43,7 @@ class _FakeAuthAdmin:
     """Records Auth-admin calls without touching Firebase."""
 
     def __init__(self) -> None:
-        self.revoked: list[str] = []
         self.deleted: list[str] = []
-
-    def revoke_refresh_tokens(self, uid: str) -> None:
-        self.revoked.append(uid)
 
     def delete_user(self, uid: str) -> None:
         self.deleted.append(uid)
@@ -152,8 +148,7 @@ class TestAccountDeletionIntegration:
         response = client.request("DELETE", "/me/account")
         assert response.status_code == 204
 
-        # Auth revoke + delete happened.
-        assert fake_auth.revoked == [_TARGET]
+        # Auth user deleted (single destructive Auth op; no separate revoke).
         assert fake_auth.deleted == [_TARGET]
 
         # Own subcollections deleted.

@@ -262,8 +262,12 @@ user is only deleted once erasure has completed.
 2. **Tombstone** — overwrites `users/{uid}` keeping only `uid` and `rankings`, setting
    `name = "Deleted Player"`, `profileUrl = null`, `isDeleted = true`, `deletedAt = now`.
    All PII (email, phone, preferences, deviceTokens) is stripped.
-3. **Identity** — revokes the user's refresh tokens then deletes the Firebase Auth user. A
-   subsequent call with the old token is rejected. An already-deleted Auth user is tolerated
+3. **Identity** — deletes the Firebase Auth user. This is the single destructive Auth
+   operation: deleting the user invalidates refresh tokens and makes the next
+   `verify_id_token(check_revoked=True)` fail with `UserNotFoundError`, so a subsequent call
+   with the old token is rejected. Refresh tokens are **not** revoked separately — a revoke
+   that succeeded before a failed delete would sign the caller out while leaving the Auth user
+   (and its PII) intact with no retry path. An already-deleted Auth user is tolerated
    (idempotent).
 
 **No cascade:** match documents, opponents' point history, scouting, ticker and leaderboard
