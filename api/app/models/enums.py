@@ -161,6 +161,7 @@ class PlayNotificationIntentTypeEnum(StrEnum):
     SCORE_CONFIRM_REQUIRED = "score_confirm_required"
     LEAGUE_TEAM_INVITE = "league_team_invite"
     LEAGUE_TEAM_INVITE_ACCEPTED = "league_team_invite_accepted"
+    LEAGUE_TEAM_INVITE_DECLINED = "league_team_invite_declined"
 
 
 class PlatformEnum(StrEnum):

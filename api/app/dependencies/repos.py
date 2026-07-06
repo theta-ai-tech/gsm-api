@@ -98,4 +98,5 @@ def get_league_service() -> LeagueService:
         get_firestore_client(),
         get_users_repo(),
         get_divisions_repo(),
+        get_notification_intent_repo(),
     )
