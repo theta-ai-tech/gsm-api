@@ -146,6 +146,7 @@ class TestGetLeaguesHappyPath:
             "name",
             "sport",
             "status",
+            "format",
             "region",
             "tier",
             "max_players",
@@ -582,6 +583,8 @@ class TestGetLeagueStandings:
             "wins",
             "losses",
             "tier_ring",
+            "team_id",
+            "member_uids",
         }
 
     def test_returns_empty_standings_for_no_members(self):

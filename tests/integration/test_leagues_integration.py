@@ -183,6 +183,8 @@ class TestGetLeagueStandings:
                 "wins",
                 "losses",
                 "tier_ring",
+                "team_id",
+                "member_uids",
             }
         # All members have stats=None → wins=0, losses=0 → all rank 1
         assert all(e["rank"] == 1 for e in standings)

@@ -61,8 +61,8 @@ class TestSearchPlayersHappyPath:
         body = resp.json()
         assert len(body["players"]) == 2
         assert body["players"][0]["uid"] == "user_maria"
-        assert body["players"][0]["displayName"] == "Maria Dimas"
-        assert body["players"][0]["profileUrl"] == "https://img/user_maria.png"
+        assert body["players"][0]["display_name"] == "Maria Dimas"
+        assert body["players"][0]["profile_url"] == "https://img/user_maria.png"
         assert body["players"][0]["pts"] is None
 
     def test_excludes_caller_via_repo(self, client: TestClient, mock_users_repo: Mock):
