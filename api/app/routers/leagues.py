@@ -328,7 +328,13 @@ def list_league_teams(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
 
     if mine:
-        statuses = [team_status] if team_status is not None else list(LeagueTeamStatusEnum)
+        # Default to actionable teams only — declined/cancelled invites are
+        # noise for the "outstanding invites on launch" use case.
+        statuses = (
+            [team_status]
+            if team_status is not None
+            else [LeagueTeamStatusEnum.PENDING, LeagueTeamStatusEnum.ACTIVE]
+        )
         teams = leagues_repo.find_teams_for_user(league_id, current_user.uid, statuses)
     else:
         require_membership(

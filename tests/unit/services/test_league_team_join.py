@@ -210,6 +210,15 @@ class TestInviteTeam:
         with pytest.raises(LeagueTeamConflictError):
             svc.invite_team("lg1", _CAPTAIN, _PARTNER)
 
+    def test_captain_already_teamed_raises_409(self, leagues_repo, users_repo) -> None:
+        leagues_repo.get_by_id.return_value = _make_league()
+        leagues_repo.find_teams_for_user.side_effect = (
+            lambda lid, uid, statuses: [_make_team()] if uid == _CAPTAIN else []
+        )
+        svc = _make_service(leagues_repo, Mock(), users_repo)
+        with pytest.raises(LeagueTeamConflictError):
+            svc.invite_team("lg1", _CAPTAIN, _PARTNER)
+
     def test_happy_path_creates_pending_team_and_emits_intent(
         self, leagues_repo, users_repo, notif_repo
     ) -> None:
@@ -345,8 +354,13 @@ class TestAcceptTeam:
         written = [call.args[1] for call in txn.set.call_args_list]
         team_ids = {w["teamId"] for w in written}
         partners = {w["partnerUid"] for w in written}
+        # `uid` must be in the document data: the on_league_member_write
+        # trigger derives the member uid from data, not the doc path — without
+        # it the leaguesActive cache never updates.
+        uids = {w["uid"] for w in written}
         assert team_ids == {"team_1"}
         assert partners == {_CAPTAIN, _PARTNER}
+        assert uids == {_CAPTAIN, _PARTNER}
         for w in written:
             assert w["status"] == "active"
 
@@ -389,18 +403,40 @@ class TestDeclineTeam:
     ) -> None:
         leagues_repo.get_team.return_value = _make_team()
         leagues_repo.get_by_id.return_value = _make_league()
-        team_ref = Mock()
-        client = Mock()
-        client.collection.return_value.document.return_value.collection.return_value.document.return_value = team_ref
+        client, txn, _team_ref = _build_client(
+            {"status": "open", "currentPlayers": 2, "maxPlayers": 10},
+            team_data={"status": "pending"},
+        )
         svc = _make_service(leagues_repo, client, users_repo, notif_repo)
-        result = svc.decline_team("lg1", "team_1", _PARTNER)
+        with patch(_TXN_PATCH, lambda f: f):
+            result = svc.decline_team("lg1", "team_1", _PARTNER)
 
         assert result.status == LeagueTeamStatusEnum.DECLINED
-        team_ref.update.assert_called_once_with({"status": "declined"})
+        txn.update.assert_called_once()
+        assert txn.update.call_args.args[1] == {"status": "declined"}
         notif_repo.add_intent.assert_called_once()
         intent = notif_repo.add_intent.call_args[0][0]
         assert intent.type == PlayNotificationIntentTypeEnum.LEAGUE_TEAM_INVITE_DECLINED
         assert intent.target_uid == _CAPTAIN
+
+    def test_race_with_accept_raises_409_and_does_not_stomp(
+        self, leagues_repo, users_repo, notif_repo
+    ) -> None:
+        # Pre-check sees PENDING, but by the time the transaction re-reads the
+        # team the partner's accept has committed (status ACTIVE). The decline
+        # must 409 without writing, not stomp the status.
+        leagues_repo.get_team.return_value = _make_team()
+        leagues_repo.get_by_id.return_value = _make_league()
+        client, txn, _team_ref = _build_client(
+            {"status": "open", "currentPlayers": 4, "maxPlayers": 10},
+            team_data={"status": "active"},
+        )
+        svc = _make_service(leagues_repo, client, users_repo, notif_repo)
+        with patch(_TXN_PATCH, lambda f: f):
+            with pytest.raises(LeagueTeamConflictError):
+                svc.decline_team("lg1", "team_1", _PARTNER)
+        txn.update.assert_not_called()
+        notif_repo.add_intent.assert_not_called()
 
 
 class TestCancelTeam:
@@ -426,11 +462,29 @@ class TestCancelTeam:
 
     def test_happy_path_sets_cancelled(self, leagues_repo, users_repo) -> None:
         leagues_repo.get_team.return_value = _make_team()
-        team_ref = Mock()
-        client = Mock()
-        client.collection.return_value.document.return_value.collection.return_value.document.return_value = team_ref
+        client, txn, _team_ref = _build_client(
+            {"status": "open", "currentPlayers": 2, "maxPlayers": 10},
+            team_data={"status": "pending"},
+        )
         svc = _make_service(leagues_repo, client, users_repo)
-        result = svc.cancel_team("lg1", "team_1", _CAPTAIN)
+        with patch(_TXN_PATCH, lambda f: f):
+            result = svc.cancel_team("lg1", "team_1", _CAPTAIN)
 
         assert result.status == LeagueTeamStatusEnum.CANCELLED
-        team_ref.update.assert_called_once_with({"status": "cancelled"})
+        txn.update.assert_called_once()
+        assert txn.update.call_args.args[1] == {"status": "cancelled"}
+
+    def test_race_with_accept_raises_409_and_does_not_stomp(
+        self, leagues_repo, users_repo
+    ) -> None:
+        # Same race guard as decline: txn re-read sees ACTIVE → 409, no write.
+        leagues_repo.get_team.return_value = _make_team()
+        client, txn, _team_ref = _build_client(
+            {"status": "open", "currentPlayers": 4, "maxPlayers": 10},
+            team_data={"status": "active"},
+        )
+        svc = _make_service(leagues_repo, client, users_repo)
+        with patch(_TXN_PATCH, lambda f: f):
+            with pytest.raises(LeagueTeamConflictError):
+                svc.cancel_team("lg1", "team_1", _CAPTAIN)
+        txn.update.assert_not_called()

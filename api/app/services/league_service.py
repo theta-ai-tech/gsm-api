@@ -146,10 +146,44 @@ class LeagueService:
 
     def _user_display_name(self, uid: str, fallback: str | None = None) -> str:
         user_doc = self.users_repo.get_user_doc(uid) or {}
+        return self._display_name_from_doc(user_doc, uid, fallback)
+
+    @staticmethod
+    def _display_name_from_doc(user_doc: dict, uid: str, fallback: str | None = None) -> str:
         name = user_doc.get("name")
         if isinstance(name, str) and name.strip():
             return name
         return fallback or uid
+
+    def _transition_pending_team(
+        self, league_id: str, team_id: str, new_status: LeagueTeamStatusEnum, action: str
+    ) -> None:
+        """Transactionally move a PENDING team to a terminal status.
+
+        The status re-check inside the transaction guards against a racing
+        accept: without it, a blind update could stomp `status` on a team the
+        partner just accepted, leaving orphaned active members and an inflated
+        `currentPlayers` count.
+        """
+        team_ref = (
+            self.client.collection("leagues")
+            .document(league_id)
+            .collection("teams")
+            .document(team_id)
+        )
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _transition_txn(txn: firestore.Transaction) -> None:
+            team_doc = cast(firestore.DocumentSnapshot, team_ref.get(transaction=txn))
+            if not team_doc.exists:
+                raise LeagueTeamNotFoundError(f"Team {team_id!r} not found in league {league_id!r}")
+            status_val = (team_doc.to_dict() or {}).get("status")
+            if status_val != LeagueTeamStatusEnum.PENDING.value:
+                raise LeagueTeamConflictError(f"Team {team_id!r} is not pending; cannot {action}")
+            txn.update(team_ref, {"status": new_status.value})
+
+        _transition_txn(transaction)
 
     def join_league(
         self, league_id: str, uid: str, display_name: str | None = None
@@ -265,7 +299,8 @@ class LeagueService:
                 )
 
         captain_name = self._user_display_name(captain_uid, captain_display_name)
-        partner_name = self._user_display_name(partner_uid)
+        # Reuse the partner doc fetched for the existence check above.
+        partner_name = self._display_name_from_doc(partner_doc, partner_uid)
         team_name = f"{captain_name} / {partner_name}"
 
         team_ref = (
@@ -381,20 +416,21 @@ class LeagueService:
             if team_data.get("status") != LeagueTeamStatusEnum.PENDING.value:
                 raise LeagueTeamConflictError(f"Team {team_id!r} is not pending; cannot accept")
 
-            if league_doc.exists:
-                league_data = league_doc.to_dict() or {}
-                status_val = league_data.get("status")
-                if status_val not in (
-                    LeagueStatusEnum.OPEN.value,
-                    LeagueStatusEnum.UPCOMING.value,
-                ):
-                    raise LeagueTeamConflictError(
-                        f"Cannot join league with status {status_val!r}; must be OPEN or UPCOMING"
-                    )
-                current = league_data.get("currentPlayers")
-                max_p = league_data.get("maxPlayers")
-                if current is not None and max_p is not None and current + 2 > max_p:
-                    raise LeagueTeamConflictError(f"League {league_id!r} is at full capacity")
+            if not league_doc.exists:
+                raise LeagueTeamNotFoundError(f"League {league_id!r} not found")
+            league_data = league_doc.to_dict() or {}
+            status_val = league_data.get("status")
+            if status_val not in (
+                LeagueStatusEnum.OPEN.value,
+                LeagueStatusEnum.UPCOMING.value,
+            ):
+                raise LeagueTeamConflictError(
+                    f"Cannot join league with status {status_val!r}; must be OPEN or UPCOMING"
+                )
+            current = league_data.get("currentPlayers")
+            max_p = league_data.get("maxPlayers")
+            if current is not None and max_p is not None and current + 2 > max_p:
+                raise LeagueTeamConflictError(f"League {league_id!r} is at full capacity")
 
             if captain_member_doc.exists:
                 raise LeagueTeamConflictError(
@@ -412,6 +448,7 @@ class LeagueService:
             txn.set(
                 captain_member_ref,
                 {
+                    "uid": captain_uid,
                     "role": LeagueRoleEnum.PLAYER.value,
                     "status": LeagueMemberStatusEnum.ACTIVE.value,
                     "joinedAt": now,
@@ -425,6 +462,7 @@ class LeagueService:
             txn.set(
                 partner_member_ref,
                 {
+                    "uid": partner_uid,
                     "role": LeagueRoleEnum.PLAYER.value,
                     "status": LeagueMemberStatusEnum.ACTIVE.value,
                     "joinedAt": now,
@@ -471,13 +509,7 @@ class LeagueService:
             raise LeagueTeamConflictError(f"Team {team_id!r} is not pending; cannot decline")
 
         now = datetime.now(timezone.utc)
-        team_ref = (
-            self.client.collection("leagues")
-            .document(league_id)
-            .collection("teams")
-            .document(team_id)
-        )
-        team_ref.update({"status": LeagueTeamStatusEnum.DECLINED.value})
+        self._transition_pending_team(league_id, team_id, LeagueTeamStatusEnum.DECLINED, "decline")
 
         partner_name = self._user_display_name(team.partner_uid)
         league = self.leagues_repo.get_by_id(league_id)
@@ -513,13 +545,7 @@ class LeagueService:
         if team.status != LeagueTeamStatusEnum.PENDING:
             raise LeagueTeamConflictError(f"Team {team_id!r} is not pending; cannot cancel")
 
-        team_ref = (
-            self.client.collection("leagues")
-            .document(league_id)
-            .collection("teams")
-            .document(team_id)
-        )
-        team_ref.update({"status": LeagueTeamStatusEnum.CANCELLED.value})
+        self._transition_pending_team(league_id, team_id, LeagueTeamStatusEnum.CANCELLED, "cancel")
 
         return LeagueTeam(
             team_id=team.team_id,

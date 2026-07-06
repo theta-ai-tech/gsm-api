@@ -270,6 +270,16 @@ class TestListTeamsEndpoint:
             "lg1", _UID, [LeagueTeamStatusEnum.PENDING]
         )
 
+    def test_mine_defaults_to_actionable_statuses(self, client, mock_leagues_repo):
+        # No explicit status → declined/cancelled invites are excluded.
+        mock_leagues_repo.get_by_id.return_value = _make_league()
+        mock_leagues_repo.find_teams_for_user.return_value = []
+        resp = client.get("/leagues/lg1/teams?mine=true")
+        assert resp.status_code == 200
+        mock_leagues_repo.find_teams_for_user.assert_called_once_with(
+            "lg1", _UID, [LeagueTeamStatusEnum.PENDING, LeagueTeamStatusEnum.ACTIVE]
+        )
+
     def test_league_not_found_returns_404(self, client, mock_leagues_repo):
         mock_leagues_repo.get_by_id.return_value = None
         resp = client.get("/leagues/lg1/teams?mine=true")
