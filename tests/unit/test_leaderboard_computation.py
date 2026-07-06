@@ -125,6 +125,17 @@ class TestExtractUsersByRegionSport:
         buckets = extract_users_by_region_sport([], area_to_region)
         assert len(buckets) == 0
 
+    def test_tombstoned_user_excluded(self) -> None:
+        # ACCT-1: anonymized (deleted) users must drop out of leaderboards.
+        area_to_region = {101: "athens"}
+        deleted = _make_user("u1", "Deleted Player", 101, {"tennis": 800})
+        deleted["isDeleted"] = True
+        active = _make_user("u2", "Alice", 101, {"tennis": 600})
+        buckets = extract_users_by_region_sport([deleted, active], area_to_region)
+        bucket = buckets[("athens", "tennis")]
+        assert len(bucket) == 1
+        assert bucket[0]["uid"] == "u2"
+
 
 # ---------------------------------------------------------------------------
 # build_leaderboard_entries

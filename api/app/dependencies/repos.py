@@ -19,6 +19,7 @@ from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.repos.venue_repo import VenueRepo
 from app.repos.venue_suggestions_repo import VenueSuggestionsRepo
+from app.services.auth_admin import AuthAdmin, _make_auth_admin
 from app.services.league_service import LeagueService
 
 
@@ -90,6 +91,10 @@ def get_venue_suggestions_repo() -> VenueSuggestionsRepo:
 
 def get_notification_intent_repo() -> NotificationIntentRepo:
     return NotificationIntentRepo(get_firestore_client())
+
+
+def get_auth_admin() -> AuthAdmin:
+    return _make_auth_admin(get_settings())
 
 
 def get_league_service() -> LeagueService:

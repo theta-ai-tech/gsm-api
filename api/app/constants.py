@@ -38,6 +38,9 @@ DISCOVERY_FEED_DEFAULT_LIMIT = 25
 # League divisions
 DIVISION_TARGET_SIZE = 6
 
+# Account deletion (tombstone / anonymize-in-place)
+DELETED_PLAYER_NAME = "Deleted Player"
+
 # Venue search
 VENUE_SEARCH_MAX_RESULTS = 5
 VENUE_SEARCH_LOCATION_BIAS_RADIUS_M = 5000

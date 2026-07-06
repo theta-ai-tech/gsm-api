@@ -53,6 +53,11 @@ def extract_users_by_region_sport(
     buckets: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
     for user in users:
+        # Skip tombstoned (deleted) users so they drop out of leaderboards on
+        # the next scheduled recompute (ACCT-1 anonymize-in-place).
+        if user.get("isDeleted"):
+            continue
+
         prefs = user.get("preferences") or {}
         area = prefs.get("area")
         if area is None:

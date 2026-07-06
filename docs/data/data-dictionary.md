@@ -124,9 +124,9 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | uid | string | required | — | canonical | — | Stored in doc; should match document ID. |
-| name | string | required | — | canonical | — | Public. |
+| name | string | required | — | canonical | — | Public. Set to `"Deleted Player"` on account deletion. |
 | nameLower | string | optional | — | cache | index=range | Lowercased `name` for `GET /players?search=` prefix queries. Written at registration; existing users need a one-off backfill (users without it are invisible to player search). Must be rewritten if a name-edit path is ever added. |
-| profileUrl | string (url) | optional | — | canonical | — | Public. |
+| profileUrl | string (url) | optional | — | canonical | — | Public. Nulled on account deletion. |
 | email | string | optional | — | canonical | — | Private. |
 | phone | string | optional | — | canonical | — | Private. |
 | rankings | map | optional | — | canonical | — | Public; per-sport rankings. |
@@ -184,6 +184,16 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | deviceTokens[].platform | string | required | platform | canonical | — | `ios` or `android`. |
 | deviceTokens[].createdAt | timestamp | required | — | canonical | — | When the token was first registered. |
 | deviceTokens[].lastSeenAt | timestamp | required | — | canonical | — | Refreshed on every re-registration (token rotation). |
+| isDeleted | boolean | optional | — | canonical | false | Tombstone flag set by `DELETE /me/account`. When true the doc is anonymized (see Account deletion policy). Excluded from leaderboard recompute. |
+| deletedAt | timestamp | optional | — | canonical | — | When the account was deleted (tombstoned). Set alongside `isDeleted = true`. |
+
+### Account deletion policy (anonymize-in-place)
+`DELETE /me/account` (ACCT-1) does **not** cascade-delete shared data. Data erasure runs first (while the caller's token is still valid, so a mid-flow failure is idempotently retryable); the Auth identity is destroyed last. It:
+- Hard-deletes the caller's own `journalEntries` and `pointHistory` subcollections and drops `deviceTokens`.
+- Overwrites `users/{uid}` keeping only `uid` and `rankings`, setting `name = "Deleted Player"`, `profileUrl = null`, `isDeleted = true`, `deletedAt = now`, and stripping all PII (`email`, `phone`, `preferences`, cache fields, `skillDna`, `deviceTokens`).
+- Deletes the Firebase Auth user (single destructive Auth op; `delete_user` already drops refresh tokens, so they are **not** revoked separately).
+
+`rankings` is retained so opponents' head-to-head, point-history, rivalry, scouting, ticker and leaderboard references keep resolving and render as "Deleted Player". Match documents and opponents' point-history rows are never mutated. Tombstoned users drop out of leaderboards on the next scheduled recompute (they are skipped in `extract_users_by_region_sport`).
 
 ## Subcollection: users/{uid}/journalEntries
 Path: `users/{uid}/journalEntries/{entryId}`

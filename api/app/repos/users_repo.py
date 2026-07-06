@@ -5,6 +5,7 @@ from typing import Optional
 
 from google.api_core.exceptions import Conflict
 
+from app.constants import DELETED_PLAYER_NAME
 from app.repos.base import RepoBase
 from app.repos.mappers import to_private_user_profile, to_public_user_profile
 from app.models import LeagueSummary, PrivateUserProfile, PublicUserProfile
@@ -113,6 +114,29 @@ class UsersRepo(RepoBase):
         filtered = [t for t in tokens if t.get("token") != token]
         if len(filtered) != len(tokens):
             user_ref.update({"deviceTokens": filtered})
+
+    def anonymize(self, uid: str) -> None:
+        """Tombstone the user doc in place (anonymize-in-place, do NOT cascade).
+
+        Overwrites ``users/{uid}`` keeping only ``uid`` and ``rankings`` so opponents'
+        head-to-head and point-history lookups keep resolving. All PII (email, phone,
+        preferences, deviceTokens, skillDna, leagues, etc.) is stripped by replacing the
+        whole document. ``name`` becomes "Deleted Player", ``profileUrl`` is nulled, and
+        ``isDeleted``/``deletedAt`` are set. No-op raises are avoided: a missing doc is
+        written as a bare tombstone.
+        """
+        now = datetime.now(timezone.utc)
+        user_ref = self.client.collection("users").document(uid)
+        existing = self._doc_to_dict(user_ref.get()) or {}
+        tombstone = {
+            "uid": uid,
+            "name": DELETED_PLAYER_NAME,
+            "profileUrl": None,
+            "rankings": existing.get("rankings") or {},
+            "isDeleted": True,
+            "deletedAt": now,
+        }
+        user_ref.set(tombstone)
 
     def list_device_tokens(self, uid: str) -> list[dict]:
         """Return raw token dicts from the user doc (consumed by the Cloud Function trigger)."""

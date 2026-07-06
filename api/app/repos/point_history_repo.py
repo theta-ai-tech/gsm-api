@@ -99,3 +99,15 @@ class PointHistoryRepo(RepoBase):
         query = _apply_cursor(query, cursor, self.client, uid)
         docs = query.stream()
         return [to_point_history_entry(doc.to_dict() or {}, entry_id=doc.id) for doc in docs]
+
+    def delete_all_for_user(self, uid: str) -> int:
+        """Hard-delete every pointHistory entry owned by ``uid`` (account deletion).
+
+        Returns the number of documents deleted. Only touches the user's own
+        ``pointHistory`` subcollection — opponents' histories are untouched.
+        """
+        deleted = 0
+        for doc in self._collection(uid).stream():
+            doc.reference.delete()
+            deleted += 1
+        return deleted

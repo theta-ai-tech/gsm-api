@@ -113,3 +113,15 @@ class JournalRepo(RepoBase):
     def count_entries_since(self, uid: str, since: datetime) -> int:
         docs = self._collection(uid).where("createdAt", ">=", since).limit(1000).stream()
         return sum(1 for _ in docs)
+
+    def delete_all_for_user(self, uid: str) -> int:
+        """Hard-delete every journal entry owned by ``uid`` (account deletion).
+
+        Returns the number of documents deleted. Only touches the user's own
+        ``journalEntries`` subcollection — never other users' data.
+        """
+        deleted = 0
+        for doc in self._collection(uid).stream():
+            doc.reference.delete()
+            deleted += 1
+        return deleted
