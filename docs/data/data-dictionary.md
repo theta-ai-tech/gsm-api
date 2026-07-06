@@ -481,7 +481,7 @@ Purpose: league metadata, configuration, and lifecycle.
 | dividedAt | timestamp | optional | — | canonical | — | Set by `POST /leagues/{leagueId}/kickoff` when division assignment completes. Missing before kickoff and on legacy leagues. |
 | tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
 | divisionConfig | map | optional | — | canonical | — | League Divisions configuration. Missing on legacy/non-divided leagues. |
-| divisionConfig.targetSize | number | optional | — | canonical | — | Target players per division. Defaults to `6` (`DIVISION_TARGET_SIZE`). |
+| divisionConfig.targetSize | number | optional | — | canonical | — | Target **seeding units** per division: players for singles leagues, **teams** for doubles (`6` = 6 teams = 12 players). Defaults to `6` (`DIVISION_TARGET_SIZE`). |
 | divisionConfig.maxDivisions | number | optional | — | canonical | — | Optional cap for division count. Null means no explicit cap. |
 | meta | map | optional | — | canonical | — | Free-form metadata. |
 

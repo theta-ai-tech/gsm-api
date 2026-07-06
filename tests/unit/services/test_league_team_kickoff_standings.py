@@ -140,7 +140,7 @@ class TestDoublesKickoff:
             patch.object(
                 LeagueService,
                 "_commit_batched",
-                side_effect=lambda self_writes: captured.extend(self_writes),
+                side_effect=lambda pending_writes: captured.extend(pending_writes),
             ),
         ):
             result = svc.kickoff_league("lg1")
@@ -207,6 +207,20 @@ class TestDoublesKickoff:
         # 3 teams × 3 writes each per division
         assert all(len(v) == 9 for v in div_by_ref_data.values())
 
+    def test_fewer_than_five_teams_stays_single_division(
+        self, leagues_repo, users_repo
+    ) -> None:
+        # The <5 → 1 division floor counts TEAMS for doubles (documented ruling):
+        # 4 teams (8 players) never split, regardless of targetSize.
+        users_repo.get_user_doc.side_effect = lambda uid: _pts_doc(1000)
+        teams = [_make_team(f"t{i}", f"a{i}", f"b{i}") for i in range(4)]
+        league = _make_league(division_config=DivisionConfig(target_size=2))
+        result, _captured, _client = self._run_kickoff(
+            leagues_repo, users_repo, teams, league
+        )
+        assert len(result.divisions) == 1
+        assert result.divisions[0].current_players == 8
+
     def test_already_assigned_team_is_skipped(self, leagues_repo, users_repo) -> None:
         users_repo.get_user_doc.side_effect = lambda uid: _pts_doc(1000)
         teams = [
@@ -263,6 +277,20 @@ class TestDoublesStandings:
         standings = svc.get_standings("lg1")
         assert standings[0].wins == 2
         assert standings[0].losses == 2
+
+    def test_team_with_no_member_docs_gets_zero_stats(
+        self, leagues_repo, users_repo
+    ) -> None:
+        # Corrupt state (team doc without member docs) must not crash standings.
+        leagues_repo.get_by_id.return_value = _make_league(
+            status=LeagueStatusEnum.ACTIVE
+        )
+        leagues_repo.list_teams.return_value = [_make_team("t1", "cap1", "par1")]
+        leagues_repo.list_members.return_value = []
+        svc = _make_service(leagues_repo, users_repo)
+        standings = svc.get_standings("lg1")
+        assert standings[0].wins == 0
+        assert standings[0].losses == 0
 
     def test_tied_teams_share_rank_dense(self, leagues_repo, users_repo) -> None:
         leagues_repo.get_by_id.return_value = _make_league(

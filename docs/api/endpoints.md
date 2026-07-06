@@ -687,9 +687,12 @@ Required. The caller must be the league owner, an admin member, or a global admi
   Leagues with fewer than 5 active members stay in one division; otherwise the division count is
   `round(member_count / targetSize)`.
 - Member documents are updated only when `divisionId` is unset.
-- **Doubles leagues (`format: doubles`):** the seeding unit is the **team**. Team rating is
-  the integer mean of the partners' `rankings.{sport}.pts`; teams sort by that average and
-  split into divisions, so teammates always share a division. `divisionId` is stamped on the
+- **Doubles leagues (`format: doubles`):** the seeding unit is the **team** — and so is
+  `divisionConfig.targetSize` and the fewer-than-5 single-division floor: `targetSize: 6`
+  means 6 teams (12 players) per division, and a doubles league with fewer than 5 active
+  teams stays in one division. Author `divisionConfig` in team units for doubles leagues.
+  Team rating is the integer mean of the partners' `rankings.{sport}.pts`; teams sort by
+  that average and split into divisions, so teammates always share a division. `divisionId` is stamped on the
   team doc and both member docs. Division `currentPlayers` counts players (2 × teams). A
   doubles league with no `active` teams returns `409` ("no active teams") and reverts to
   `open` — `pending` invites don't count.

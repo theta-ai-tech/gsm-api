@@ -1331,9 +1331,11 @@ Behavior:
   when unset.
 - Division count is `1` for fewer than 5 active members, otherwise `round(N / targetSize)`.
   Default `targetSize` is `6`.
-- **Doubles leagues:** the seeding unit is the **team**, never the individual. Team rating
-  is the integer mean of the two partners' `rankings.{sport}.pts`; teams are sorted by
-  that average and split into divisions, so teammates always land in the same division.
+- **Doubles leagues:** the seeding unit is the **team**, never the individual — and
+  `divisionConfig.targetSize` (and the `<5 → 1 division` floor) count teams, not players:
+  `targetSize: 6` means 6 teams (12 players) per division. Team rating is the integer mean
+  of the two partners' `rankings.{sport}.pts`; teams are sorted by that average and split
+  into divisions, so teammates always land in the same division.
   The `divisionId` is stamped on the team doc **and** both member docs. Division
   `current_players` counts players (2 × teams), consistent with league capacity. A
   doubles league with no `active` teams gets `409` ("no active teams") and reverts to
