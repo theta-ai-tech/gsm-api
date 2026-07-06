@@ -5,10 +5,11 @@ import pytest
 from datetime import datetime, timezone
 
 from app.constants import STREAK_MILESTONES
-from app.models.common import SportRanking, UserCompletedMatchSummary
-from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.common import PerSportLevels, SportRanking, UserCompletedMatchSummary
+from app.models.enums import LevelEnum, MatchResultEnum, SportEnum, TierEnum
 from app.services.clubhouse_service import (
     build_athlete_card_sports,
+    build_profile_update_paths,
     check_personal_best,
     compute_match_totals,
     is_streak_milestone,
@@ -279,6 +280,69 @@ class TestBuildAthleteCardSports:
 # ---------------------------------------------------------------------------
 # compute_match_totals
 # ---------------------------------------------------------------------------
+
+
+class TestBuildProfileUpdatePaths:
+    def test_no_fields_returns_empty(self) -> None:
+        updates = build_profile_update_paths(None, None, None, None, set())
+        assert updates == {}
+
+    def test_display_name_emits_name_and_name_lower(self) -> None:
+        updates = build_profile_update_paths("Roger Federer", None, None, None, set())
+        assert updates == {"name": "Roger Federer", "nameLower": "roger federer"}
+
+    def test_avatar_url_emits_profile_url(self) -> None:
+        updates = build_profile_update_paths(
+            None, "https://cdn.example.com/a.png", None, None, set()
+        )
+        assert updates == {"profileUrl": "https://cdn.example.com/a.png"}
+
+    def test_area_emits_preferences_area(self) -> None:
+        updates = build_profile_update_paths(None, None, 202, None, set())
+        assert updates == {"preferences.area": 202}
+
+    def test_single_level_emits_one_dotpath(self) -> None:
+        levels = PerSportLevels(padel=LevelEnum.INTERMEDIATE)
+        updates = build_profile_update_paths(None, None, None, levels, {"padel"})
+        assert updates == {"preferences.levels.padel": "intermediate"}
+
+    def test_two_levels_emit_two_dotpaths(self) -> None:
+        levels = PerSportLevels(
+            tennis=LevelEnum.ADVANCED, pickleball=LevelEnum.BEGINNER
+        )
+        updates = build_profile_update_paths(
+            None, None, None, levels, {"tennis", "pickleball"}
+        )
+        assert updates == {
+            "preferences.levels.tennis": "advanced",
+            "preferences.levels.pickleball": "beginner",
+        }
+
+    def test_levels_fields_set_respected(self) -> None:
+        # padel is set on the model but not in the provided fields_set → skipped
+        levels = PerSportLevels(tennis=LevelEnum.PRO, padel=LevelEnum.BEGINNER)
+        updates = build_profile_update_paths(None, None, None, levels, {"tennis"})
+        assert updates == {"preferences.levels.tennis": "pro"}
+
+    def test_all_fields_combined(self) -> None:
+        levels = PerSportLevels(tennis=LevelEnum.ADVANCED)
+        updates = build_profile_update_paths(
+            "Serena", "https://cdn.example.com/s.png", 101, levels, {"tennis"}
+        )
+        assert updates == {
+            "name": "Serena",
+            "nameLower": "serena",
+            "profileUrl": "https://cdn.example.com/s.png",
+            "preferences.area": 101,
+            "preferences.levels.tennis": "advanced",
+        }
+
+    def test_never_emits_rankings_paths(self) -> None:
+        levels = PerSportLevels(tennis=LevelEnum.PRO, padel=LevelEnum.INTERMEDIATE)
+        updates = build_profile_update_paths(
+            "Name", "https://cdn.example.com/x.png", 303, levels, {"tennis", "padel"}
+        )
+        assert all(not key.startswith("rankings") for key in updates)
 
 
 class TestComputeMatchTotals:

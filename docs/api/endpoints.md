@@ -1789,6 +1789,125 @@ Rules:
 ---
 
 
+## `GET /me/clubhouse/profile`
+
+### Purpose
+Return the caller's Athlete Card & Resume for the Clubhouse (Profile) tab: identity
+(`display_name`, `avatar_url`) plus an aggregated `resume` (total matches/wins, leagues
+completed, and per-sport ranking cards).
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). Only the caller's own profile is
+returned — there is no target `uid` parameter.
+
+### Behavior
+Reads `users/{uid}` and builds the resume from the denormalized `rankings`,
+`completedMatches`, and `leaguesCompleted` caches. Counts come from capped caches
+(`completedMatches` max 10, `leaguesCompleted` max 20).
+
+### Request body
+None.
+
+### Example call
+```bash
+curl -s -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/me/clubhouse/profile
+```
+
+### Example success response (`200`)
+```json
+{
+  "uid": "user_ignatios",
+  "display_name": "Ignatios C.",
+  "avatar_url": "https://cdn.example.com/a.png",
+  "resume": {
+    "total_matches": 2,
+    "total_wins": 1,
+    "leagues_completed": 0,
+    "sports": [
+      {
+        "sport": "tennis",
+        "pts": 820,
+        "tier": "amateur",
+        "global_ranking": 340,
+        "personal_best": 850,
+        "current_streak": 3,
+        "best_streak": 5
+      }
+    ]
+  }
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `404` user not found
+
+---
+
+
+## `PATCH /me/clubhouse/profile`
+
+### Purpose
+Partial update of the caller's editable profile fields — `display_name`, `avatar_url`,
+`area`, `levels` — from the Profile tab's Edit-profile screen. Returns the refreshed
+`ClubhouseProfileResponse` so the client re-renders without a second `GET`.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). Only the caller's own profile is
+modified.
+
+### Behavior
+- **Partial:** any subset of the four fields may be sent. A field omitted (or `null`) is left
+  unchanged — `avatar_url` cannot be cleared through this endpoint (send a new URL only).
+- **At least one field is required:** an empty body returns `400`.
+- **`display_name`:** whitespace-stripped; max length 100. Writing it also updates the
+  `nameLower` search index so player prefix search resolves the new name.
+- **`avatar_url`:** must be a valid **https** URL (`http://` is rejected).
+- **`area`:** validated against `config/regions`; an area not present in the mapping returns
+  `422`.
+- **`levels`:** merged **per-sport** — sending `{"padel": "intermediate"}` updates only padel
+  and leaves other sports' levels intact. Level values must be a valid `LevelEnum`
+  (`beginner`/`intermediate`/`advanced`/`pro`); sport keys must be `tennis`/`padel`/`pickleball`.
+- **Never touches rankings:** editing `levels` does not modify `rankings.pts`, `rankings.tier`,
+  or any `rankings.*` field.
+- **No synchronous fan-out:** a name change is eventually consistent across denormalized name
+  caches (historical matches, ticker, leaderboard, offers, discovery). New writes pick up the
+  new name immediately; the scheduled leaderboard recompute refreshes leaderboard names.
+- Unknown top-level fields are rejected with `422` (strict model).
+
+### Request body
+```json
+{
+  "display_name": "New Name",
+  "avatar_url": "https://cdn.example.com/a.png",
+  "area": 202,
+  "levels": {"tennis": "advanced"}
+}
+```
+
+### Example call
+```bash
+curl -s -X PATCH \
+  -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "New Name", "area": 202}' \
+  http://localhost:8000/me/clubhouse/profile
+```
+
+### Example success response (`200`)
+Same shape as `GET /me/clubhouse/profile`, reflecting the applied changes.
+
+### Common error responses
+- `400` empty body (no fields provided)
+- `401` missing/invalid token
+- `404` user not found (including a tombstoned/deleted account)
+- `422` unknown `area`, non-https `avatar_url`, invalid level/sport enum, unknown field, or
+  empty `display_name`
+
+---
+
+
 ## Cross-cutting behavior
 
 ### Headers
