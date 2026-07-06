@@ -44,6 +44,12 @@ class TestLeagueFormatMapping:
         league = to_league(dict(self._base_doc), league_id="league_1")
         assert league.format == LeagueFormatEnum.SINGLES
 
+    def test_to_league_defaults_format_singles_when_null(self):
+        doc = dict(self._base_doc)
+        doc["format"] = None
+        league = to_league(doc, league_id="league_1")
+        assert league.format == LeagueFormatEnum.SINGLES
+
     def test_to_league_maps_doubles_format(self):
         doc = dict(self._base_doc)
         doc["format"] = "doubles"

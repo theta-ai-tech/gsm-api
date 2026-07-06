@@ -68,6 +68,14 @@ class TestSearchByNamePrefix:
         assert first_where.args[1] == ">="
         assert first_where.args[2] == "mar"
 
+        # Second where clause is the < upper bound: prefix + the \uf8ff
+        # Firestore sentinel. Without it the range is empty and search
+        # silently returns nothing — do not drop the sentinel.
+        second_where = query.where.call_args_list[1]
+        assert second_where.args[0] == "nameLower"
+        assert second_where.args[1] == "<"
+        assert second_where.args[2] == "mar\uf8ff"
+
     def test_excludes_caller(self):
         repo, client = _make_repo()
         self._wire_stream(
