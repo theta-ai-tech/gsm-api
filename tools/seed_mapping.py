@@ -9,6 +9,7 @@ from app.models import (
     League,
     LeagueMember,
     LeagueSummary,
+    LeagueTeam,
     Match,
     MatchParticipant,
     MatchReflection,
@@ -151,6 +152,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
     return {
         "uid": user.uid,
         "name": user.name,
+        "nameLower": user.name.strip().lower(),
         "email": user.email,
         "profileUrl": str(user.profile_url) if user.profile_url else None,
         "phone": user.phone,
@@ -179,6 +181,7 @@ def league_to_firestore_doc(league: League) -> Dict[str, Any]:
         "season": league.season,
         "status": league.status.value,
         "ownerUid": league.owner_uid,
+        "format": league.format.value,
         "meta": league.meta or {},
     }
     if league.region is not None:
@@ -213,6 +216,28 @@ def league_member_to_firestore_doc(member: LeagueMember) -> Dict[str, Any]:
         doc["displayName"] = member.display_name
     if member.division_id is not None:
         doc["divisionId"] = member.division_id
+    if member.team_id is not None:
+        doc["teamId"] = member.team_id
+    if member.partner_uid is not None:
+        doc["partnerUid"] = member.partner_uid
+    return doc
+
+
+def league_team_to_firestore_doc(team: LeagueTeam) -> Dict[str, Any]:
+    doc: Dict[str, Any] = {
+        "status": team.status.value,
+        "captainUid": team.captain_uid,
+        "partnerUid": team.partner_uid,
+        "memberUids": list(team.member_uids),
+        "name": team.name,
+        "createdAt": team.created_at,
+    }
+    if team.accepted_at is not None:
+        doc["acceptedAt"] = team.accepted_at
+    if team.rating_avg is not None:
+        doc["ratingAvg"] = team.rating_avg
+    if team.division_id is not None:
+        doc["divisionId"] = team.division_id
     return doc
 
 

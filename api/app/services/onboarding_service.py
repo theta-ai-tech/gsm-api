@@ -60,6 +60,7 @@ class OnboardingService:
         doc: dict = {
             "uid": uid,
             "name": request.name,
+            "nameLower": request.name.strip().lower(),
             "email": str(email),
             "profileUrl": str(request.profile_url) if request.profile_url else token_picture,
             "isPro": False,

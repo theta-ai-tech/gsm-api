@@ -18,6 +18,7 @@ from tools.seed_data import (
     SAMPLE_JOURNAL_ENTRIES,
     SAMPLE_LEADERBOARDS,
     SAMPLE_LEAGUE_MEMBERS,
+    SAMPLE_LEAGUE_TEAMS,
     SAMPLE_LEAGUES,
     SAMPLE_MATCHES,
     SAMPLE_POINT_HISTORY,
@@ -33,6 +34,7 @@ from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
     leaderboard_snapshot_to_firestore_doc,
     league_member_to_firestore_doc,
+    league_team_to_firestore_doc,
     league_to_firestore_doc,
     match_to_firestore_doc,
     point_history_entry_to_firestore_doc,
@@ -72,6 +74,11 @@ def seed_all(client: firestore.Client) -> None:
         for member in SAMPLE_LEAGUE_MEMBERS.get(league.league_id, []):
             member_ref = doc_ref.collection("members").document(member.uid)
             member_ref.set(league_member_to_firestore_doc(member))
+        for existing in doc_ref.collection("teams").stream():
+            existing.reference.delete()
+        for team in SAMPLE_LEAGUE_TEAMS.get(league.league_id, []):
+            team_ref = doc_ref.collection("teams").document(team.team_id)
+            team_ref.set(league_team_to_firestore_doc(team))
 
     for match in SAMPLE_MATCHES:
         doc_ref = client.collection("matches").document(match.match_id)

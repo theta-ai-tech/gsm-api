@@ -15,12 +15,13 @@ from app.dependencies.repos import (
 )
 from app.deps import get_current_user, get_role_service
 from app.models.base import GsmBaseModel
-from app.models.enums import LeagueStatusEnum, SportEnum
+from app.models.enums import LeagueFormatEnum, LeagueStatusEnum, LeagueTeamStatusEnum, SportEnum
 from app.models.league import (
     Division,
     League,
     LeagueBrowseCard,
     LeagueMember,
+    LeagueTeam,
     StandingsEntry,
 )
 from app.models.match import Match
@@ -33,6 +34,11 @@ from app.services.league_service import (
     LeagueKickoffNotFoundError,
     LeagueKickoffResult,
     LeagueService,
+    LeagueTeamConflictError,
+    LeagueTeamError,
+    LeagueTeamForbiddenError,
+    LeagueTeamNotFoundError,
+    LeagueTeamValidationError,
 )
 from app.services.role_service import RoleService
 
@@ -42,6 +48,15 @@ router = APIRouter(prefix="/leagues", tags=["leagues"])
 class LeagueBrowseResponse(GsmBaseModel):
     leagues: list[LeagueBrowseCard]
     next_cursor: str | None = None
+
+
+class LeagueJoinRequest(GsmBaseModel):
+    partner_uid: str | None = None
+
+
+class LeagueTeamsResponse(GsmBaseModel):
+    league_id: str
+    teams: list[LeagueTeam]
 
 
 class LeagueMatchesResponse(GsmBaseModel):
@@ -73,6 +88,7 @@ def _league_to_browse_card(league: League) -> LeagueBrowseCard:
         name=league.name,
         sport=league.sport,
         status=league.status,
+        format=league.format,
         region=league.region,
         tier=league.tier,
         max_players=league.max_players,
@@ -201,16 +217,57 @@ def list_leagues(
     )
 
 
+def _map_team_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, LeagueTeamNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    if isinstance(exc, LeagueTeamValidationError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if isinstance(exc, LeagueTeamForbiddenError):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    if isinstance(exc, LeagueTeamConflictError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    error_msg = str(exc)
+    if "not found" in error_msg:
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
+
+
 @router.post(
     "/{league_id}/join",
-    response_model=LeagueMember,
+    response_model=None,
     status_code=status.HTTP_201_CREATED,
 )
 def join_league(
     league_id: str,
+    body: LeagueJoinRequest | None = None,
     current_user: CurrentUser = Depends(get_current_user),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
     league_service: LeagueService = Depends(get_league_service),
-) -> LeagueMember:
+) -> LeagueMember | LeagueTeam:
+    partner_uid = body.partner_uid if body is not None else None
+
+    league = leagues_repo.get_by_id(league_id)
+    if league is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+
+    if league.format == LeagueFormatEnum.DOUBLES:
+        if not partner_uid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This doubles league requires a partner_uid",
+            )
+        try:
+            return league_service.invite_team(
+                league_id, current_user.uid, partner_uid, current_user.display_name
+            )
+        except LeagueTeamError as e:
+            raise _map_team_error(e)
+
+    if partner_uid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This singles league does not accept a partner_uid",
+        )
     try:
         return league_service.join_league(league_id, current_user.uid, current_user.display_name)
     except ValueError as e:
@@ -218,6 +275,74 @@ def join_league(
         if "not found" in error_msg:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error_msg)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=error_msg)
+
+
+@router.post("/{league_id}/teams/{team_id}/accept", response_model=LeagueTeam)
+def accept_team(
+    league_id: str,
+    team_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    league_service: LeagueService = Depends(get_league_service),
+) -> LeagueTeam:
+    try:
+        return league_service.accept_team(league_id, team_id, current_user.uid)
+    except LeagueTeamError as e:
+        raise _map_team_error(e)
+
+
+@router.post("/{league_id}/teams/{team_id}/decline", response_model=LeagueTeam)
+def decline_team(
+    league_id: str,
+    team_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    league_service: LeagueService = Depends(get_league_service),
+) -> LeagueTeam:
+    try:
+        return league_service.decline_team(league_id, team_id, current_user.uid)
+    except LeagueTeamError as e:
+        raise _map_team_error(e)
+
+
+@router.delete("/{league_id}/teams/{team_id}", response_model=LeagueTeam)
+def cancel_team(
+    league_id: str,
+    team_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    league_service: LeagueService = Depends(get_league_service),
+) -> LeagueTeam:
+    try:
+        return league_service.cancel_team(league_id, team_id, current_user.uid)
+    except LeagueTeamError as e:
+        raise _map_team_error(e)
+
+
+@router.get("/{league_id}/teams", response_model=LeagueTeamsResponse)
+def list_league_teams(
+    league_id: str,
+    team_status: Optional[LeagueTeamStatusEnum] = Query(default=None, alias="status"),
+    mine: bool = Query(default=False),
+    current_user: CurrentUser = Depends(get_current_user),
+    leagues_repo: LeaguesRepo = Depends(get_leagues_repo),
+    role_service: RoleService = Depends(get_role_service),
+) -> LeagueTeamsResponse:
+    if leagues_repo.get_by_id(league_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
+
+    if mine:
+        # Default to actionable teams only — declined/cancelled invites are
+        # noise for the "outstanding invites on launch" use case.
+        statuses = (
+            [team_status]
+            if team_status is not None
+            else [LeagueTeamStatusEnum.PENDING, LeagueTeamStatusEnum.ACTIVE]
+        )
+        teams = leagues_repo.find_teams_for_user(league_id, current_user.uid, statuses)
+    else:
+        require_membership(
+            current_user=current_user, league_id=league_id, role_service=role_service
+        )
+        teams = leagues_repo.list_teams(league_id, status=team_status)
+    return LeagueTeamsResponse(league_id=league_id, teams=teams)
 
 
 def _kickoff_result_to_response(result: LeagueKickoffResult) -> KickoffLeagueResponse:

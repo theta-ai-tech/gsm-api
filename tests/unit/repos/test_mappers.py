@@ -8,7 +8,9 @@ from app.models.enums import (
     CourtStatusEnum,
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
+    LeagueFormatEnum,
     LeagueStatusEnum,
+    LeagueTeamStatusEnum,
     MatchResultEnum,
     MatchTypeEnum,
     OfferStatusEnum,
@@ -26,12 +28,119 @@ from app.repos.mappers import (
     to_league,
     to_league_browse_card,
     to_league_member,
+    to_league_team,
     to_match,
     to_offer,
     to_private_user_profile,
 )
 from app.models.journal import JournalEntry, MatchReflection
 from tools.seed_mapping import journal_entry_to_firestore_doc
+
+
+class TestLeagueFormatMapping:
+    _base_doc = {"sport": "padel", "status": "open", "ownerUid": "user_1"}
+
+    def test_to_league_defaults_format_singles_when_absent(self):
+        league = to_league(dict(self._base_doc), league_id="league_1")
+        assert league.format == LeagueFormatEnum.SINGLES
+
+    def test_to_league_defaults_format_singles_when_null(self):
+        doc = dict(self._base_doc)
+        doc["format"] = None
+        league = to_league(doc, league_id="league_1")
+        assert league.format == LeagueFormatEnum.SINGLES
+
+    def test_to_league_maps_doubles_format(self):
+        doc = dict(self._base_doc)
+        doc["format"] = "doubles"
+        league = to_league(doc, league_id="league_1")
+        assert league.format == LeagueFormatEnum.DOUBLES
+
+    def test_to_league_browse_card_defaults_format_singles(self):
+        card = to_league_browse_card(dict(self._base_doc), league_id="league_1")
+        assert card.format == LeagueFormatEnum.SINGLES
+
+    def test_to_league_browse_card_maps_doubles_format(self):
+        doc = dict(self._base_doc)
+        doc["format"] = "doubles"
+        card = to_league_browse_card(doc, league_id="league_1")
+        assert card.format == LeagueFormatEnum.DOUBLES
+
+
+class TestLeagueMemberTeamMapping:
+    def test_maps_team_id_and_partner_uid(self):
+        member = to_league_member(
+            {
+                "role": "player",
+                "status": "active",
+                "joinedAt": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                "teamId": "team_abc",
+                "partnerUid": "user_partner",
+            },
+            uid="user_captain",
+        )
+        assert member.team_id == "team_abc"
+        assert member.partner_uid == "user_partner"
+
+    def test_team_fields_default_none_for_singles(self):
+        member = to_league_member(
+            {
+                "role": "player",
+                "status": "active",
+                "joinedAt": datetime(2026, 1, 1, tzinfo=timezone.utc),
+            },
+            uid="user_solo",
+        )
+        assert member.team_id is None
+        assert member.partner_uid is None
+
+
+class TestLeagueTeamMapping:
+    def test_to_league_team_round_trip(self):
+        created = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        accepted = datetime(2026, 2, 2, tzinfo=timezone.utc)
+        team = to_league_team(
+            {
+                "status": "active",
+                "captainUid": "user_captain",
+                "partnerUid": "user_partner",
+                "memberUids": ["user_captain", "user_partner"],
+                "name": "Captain / Partner",
+                "createdAt": created,
+                "acceptedAt": accepted,
+                "ratingAvg": 1150,
+                "divisionId": "div-1",
+            },
+            team_id="team_abc",
+        )
+        assert team.team_id == "team_abc"
+        assert team.status == LeagueTeamStatusEnum.ACTIVE
+        assert team.captain_uid == "user_captain"
+        assert team.partner_uid == "user_partner"
+        assert team.member_uids == ["user_captain", "user_partner"]
+        assert team.name == "Captain / Partner"
+        assert team.created_at == created
+        assert team.accepted_at == accepted
+        assert team.rating_avg == 1150
+        assert team.division_id == "div-1"
+
+    def test_to_league_team_pending_defaults(self):
+        created = datetime(2026, 2, 1, tzinfo=timezone.utc)
+        team = to_league_team(
+            {
+                "status": "pending",
+                "captainUid": "user_captain",
+                "partnerUid": "user_partner",
+                "memberUids": ["user_captain", "user_partner"],
+                "name": "Captain / Partner",
+                "createdAt": created,
+            },
+            team_id="team_pending",
+        )
+        assert team.status == LeagueTeamStatusEnum.PENDING
+        assert team.accepted_at is None
+        assert team.rating_avg is None
+        assert team.division_id is None
 
 
 class TestLeagueSummaryMapping:

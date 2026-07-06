@@ -46,6 +46,20 @@ Values below match the C1 enums in code.
   - `open`: registration is open, play has not yet started (distinct from `upcoming` which may be pre-registration)
   - `dividing`: transient kickoff state while a league's flat member pool is being assigned to divisions
 
+### leagueFormat
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `singles`, `doubles`
+  - Missing/`null` on a league doc reads as `singles` (backward compatible — every pre-doubles league keeps individual-member behavior). Never derived from the sport.
+
+### leagueTeamStatus
+- Firestore representation: string
+- API/Pydantic representation: string enum
+- Allowed values: `pending`, `active`, `declined`, `cancelled`
+  - `pending`: captain invited a partner; no member docs, no capacity consumed
+  - `active`: partner accepted; both member docs exist, 2 player slots consumed
+  - `declined` / `cancelled`: terminal; set by the partner / captain respectively
+
 ### journalVisibility
 - Firestore representation: string
 - API/Pydantic representation: string enum
@@ -111,6 +125,7 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | --- | --- | --- | --- | --- | --- | --- |
 | uid | string | required | — | canonical | — | Stored in doc; should match document ID. |
 | name | string | required | — | canonical | — | Public. |
+| nameLower | string | optional | — | cache | index=range | Lowercased `name` for `GET /players?search=` prefix queries. Written at registration; existing users need a one-off backfill (users without it are invisible to player search). Must be rewritten if a name-edit path is ever added. |
 | profileUrl | string (url) | optional | — | canonical | — | Public. |
 | email | string | optional | — | canonical | — | Private. |
 | phone | string | optional | — | canonical | — | Private. |
@@ -456,6 +471,7 @@ Purpose: league metadata, configuration, and lifecycle.
 | sport | string | required | sport | canonical | — | Sport enum. |
 | season | string | optional | — | canonical | — | Season label (e.g., "Autumn 2025"). |
 | status | string | required | leagueStatus | canonical | index=filter | League lifecycle state. |
+| format | string | optional | leagueFormat | canonical | — | `singles` (default when absent) or `doubles`. Drives the join flow, kickoff seeding unit, and standings row shape. |
 | ownerUid | string | required | — | canonical | — | League owner uid. |
 | region | string | optional | — | canonical | index=filter | Named region (e.g. "athens"). Matches region format used by leaderboards. Used by PL-L1 browser filter (`?region=athens`). |
 | maxPlayers | number | optional | — | canonical | — | Hard cap on total players. Used by PL-L1 card ("8/12 spots"). |
@@ -465,7 +481,7 @@ Purpose: league metadata, configuration, and lifecycle.
 | dividedAt | timestamp | optional | — | canonical | — | Set by `POST /leagues/{leagueId}/kickoff` when division assignment completes. Missing before kickoff and on legacy leagues. |
 | tier | string | optional | — | canonical | — | Display-only tier label for MVP (e.g. "intermediate"). No join enforcement for MVP. |
 | divisionConfig | map | optional | — | canonical | — | League Divisions configuration. Missing on legacy/non-divided leagues. |
-| divisionConfig.targetSize | number | optional | — | canonical | — | Target players per division. Defaults to `6` (`DIVISION_TARGET_SIZE`). |
+| divisionConfig.targetSize | number | optional | — | canonical | — | Target **seeding units** per division: players for singles leagues, **teams** for doubles (`6` = 6 teams = 12 players). Defaults to `6` (`DIVISION_TARGET_SIZE`). |
 | divisionConfig.maxDivisions | number | optional | — | canonical | — | Optional cap for division count. Null means no explicit cap. |
 | meta | map | optional | — | canonical | — | Free-form metadata. |
 
@@ -506,6 +522,8 @@ Purpose: membership record for a user in a league.
 | joinedAt | timestamp | required | — | canonical | index=order-by | When the user joined. |
 | stats | map | optional | — | canonical | — | Optional per-user league stats. |
 | divisionId | string | optional | — | canonical | index=filter | Nullable until kickoff. Points to `leagues/{leagueId}/divisions/{divisionId}` after assignment. |
+| teamId | string | optional | — | canonical | — | Doubles only. Points to `leagues/{leagueId}/teams/{teamId}`; written when the team is accepted. |
+| partnerUid | string | optional | — | canonical | — | Doubles only. The other member of the team (cross-linked). |
 
 ### Common queries
 - List members of a league ordered by `joinedAt` ASC.
@@ -558,13 +576,55 @@ Indexes are defined in `firestore.indexes.json` and required for browse queries:
 ### leagues/{leagueId}/members/{uid}
 ```json
 {
+  "uid": "user_123",
   "role": "player",
   "status": "active",
   "joinedAt": "2024-10-01T12:00:00Z",
   "stats": {},
+  "divisionId": null,
+  "teamId": "team-abc",
+  "partnerUid": "user_456"
+}
+```
+
+## Subcollection: leagues/{leagueId}/teams
+Path: `leagues/{leagueId}/teams/{teamId}`
+
+Purpose: doubles team unit for `format: doubles` leagues. Created in `pending` status by
+`POST /leagues/{id}/join {partner_uid}`; becomes `active` when the invited partner accepts
+(both member docs are created and `currentPlayers` +2 in the same transaction). Pending
+teams consume no capacity. One `pending`/`active` team per user per league.
+
+### Fields: leagues/{leagueId}/teams/{teamId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| status | string | required | leagueTeamStatus | canonical | index=filter | Team lifecycle. |
+| captainUid | string | required | — | canonical | — | The inviter. |
+| partnerUid | string | required | — | canonical | — | The invited player; only they may accept/decline. |
+| memberUids | array<string> | required | — | canonical | index=array-contains | Both uids; used by "my teams/invites" queries. |
+| name | string | optional | — | cache | — | Display name, "Captain / Partner". |
+| createdAt | timestamp | required | — | canonical | — | Invite creation time. |
+| acceptedAt | timestamp | optional | — | canonical | — | Set on accept. |
+| ratingAvg | number | optional | — | cache | — | Integer mean of partners' per-sport pts; the doubles division-seeding rating. |
+| divisionId | string | optional | — | canonical | — | Stamped at kickoff (also stamped on both member docs). |
+
+### leagues/{leagueId}/teams/{teamId}
+```json
+{
+  "status": "active",
+  "captainUid": "user_123",
+  "partnerUid": "user_456",
+  "memberUids": ["user_123", "user_456"],
+  "name": "Alice / Bob",
+  "createdAt": "2026-06-02T09:00:00Z",
+  "acceptedAt": "2026-06-02T18:30:00Z",
   "divisionId": null
 }
 ```
+
+### Common queries
+- My teams/invites in a league: `memberUids array_contains {uid}` (status filtered in app code — avoids a composite index).
+- League teams by status: `status == "pending"` etc.
 
 ## Collection: courts
 Path: `courts/{courtId}`
