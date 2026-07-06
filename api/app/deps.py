@@ -42,7 +42,17 @@ def _verify_token(id_token: str, settings: Settings) -> dict:
             app=_get_firebase_app(settings),
             check_revoked=not bool(settings.auth_emulator_host),
         )
+    except firebase_auth.UserDisabledError as exc:
+        # Auth account disabled — treat as unauthorized, not a server error.
+        raise errors.unauthorized("Firebase user is disabled") from exc
+    except firebase_auth.UserNotFoundError as exc:
+        # With check_revoked=True, verify_id_token looks up the user; a deleted
+        # account (e.g. after DELETE /me/account) raises UserNotFoundError, which
+        # is not an InvalidIdTokenError. Map it to 401 so stale tokens after
+        # deletion get a clean unauthorized instead of bubbling as a 500.
+        raise errors.unauthorized("Firebase user no longer exists") from exc
     except firebase_auth.InvalidIdTokenError as exc:
+        # Covers ExpiredIdTokenError and RevokedIdTokenError (both subclasses).
         raise errors.unauthorized("Invalid Firebase ID token") from exc
 
     if decoded.get("aud") != settings.project_id or decoded.get("iss") != settings.issuer:

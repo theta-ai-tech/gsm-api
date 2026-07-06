@@ -42,6 +42,31 @@ def test_invalid_token_rejected(monkeypatch, client):
     assert resp.json()["detail"] == "Invalid Firebase ID token"
 
 
+def test_deleted_user_token_rejected_as_401(monkeypatch, client):
+    # After DELETE /me/account, verify_id_token(check_revoked=True) looks up the
+    # now-deleted user and raises UserNotFoundError (not an InvalidIdTokenError).
+    # It must map to a clean 401, not bubble as a 500.
+    def _raise_user_not_found(token, app=None, check_revoked=True):
+        raise deps.firebase_auth.UserNotFoundError("no user record")
+
+    monkeypatch.setattr(deps.firebase_auth, "verify_id_token", _raise_user_not_found)
+
+    resp = client.get("/users/alex", headers={"Authorization": "Bearer fake"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Firebase user no longer exists"
+
+
+def test_disabled_user_token_rejected_as_401(monkeypatch, client):
+    def _raise_user_disabled(token, app=None, check_revoked=True):
+        raise deps.firebase_auth.UserDisabledError("user disabled")
+
+    monkeypatch.setattr(deps.firebase_auth, "verify_id_token", _raise_user_disabled)
+
+    resp = client.get("/users/alex", headers={"Authorization": "Bearer fake"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Firebase user is disabled"
+
+
 def test_audience_or_issuer_mismatch(monkeypatch, client):
     def _return_wrong_project(token, app=None, check_revoked=True):
         return {
