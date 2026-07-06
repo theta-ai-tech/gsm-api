@@ -40,6 +40,18 @@ class LeagueStatusEnum(StrEnum):
     OPEN = "open"
 
 
+class LeagueFormatEnum(StrEnum):
+    SINGLES = "singles"
+    DOUBLES = "doubles"
+
+
+class LeagueTeamStatusEnum(StrEnum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    DECLINED = "declined"
+    CANCELLED = "cancelled"
+
+
 class LeagueRoleEnum(StrEnum):
     PLAYER = "player"
     ADMIN = "admin"
@@ -147,6 +159,8 @@ class PlayNotificationIntentTypeEnum(StrEnum):
     INCOMING_OFFER = "incoming_offer"
     MATCH_SCHEDULED = "match_scheduled"
     SCORE_CONFIRM_REQUIRED = "score_confirm_required"
+    LEAGUE_TEAM_INVITE = "league_team_invite"
+    LEAGUE_TEAM_INVITE_ACCEPTED = "league_team_invite_accepted"
 
 
 class PlatformEnum(StrEnum):

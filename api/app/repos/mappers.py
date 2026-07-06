@@ -23,11 +23,14 @@ from app.models import (
     JournalVisibilityEnum,
     League,
     LeagueBrowseCard,
+    LeagueFormatEnum,
     LeagueMember,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
     LeagueStatusEnum,
     LeagueSummary,
+    LeagueTeam,
+    LeagueTeamStatusEnum,
     LevelEnum,
     Match,
     MatchOpponentSummary,
@@ -415,6 +418,7 @@ def to_league(doc: dict[str, Any], league_id: str | None = None) -> League:
         season=doc.get("season"),
         status=LeagueStatusEnum(status_val),
         owner_uid=doc.get("ownerUid", ""),
+        format=LeagueFormatEnum(doc.get("format", "singles")),
         region=doc.get("region"),
         max_players=doc.get("maxPlayers"),
         current_players=doc.get("currentPlayers"),
@@ -435,6 +439,7 @@ def to_league_browse_card(doc: dict[str, Any], league_id: str | None = None) -> 
         name=doc.get("name", ""),
         sport=SportEnum(sport_val),
         status=LeagueStatusEnum(status_val),
+        format=LeagueFormatEnum(doc.get("format", "singles")),
         region=doc.get("region"),
         tier=doc.get("tier"),
         max_players=doc.get("maxPlayers"),
@@ -453,6 +458,24 @@ def to_league_member(doc: dict[str, Any], uid: str | None = None) -> LeagueMembe
         joined_at=_require(doc, "joinedAt"),
         stats=doc.get("stats"),
         display_name=doc.get("displayName"),
+        division_id=doc.get("divisionId"),
+        team_id=doc.get("teamId"),
+        partner_uid=doc.get("partnerUid"),
+    )
+
+
+def to_league_team(doc: dict[str, Any], team_id: str | None = None) -> LeagueTeam:
+    status_val = _require(doc, "status")
+    return LeagueTeam(
+        team_id=team_id or doc.get("teamId") or doc.get("id") or "",
+        status=LeagueTeamStatusEnum(status_val),
+        captain_uid=_require(doc, "captainUid"),
+        partner_uid=_require(doc, "partnerUid"),
+        member_uids=list(doc.get("memberUids", []) or []),
+        name=doc.get("name", ""),
+        created_at=_require(doc, "createdAt"),
+        accepted_at=doc.get("acceptedAt"),
+        rating_avg=doc.get("ratingAvg"),
         division_id=doc.get("divisionId"),
     )
 

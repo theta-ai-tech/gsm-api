@@ -26,6 +26,78 @@ def _make_doc_snap(data: dict | None) -> MagicMock:
     return snap
 
 
+def _make_query_doc(doc_id: str, data: dict) -> MagicMock:
+    doc = MagicMock()
+    doc.id = doc_id
+    doc.to_dict.return_value = data
+    return doc
+
+
+class TestSearchByNamePrefix:
+    def _wire_stream(self, client: MagicMock, docs: list[MagicMock]) -> MagicMock:
+        query = MagicMock()
+        query.where.return_value = query
+        query.limit.return_value = query
+        query.stream.return_value = docs
+        client.collection.return_value = query
+        return query
+
+    def test_returns_matching_docs_with_uid(self):
+        repo, client = _make_repo()
+        self._wire_stream(
+            client,
+            [
+                _make_query_doc("user_maria", {"name": "Maria"}),
+                _make_query_doc("user_marios", {"name": "Marios"}),
+            ],
+        )
+
+        results = repo.search_by_name_prefix("Mar", limit=10)
+
+        assert [r["uid"] for r in results] == ["user_maria", "user_marios"]
+
+    def test_lowercases_query_for_range(self):
+        repo, client = _make_repo()
+        query = self._wire_stream(client, [])
+
+        repo.search_by_name_prefix("MaR", limit=10)
+
+        # First where clause is the >= lower bound on nameLower.
+        first_where = query.where.call_args_list[0]
+        assert first_where.args[0] == "nameLower"
+        assert first_where.args[1] == ">="
+        assert first_where.args[2] == "mar"
+
+    def test_excludes_caller(self):
+        repo, client = _make_repo()
+        self._wire_stream(
+            client,
+            [
+                _make_query_doc("user_me", {"name": "Marcus"}),
+                _make_query_doc("user_other", {"name": "Marisol"}),
+            ],
+        )
+
+        results = repo.search_by_name_prefix("mar", limit=10, exclude_uid="user_me")
+
+        assert [r["uid"] for r in results] == ["user_other"]
+
+    def test_respects_limit(self):
+        repo, client = _make_repo()
+        self._wire_stream(
+            client,
+            [_make_query_doc(f"user_{i}", {"name": f"Mar{i}"}) for i in range(5)],
+        )
+
+        results = repo.search_by_name_prefix("mar", limit=2)
+
+        assert len(results) == 2
+
+    def test_blank_query_returns_empty(self):
+        repo, _ = _make_repo()
+        assert repo.search_by_name_prefix("   ", limit=10) == []
+
+
 class TestUpsertDeviceToken:
     def test_new_token_appended(self):
         repo, client = _make_repo()

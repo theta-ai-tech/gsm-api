@@ -41,6 +41,38 @@ class UsersRepo(RepoBase):
         except Conflict:
             raise ValueError("already_registered")
 
+    def search_by_name_prefix(
+        self, query: str, limit: int, exclude_uid: str | None = None
+    ) -> list[dict]:
+        """Return raw user docs whose ``nameLower`` starts with ``query`` (case-insensitive).
+
+        Uses the Firestore ``>=`` / ``<`` range trick on the ``nameLower`` field
+        to approximate a prefix search. ``query`` is lowercased before matching.
+        The calling user (``exclude_uid``) is filtered out of the results.
+        Each returned doc carries an injected ``uid`` key.
+        """
+        q = query.strip().lower()
+        if not q:
+            return []
+        high = q + ""
+        docs = (
+            self.client.collection("users")
+            .where("nameLower", ">=", q)
+            .where("nameLower", "<", high)
+            .limit(limit + 1)
+            .stream()
+        )
+        results: list[dict] = []
+        for doc in docs:
+            if exclude_uid is not None and doc.id == exclude_uid:
+                continue
+            data = doc.to_dict() or {}
+            data["uid"] = doc.id
+            results.append(data)
+            if len(results) >= limit:
+                break
+        return results
+
     def update_play_tab(self, uid: str, updates: dict) -> None:
         """
         Update the playTab map on the user document.

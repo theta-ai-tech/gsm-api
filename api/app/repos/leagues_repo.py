@@ -5,10 +5,10 @@ from typing import List, Optional, cast
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 from google.cloud.firestore_v1.field_path import FieldPath  # type: ignore[attr-defined, import-untyped]
 
-from app.models import League, LeagueMember
-from app.models.enums import LeagueStatusEnum, SportEnum
+from app.models import League, LeagueMember, LeagueTeam
+from app.models.enums import LeagueStatusEnum, LeagueTeamStatusEnum, SportEnum
 from app.repos.base import RepoBase
-from app.repos.mappers import to_league, to_league_member
+from app.repos.mappers import to_league, to_league_member, to_league_team
 
 
 def _apply_league_cursor(
@@ -93,3 +93,45 @@ class LeaguesRepo(RepoBase):
         self.client.collection("leagues").document(league_id).update(
             {"currentPlayers": firestore.Increment(delta)}
         )
+
+    def get_team(self, league_id: str, team_id: str) -> Optional[LeagueTeam]:
+        doc = (
+            self.client.collection("leagues")
+            .document(league_id)
+            .collection("teams")
+            .document(team_id)
+            .get()
+        )
+        data = self._doc_to_dict(doc)
+        if data is None:
+            return None
+        return to_league_team(data, team_id=team_id)
+
+    def list_teams(
+        self, league_id: str, status: Optional[LeagueTeamStatusEnum] = None
+    ) -> List[LeagueTeam]:
+        query: firestore.Query = cast(
+            firestore.Query,
+            self.client.collection("leagues").document(league_id).collection("teams"),
+        )
+        if status is not None:
+            query = query.where("status", "==", status.value)
+        return [to_league_team(doc.to_dict() or {}, team_id=doc.id) for doc in query.stream()]
+
+    def create_team(self, league_id: str, team_id: str, doc: dict) -> None:
+        self.client.collection("leagues").document(league_id).collection("teams").document(
+            team_id
+        ).set(doc)
+
+    def find_teams_for_user(
+        self, league_id: str, uid: str, statuses: list[LeagueTeamStatusEnum]
+    ) -> List[LeagueTeam]:
+        query = (
+            self.client.collection("leagues")
+            .document(league_id)
+            .collection("teams")
+            .where("memberUids", "array_contains", uid)
+        )
+        status_values = {s.value for s in statuses}
+        teams = [to_league_team(doc.to_dict() or {}, team_id=doc.id) for doc in query.stream()]
+        return [team for team in teams if team.status.value in status_values]
