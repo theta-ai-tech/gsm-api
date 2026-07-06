@@ -188,10 +188,10 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | deletedAt | timestamp | optional | — | canonical | — | When the account was deleted (tombstoned). Set alongside `isDeleted = true`. |
 
 ### Account deletion policy (anonymize-in-place)
-`DELETE /me/account` (ACCT-1) does **not** cascade-delete shared data. It:
-- Revokes + deletes the Firebase Auth user.
+`DELETE /me/account` (ACCT-1) does **not** cascade-delete shared data. Data erasure runs first (while the caller's token is still valid, so a mid-flow failure is idempotently retryable); the Auth identity is destroyed last. It:
 - Hard-deletes the caller's own `journalEntries` and `pointHistory` subcollections and drops `deviceTokens`.
 - Overwrites `users/{uid}` keeping only `uid` and `rankings`, setting `name = "Deleted Player"`, `profileUrl = null`, `isDeleted = true`, `deletedAt = now`, and stripping all PII (`email`, `phone`, `preferences`, cache fields, `skillDna`, `deviceTokens`).
+- Deletes the Firebase Auth user (single destructive Auth op; `delete_user` already drops refresh tokens, so they are **not** revoked separately).
 
 `rankings` is retained so opponents' head-to-head, point-history, rivalry, scouting, ticker and leaderboard references keep resolving and render as "Deleted Player". Match documents and opponents' point-history rows are never mutated. Tombstoned users drop out of leaderboards on the next scheduled recompute (they are skipped in `extract_users_by_region_sport`).
 

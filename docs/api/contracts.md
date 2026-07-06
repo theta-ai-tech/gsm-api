@@ -95,10 +95,15 @@ Used in offer/broadcast payloads to show opponent skill level.
 **Response:** `204 No Content`.
 
 **Behavior (anonymize-in-place, no cascade):**
-1. Revoke refresh tokens + delete the Firebase Auth user (idempotent if already gone).
-2. Hard-delete `users/{uid}/journalEntries`, `users/{uid}/pointHistory`, and device tokens.
-3. Tombstone `users/{uid}`: keep `uid` + `rankings`; set `name = "Deleted Player"`,
+
+Data erasure runs first (while the caller's token is still valid, so a mid-flow failure is
+idempotently retryable); identity destruction is last and is a single op:
+1. Hard-delete `users/{uid}/journalEntries`, `users/{uid}/pointHistory`, and device tokens.
+2. Tombstone `users/{uid}`: keep `uid` + `rankings`; set `name = "Deleted Player"`,
    `profileUrl = null`, `isDeleted = true`, `deletedAt = now`; strip all PII.
+3. Delete the Firebase Auth user (idempotent if already gone). This is the single destructive
+   Auth op — refresh tokens are **not** revoked separately; `delete_user` already drops them,
+   and a separate revoke would add a revoked-but-not-deleted window.
 
 Match, scouting, ticker, leaderboard and opponents' point-history documents are **not**
 deleted or mutated. Opponents' rivalry/scouting/profile reads against the deleted uid keep
