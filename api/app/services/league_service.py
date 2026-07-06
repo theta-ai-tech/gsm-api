@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Sequence, cast
+from typing import Any, Generic, Sequence, TypeVar, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
 from app.constants import DIVISION_TARGET_SIZE
-from app.models import Division, LeagueMember, LeagueTeam, RatingRange, StandingsEntry
+from app.models import Division, League, LeagueMember, LeagueTeam, RatingRange, StandingsEntry
 from app.models.enums import (
     LeagueFormatEnum,
     LeagueMemberStatusEnum,
@@ -65,11 +65,26 @@ class RankedLeagueMember:
 
 
 @dataclass(frozen=True)
-class DivisionSplit:
+class RankedLeagueTeam:
+    """A doubles team ranked for division seeding.
+
+    ``pts`` is the integer mean of the two partners' per-sport ranking points —
+    the documented team-rating rule for doubles division seeding.
+    """
+
+    team: LeagueTeam
+    pts: int
+
+
+RankedT = TypeVar("RankedT", RankedLeagueMember, RankedLeagueTeam)
+
+
+@dataclass(frozen=True)
+class DivisionSplit(Generic[RankedT]):
     division_id: str
     name: str
     ordinal: int
-    members: list[RankedLeagueMember]
+    members: list[RankedT]
     rating_min: int
     rating_max: int
 
@@ -82,10 +97,15 @@ class LeagueKickoffResult:
 
 
 def split_into_divisions(
-    sorted_members: Sequence[RankedLeagueMember],
+    sorted_members: Sequence[RankedT],
     target_size: int = DIVISION_TARGET_SIZE,
     max_divisions: int | None = None,
-) -> list[DivisionSplit]:
+) -> list[DivisionSplit[RankedT]]:
+    """Split a pre-sorted list of ranked units into contiguous divisions.
+
+    The unit is a member for singles leagues and a whole team for doubles —
+    teammates are never split across divisions because the team is the unit.
+    """
     members = list(sorted_members)
     if not members:
         return []
@@ -100,7 +120,7 @@ def split_into_divisions(
         division_count = min(division_count, max_divisions)
 
     base_size, remainder = divmod(len(members), division_count)
-    splits: list[DivisionSplit] = []
+    splits: list[DivisionSplit[RankedT]] = []
     offset = 0
     for index in range(division_count):
         chunk_size = base_size + (1 if index < remainder else 0)
@@ -571,6 +591,20 @@ class LeagueService:
                 already_kicked_off=True,
             )
 
+        if league.format == LeagueFormatEnum.DOUBLES:
+            divisions = self._kickoff_doubles(league_id, league)
+        else:
+            divisions = self._kickoff_singles(league_id, league)
+
+        self.client.collection("leagues").document(league_id).update(
+            {
+                "status": LeagueStatusEnum.ACTIVE.value,
+                "dividedAt": datetime.now(timezone.utc),
+            }
+        )
+        return LeagueKickoffResult(league_id=league_id, divisions=divisions)
+
+    def _kickoff_singles(self, league_id: str, league: League) -> list[Division]:
         members = [
             member
             for member in self.leagues_repo.list_members(league_id, limit=None)
@@ -588,32 +622,66 @@ class LeagueService:
         ]
         ranked_members.sort(key=lambda item: (-item.pts, item.member.uid))
 
-        division_config = league.division_config
-        target_size = division_config.target_size if division_config else DIVISION_TARGET_SIZE
-        max_divisions = division_config.max_divisions if division_config else None
-        splits = split_into_divisions(
-            ranked_members, target_size=target_size, max_divisions=max_divisions
-        )
+        splits = split_into_divisions(ranked_members, **self._division_split_kwargs(league))
         divisions = [
-            Division(
-                division_id=split.division_id,
-                name=split.name,
-                ordinal=split.ordinal,
-                rating_range=RatingRange(min=split.rating_min, max=split.rating_max),
-                current_players=len(split.members),
-                status=LeagueStatusEnum.ACTIVE,
+            self._split_to_division(split, current_players=len(split.members)) for split in splits
+        ]
+        self._write_divisions_and_assignments(league_id, divisions, splits)
+        return divisions
+
+    def _kickoff_doubles(self, league_id: str, league: League) -> list[Division]:
+        """Division seeding for doubles leagues: the unit is the team.
+
+        Team rating is the integer mean of the two partners' per-sport ranking
+        points; teammates always land in the same division. Division
+        ``currentPlayers`` counts players (2× teams), consistent with league
+        capacity semantics.
+        """
+        teams = self.leagues_repo.list_teams(league_id, status=LeagueTeamStatusEnum.ACTIVE)
+        if not teams:
+            self.client.collection("leagues").document(league_id).update(
+                {"status": LeagueStatusEnum.OPEN.value}
             )
+            raise LeagueKickoffConflictError(f"League {league_id!r} has no active teams")
+
+        ranked_teams = [
+            RankedLeagueTeam(team=team, pts=self._team_pts(team, league.sport.value))
+            for team in teams
+        ]
+        ranked_teams.sort(key=lambda item: (-item.pts, item.team.team_id))
+
+        splits = split_into_divisions(ranked_teams, **self._division_split_kwargs(league))
+        divisions = [
+            self._split_to_division(split, current_players=2 * len(split.members))
             for split in splits
         ]
+        self._write_divisions_and_team_assignments(league_id, divisions, splits)
+        return divisions
 
-        self._write_divisions_and_assignments(league_id, divisions, splits)
-        self.client.collection("leagues").document(league_id).update(
-            {
-                "status": LeagueStatusEnum.ACTIVE.value,
-                "dividedAt": datetime.now(timezone.utc),
-            }
+    @staticmethod
+    def _division_split_kwargs(league: League) -> dict[str, Any]:
+        division_config = league.division_config
+        return {
+            "target_size": division_config.target_size if division_config else DIVISION_TARGET_SIZE,
+            "max_divisions": division_config.max_divisions if division_config else None,
+        }
+
+    @staticmethod
+    def _split_to_division(split: DivisionSplit, current_players: int) -> Division:
+        return Division(
+            division_id=split.division_id,
+            name=split.name,
+            ordinal=split.ordinal,
+            rating_range=RatingRange(min=split.rating_min, max=split.rating_max),
+            current_players=current_players,
+            status=LeagueStatusEnum.ACTIVE,
         )
-        return LeagueKickoffResult(league_id=league_id, divisions=divisions)
+
+    def _team_pts(self, team: LeagueTeam, sport: str) -> int:
+        pts = [self._member_pts(uid, sport) for uid in team.member_uids]
+        if not pts:
+            return 0
+        return sum(pts) // len(pts)
 
     def _claim_kickoff(self, league_id: str) -> bool:
         league_ref = self.client.collection("leagues").document(league_id)
@@ -672,6 +740,47 @@ class LeagueService:
                     member_ref = league_ref.collection("members").document(ranked_member.member.uid)
                     pending_writes.append((member_ref, {"divisionId": split.division_id}))
 
+        self._commit_batched(pending_writes)
+
+    def _write_divisions_and_team_assignments(
+        self,
+        league_id: str,
+        divisions: list[Division],
+        splits: list[DivisionSplit[RankedLeagueTeam]],
+    ) -> None:
+        """Doubles variant: stamp divisionId on the team doc AND both member docs."""
+        league_ref = self.client.collection("leagues").document(league_id)
+        pending_writes: list[tuple[Any, dict[str, Any]]] = []
+        for division in divisions:
+            pending_writes.append(
+                (
+                    league_ref.collection("divisions").document(division.division_id),
+                    {
+                        "name": division.name,
+                        "ordinal": division.ordinal,
+                        "ratingRange": {
+                            "min": division.rating_range.min,
+                            "max": division.rating_range.max,
+                        },
+                        "currentPlayers": division.current_players,
+                        "status": division.status.value,
+                    },
+                )
+            )
+        for split in splits:
+            for ranked_team in split.members:
+                team = ranked_team.team
+                if team.division_id is not None:
+                    continue
+                team_ref = league_ref.collection("teams").document(team.team_id)
+                pending_writes.append((team_ref, {"divisionId": split.division_id}))
+                for uid in team.member_uids:
+                    member_ref = league_ref.collection("members").document(uid)
+                    pending_writes.append((member_ref, {"divisionId": split.division_id}))
+
+        self._commit_batched(pending_writes)
+
+    def _commit_batched(self, pending_writes: list[tuple[Any, dict[str, Any]]]) -> None:
         for offset in range(0, len(pending_writes), 500):
             batch = self.client.batch()
             for doc_ref, data in pending_writes[offset : offset + 500]:
@@ -716,10 +825,68 @@ class LeagueService:
 
         return result
 
+    def _rank_teams(self, league_id: str, teams: list[LeagueTeam]) -> list[StandingsEntry]:
+        """Doubles standings: one row per ACTIVE team.
+
+        Wins/losses come from the captain's member stats — partners always
+        share identical league match participation, so captain stats == team
+        stats for MVP (falls back to the partner's stats if the captain doc is
+        missing). ``uid`` carries the captain uid as the stable row key;
+        ``display_name`` is the team name ("Captain / Partner").
+        """
+        members_by_uid = {
+            member.uid: member for member in self.leagues_repo.list_members(league_id, limit=None)
+        }
+        rows: list[tuple[int, int, str, LeagueTeam]] = []
+        for team in teams:
+            source = members_by_uid.get(team.captain_uid) or members_by_uid.get(team.partner_uid)
+            stats = (source.stats if source else None) or {}
+            wins = int(stats.get("wins", 0))
+            losses = int(stats.get("losses", 0))
+            rows.append((wins, losses, team.name or team.team_id, team))
+
+        # Sort: wins DESC, losses ASC, (wins-losses) DESC, team name ASC
+        rows.sort(key=lambda r: (-r[0], r[1], -(r[0] - r[1]), r[2]))
+
+        # Dense ranking, same semantics as _rank_members
+        result: list[StandingsEntry] = []
+        rank = 0
+        prev_key: tuple[int, int] | None = None
+        for wins, losses, name, team in rows:
+            key = (wins, losses)
+            if key != prev_key:
+                rank += 1
+                prev_key = key
+            result.append(
+                StandingsEntry(
+                    rank=rank,
+                    uid=team.captain_uid,
+                    display_name=name,
+                    wins=wins,
+                    losses=losses,
+                    tier_ring=None,
+                    team_id=team.team_id,
+                    member_uids=list(team.member_uids),
+                )
+            )
+        return result
+
+    def _active_teams(self, league_id: str) -> list[LeagueTeam]:
+        return self.leagues_repo.list_teams(league_id, status=LeagueTeamStatusEnum.ACTIVE)
+
     def get_standings(self, league_id: str) -> list[StandingsEntry]:
+        league = self.leagues_repo.get_by_id(league_id)
+        if league is not None and league.format == LeagueFormatEnum.DOUBLES:
+            return self._rank_teams(league_id, self._active_teams(league_id))
         return self._rank_members(self.leagues_repo.list_members(league_id))
 
     def get_division_standings(self, league_id: str, division_id: str) -> list[StandingsEntry]:
+        league = self.leagues_repo.get_by_id(league_id)
+        if league is not None and league.format == LeagueFormatEnum.DOUBLES:
+            teams = [
+                team for team in self._active_teams(league_id) if team.division_id == division_id
+            ]
+            return self._rank_teams(league_id, teams)
         members = [
             member
             for member in self.leagues_repo.list_members(league_id, limit=None)

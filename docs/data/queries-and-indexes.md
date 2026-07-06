@@ -75,6 +75,30 @@ schema evolve behind a stable, testable API.
 - **Repo:** `JournalRepo.list_entries`
 - **Index:** single-field only (no composite index).
 
+### Q6 — Player search by name prefix
+- **Path:** `users`
+- **Filters:** `nameLower >= {q}` AND `nameLower < {q}\uf8ff` (case-insensitive prefix; the
+  upper bound is the Firestore `\uf8ff` sentinel — do not drop it, or the range is empty)
+- **Ordering:** implicit by `nameLower` (the range field)
+- **Pagination:** none (bounded `limit`, 1–20)
+- **Repo:** `UsersRepo.search_by_name_prefix`
+- **Index:** single-field only (automatic). Users without `nameLower` (pre-backfill) are
+  invisible to this query.
+
+### Q7 — My teams/invites in a league
+- **Path:** `leagues/{leagueId}/teams`
+- **Filters:** `memberUids array_contains {uid}`; team status filtered in application code
+  (deliberate — avoids an `array_contains` + `status` composite index for a result set that
+  is at most a handful of docs per user)
+- **Repo:** `LeaguesRepo.find_teams_for_user`
+- **Index:** single-field only.
+
+### Q8 — League teams by status
+- **Path:** `leagues/{leagueId}/teams`
+- **Filters:** `status == {status}` (optional)
+- **Repo:** `LeaguesRepo.list_teams`
+- **Index:** single-field only.
+
 ## Field assumptions
 - `matches.participantUids` — array of uid strings
 - `matches.status` — string enum
@@ -82,6 +106,8 @@ schema evolve behind a stable, testable API.
 - `matches.leagueId` — string or null
 - `matches.divisionId` — optional string; used only for division-scoped fixtures, not scoring
 - `users/{uid}/journalEntries.createdAt` — timestamp
+- `users.nameLower` — lowercased `name`, written at registration (backfill required for older users)
+- `leagues/{leagueId}/teams.memberUids` — array of exactly two uid strings
 
 Field names use the camelCase convention shared with seeding/mapping.
 
