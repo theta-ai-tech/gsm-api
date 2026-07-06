@@ -192,8 +192,10 @@ run_check "clubhouse router + service unit suites pass" env \
 run_check "contract docs cover PATCH /me/clubhouse/profile" grep -q "PATCH /me/clubhouse/profile" docs/api/contracts.md
 run_check "docs describe display-name eventual consistency" \
   grep -qi "eventual" docs/api/contracts.md
-run_check "endpoints doc covers both GET and PATCH clubhouse profile" \
-  grep -c "me/clubhouse/profile" docs/api/endpoints.md | grep -q "^[2-9]"
+clubhouse_doc_hits() {
+  [ "$(grep -c "me/clubhouse/profile" docs/api/endpoints.md)" -ge 2 ]
+}
+run_check "endpoints doc covers both GET and PATCH clubhouse profile" clubhouse_doc_hits
 
 echo ""
 echo "Smoke tests PR #370: $PASS passed, $FAIL failed"
