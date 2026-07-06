@@ -31,9 +31,10 @@ def delete_account(
 ) -> None:
     """Delete the authenticated caller's account (anonymize-in-place, 204).
 
-    Revokes + deletes the Firebase Auth user, hard-deletes the caller's own
-    journal and point-history subcollections, and tombstones the user doc while
-    preserving ``uid`` + ``rankings`` so opponents' histories keep resolving.
+    Hard-deletes the caller's own journal and point-history subcollections and
+    tombstones the user doc (preserving ``uid`` + ``rankings`` so opponents'
+    histories keep resolving), then revokes + deletes the Firebase Auth user last
+    so a mid-flow failure leaves the token valid and the request retryable.
     """
     account_service.delete_account(
         current_user.uid,

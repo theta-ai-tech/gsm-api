@@ -18,24 +18,31 @@ def delete_account(
 ) -> None:
     """Delete the caller's account with anonymize-in-place (LOCKED design).
 
-    Sequence:
-      1. Identity — revoke refresh tokens then delete the Firebase Auth user. A
-         missing Auth user (already deleted) is tolerated for idempotency.
-      2. Own private data — hard-delete ``journalEntries`` and ``pointHistory``.
-      3. Tombstone — overwrite ``users/{uid}`` keeping only ``uid`` + ``rankings``
+    Sequence — **data erasure first, identity destruction last**:
+      1. Own private data — hard-delete ``journalEntries`` and ``pointHistory``.
+      2. Tombstone — overwrite ``users/{uid}`` keeping only ``uid`` + ``rankings``
          (drops deviceTokens and all PII), setting ``isDeleted``/``deletedAt``.
+      3. Identity — revoke refresh tokens then delete the Firebase Auth user. A
+         missing Auth user (already deleted) is tolerated for idempotency.
+
+    Ordering rationale (recoverability): every Firestore step runs while the caller's
+    ID token is still valid. If any of them fails the Auth user is left intact, so the
+    request surfaces a 5xx and the client can safely retry the endpoint — the deletes
+    and the tombstone ``set()`` are all idempotent. The identity is only destroyed once
+    erasure has completed, so we never leave a locked-out account with orphaned PII.
 
     Deliberately does NOT cascade: match docs, opponents' point_history, scouting,
     ticker and leaderboard rows referencing this uid are left intact and render as
     "Deleted Player" via the tombstone.
     """
+    journal_repo.delete_all_for_user(uid)
+    point_history_repo.delete_all_for_user(uid)
+    users_repo.anonymize(uid)
+
     try:
         auth_admin.revoke_refresh_tokens(uid)
         auth_admin.delete_user(uid)
     except firebase_auth.UserNotFoundError:
-        # Already gone in Firebase Auth; continue with data cleanup (idempotent).
+        # Auth user already gone (e.g. a retry after an earlier partial run);
+        # erasure above has completed, so treat this as success (idempotent).
         pass
-
-    journal_repo.delete_all_for_user(uid)
-    point_history_repo.delete_all_for_user(uid)
-    users_repo.anonymize(uid)

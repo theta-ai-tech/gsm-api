@@ -254,14 +254,17 @@ Required (`Authorization: Bearer <Firebase ID token>`). Only the authenticated c
 account is affected — there is no target `uid` parameter.
 
 ### Behavior
-1. **Identity** — revokes the user's refresh tokens then deletes the Firebase Auth user. A
-   subsequent call with the old token is rejected. An already-deleted Auth user is tolerated
-   (idempotent).
-2. **Own private data** — hard-deletes `users/{uid}/journalEntries` and
+Data erasure runs **first**, identity destruction **last**, so a mid-flow failure leaves the
+caller's token valid and the request safely retryable (every step is idempotent); the Auth
+user is only deleted once erasure has completed.
+1. **Own private data** — hard-deletes `users/{uid}/journalEntries` and
    `users/{uid}/pointHistory`; device tokens are dropped (push stops immediately).
-3. **Tombstone** — overwrites `users/{uid}` keeping only `uid` and `rankings`, setting
+2. **Tombstone** — overwrites `users/{uid}` keeping only `uid` and `rankings`, setting
    `name = "Deleted Player"`, `profileUrl = null`, `isDeleted = true`, `deletedAt = now`.
    All PII (email, phone, preferences, deviceTokens) is stripped.
+3. **Identity** — revokes the user's refresh tokens then deletes the Firebase Auth user. A
+   subsequent call with the old token is rejected. An already-deleted Auth user is tolerated
+   (idempotent).
 
 **No cascade:** match documents, opponents' point history, scouting, ticker and leaderboard
 rows referencing the uid are left untouched. Opponents' rivalry/scouting/profile reads

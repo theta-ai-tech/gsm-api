@@ -59,6 +59,31 @@ class TestDeleteAccount:
         point_history_repo.delete_all_for_user.assert_called_once_with(_UID)
         users_repo.anonymize.assert_called_once_with(_UID)
 
+    def test_erasure_precedes_identity_deletion(self, client_and_mocks):
+        # Recoverability guarantee: all Firestore erasure must complete before the
+        # Auth user is deleted, so a mid-flow failure leaves the token valid.
+        client, users_repo, journal_repo, point_history_repo, auth_admin = (
+            client_and_mocks
+        )
+        parent = MagicMock()
+        parent.attach_mock(journal_repo.delete_all_for_user, "journal")
+        parent.attach_mock(point_history_repo.delete_all_for_user, "point_history")
+        parent.attach_mock(users_repo.anonymize, "anonymize")
+        parent.attach_mock(auth_admin.revoke_refresh_tokens, "revoke")
+        parent.attach_mock(auth_admin.delete_user, "delete_user")
+
+        response = client.request("DELETE", "/me/account")
+
+        assert response.status_code == 204
+        called = [name for name, _args, _kwargs in parent.mock_calls]
+        assert called == [
+            "journal",
+            "point_history",
+            "anonymize",
+            "revoke",
+            "delete_user",
+        ]
+
     def test_auth_user_already_gone_is_idempotent(self, client_and_mocks):
         client, users_repo, _journal_repo, _ph_repo, auth_admin = client_and_mocks
         auth_admin.delete_user.side_effect = firebase_auth.UserNotFoundError("gone")
@@ -66,16 +91,18 @@ class TestDeleteAccount:
         response = client.request("DELETE", "/me/account")
 
         assert response.status_code == 204
-        # Data cleanup still runs even when the Auth user was already deleted.
+        # Erasure has already run; an already-deleted Auth user is treated as success.
         users_repo.anonymize.assert_called_once_with(_UID)
 
-    def test_unexpected_auth_failure_returns_500_and_skips_cleanup(
+    def test_erasure_failure_returns_500_and_leaves_identity_intact(
         self, client_and_mocks
     ):
         client, users_repo, journal_repo, point_history_repo, auth_admin = (
             client_and_mocks
         )
-        auth_admin.delete_user.side_effect = RuntimeError("firebase down")
+        # A Firestore erasure failure must abort before the Auth user is touched, so
+        # the caller keeps a valid token and can retry the endpoint.
+        users_repo.anonymize.side_effect = RuntimeError("firestore down")
         # The global exception handler maps unhandled errors to 500; disable the
         # TestClient re-raise so we observe the HTTP response the client would get.
         client = TestClient(app, raise_server_exceptions=False)
@@ -83,10 +110,9 @@ class TestDeleteAccount:
         response = client.request("DELETE", "/me/account")
 
         assert response.status_code == 500
-        # Cleanup must not run if identity deletion failed unexpectedly.
-        journal_repo.delete_all_for_user.assert_not_called()
-        point_history_repo.delete_all_for_user.assert_not_called()
-        users_repo.anonymize.assert_not_called()
+        # Identity must be left intact if erasure failed, so the request is retryable.
+        auth_admin.revoke_refresh_tokens.assert_not_called()
+        auth_admin.delete_user.assert_not_called()
 
 
 class TestDeleteAccountAuth:
