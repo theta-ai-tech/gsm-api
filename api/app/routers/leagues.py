@@ -88,6 +88,7 @@ def _league_to_browse_card(league: League) -> LeagueBrowseCard:
         name=league.name,
         sport=league.sport,
         status=league.status,
+        format=league.format,
         region=league.region,
         tier=league.tier,
         max_players=league.max_players,

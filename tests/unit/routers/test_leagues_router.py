@@ -19,6 +19,7 @@ from app.dependencies.repos import (
 from app.deps import get_current_user, get_role_service
 from app.main import app
 from app.models.enums import (
+    LeagueFormatEnum,
     LeagueMemberStatusEnum,
     LeagueRoleEnum,
     LeagueStatusEnum,
@@ -158,6 +159,21 @@ class TestGetLeaguesHappyPath:
         assert card["tier"] == "intermediate"
         assert card["max_players"] == 12
         assert card["current_players"] == 3
+        assert card["format"] == "singles"  # model default when unset
+
+    def test_browse_card_carries_doubles_format(
+        self, client: TestClient, mock_leagues_repo: Mock
+    ):
+        # iOS branches the join flow on the browse card's server-owned format
+        # field — a doubles league must never be advertised as singles.
+        mock_leagues_repo.list_by_filter.return_value = [
+            _make_league("lg-doubles", format=LeagueFormatEnum.DOUBLES),
+            _make_league("lg-singles", format=LeagueFormatEnum.SINGLES),
+        ]
+        resp = client.get("/leagues")
+        assert resp.status_code == 200
+        formats = {c["league_id"]: c["format"] for c in resp.json()["leagues"]}
+        assert formats == {"lg-doubles": "doubles", "lg-singles": "singles"}
 
     def test_empty_result_returns_200_with_empty_list(
         self, client: TestClient, mock_leagues_repo: Mock
