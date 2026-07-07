@@ -98,6 +98,8 @@ def _user_completed_match_summary_to_dict(summary: UserCompletedMatchSummary) ->
         "result": summary.result.value if summary.result else None,
         "scoreText": summary.score_text,
         "leagueId": summary.league_id,
+        "opponentUid": summary.opponent_uid,
+        "opponentName": summary.opponent_name,
     }
 
 

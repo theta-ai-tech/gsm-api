@@ -12,9 +12,11 @@ from app.models.enums import (
     JournalEntryTypeEnum,
     JournalVisibilityEnum,
 )
+from app.models.enums import MatchResultEnum, SportEnum
 from app.models.journal import (
     CreateJournalEntryResponse,
     JournalEntry,
+    LoggableMatch,
 )
 from app.models.stats import NorthStarGoal, UserStats, WeeklyActivity
 from app.routers.improve import get_journal_service
@@ -84,6 +86,75 @@ def client(mock_journal_service, mock_current_user):
     app.dependency_overrides[get_current_user] = lambda: mock_current_user
     yield TestClient(app)
     app.dependency_overrides = previous_overrides
+
+
+# ---------------------------------------------------------------------------
+# GET /me/journal/loggable-matches
+# ---------------------------------------------------------------------------
+
+
+class TestListLoggableMatches:
+    def test_returns_200_with_match_shape_and_values(
+        self, client, mock_journal_service
+    ):
+        """200 with LoggableMatch items; asserts non-default field VALUES."""
+        mock_journal_service.get_loggable_matches.return_value = [
+            LoggableMatch(
+                match_id="m1",
+                sport=SportEnum.TENNIS,
+                finished_at=datetime(2030, 1, 5, tzinfo=timezone.utc),
+                result=MatchResultEnum.WIN,
+                score_text="6-4 7-5",
+                league_id="league_1",
+                opponent_uid="user_rival",
+                opponent_name="Rival Rick",
+                already_logged=True,
+            )
+        ]
+
+        response = client.get("/me/journal/loggable-matches")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        item = data[0]
+        assert item["match_id"] == "m1"
+        assert item["sport"] == "tennis"
+        assert item["result"] == "W"
+        assert item["score_text"] == "6-4 7-5"
+        assert item["league_id"] == "league_1"
+        assert item["opponent_uid"] == "user_rival"
+        assert item["opponent_name"] == "Rival Rick"
+        assert item["already_logged"] is True
+
+    def test_returns_200_empty_list(self, client, mock_journal_service):
+        """200 with an empty list when the user has no completed matches."""
+        mock_journal_service.get_loggable_matches.return_value = []
+
+        response = client.get("/me/journal/loggable-matches")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_user_not_found_returns_404(self, client, mock_journal_service):
+        """404 when the service raises ValueError for a missing user."""
+        mock_journal_service.get_loggable_matches.side_effect = ValueError(
+            "User not found"
+        )
+
+        response = client.get("/me/journal/loggable-matches")
+
+        assert response.status_code == 404
+
+    def test_route_not_shadowed_by_entry_id(self, client, mock_journal_service):
+        """The literal path resolves to loggable-matches, not GET /journal/{entry_id}."""
+        mock_journal_service.get_loggable_matches.return_value = []
+
+        response = client.get("/me/journal/loggable-matches")
+
+        assert response.status_code == 200
+        mock_journal_service.get_loggable_matches.assert_called_once_with("test_user")
+        mock_journal_service.get_entry.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

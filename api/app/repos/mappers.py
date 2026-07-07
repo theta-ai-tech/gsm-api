@@ -165,6 +165,8 @@ def _parse_user_completed_match_summary(data: dict[str, Any]) -> UserCompletedMa
         result=MatchResultEnum(result) if result else None,
         score_text=data.get("scoreText"),
         league_id=data.get("leagueId"),
+        opponent_uid=data.get("opponentUid"),
+        opponent_name=data.get("opponentName"),
     )
 
 

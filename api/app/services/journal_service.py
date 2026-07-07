@@ -27,6 +27,7 @@ from app.models.journal import (
     CreateJournalEntryRequest,
     CreateJournalEntryResponse,
     JournalEntry,
+    LoggableMatch,
     MatchReflection,
     UpdateJournalEntryRequest,
 )
@@ -283,6 +284,47 @@ class JournalService:
             if cursor_entry is None:
                 raise JournalInvalidCursorError("Invalid cursor")
         return self.journal_repo.list_entries(uid, limit=limit, cursor=cursor)
+
+    # ===== GET /me/journal/loggable-matches =====
+
+    def get_loggable_matches(self, uid: str) -> list[LoggableMatch]:
+        """
+        Return the caller's recent completed matches for the journal picker.
+
+        Reads the completedMatches cache on the user doc (1 read), enriches each
+        entry with an ``already_logged`` flag derived from the journalRecent
+        cache, and returns them ordered by finished_at DESC.
+        """
+        profile = self.users_repo.get_private_profile(uid)
+        if profile is None:
+            raise ValueError("User not found")
+
+        logged_match_ids = {
+            summary.match_id for summary in profile.journal_recent if summary.match_id
+        }
+
+        loggable = [
+            LoggableMatch(
+                match_id=m.match_id,
+                sport=m.sport,
+                finished_at=m.finished_at,
+                result=m.result,
+                score_text=m.score_text,
+                league_id=m.league_id,
+                opponent_uid=m.opponent_uid,
+                opponent_name=m.opponent_name,
+                already_logged=m.match_id in logged_match_ids,
+            )
+            for m in profile.completed_matches
+        ]
+        loggable.sort(key=lambda m: m.finished_at, reverse=True)
+
+        log_analytics_event(
+            logger,
+            event="loggable_matches_read",
+            uid=uid,
+        )
+        return loggable
 
     # ===== GET /me/improve/stats =====
 

@@ -30,6 +30,7 @@ from app.models.journal import (
     CreateJournalEntryRequest,
     CreateJournalEntryResponse,
     JournalEntry,
+    LoggableMatch,
     UpdateJournalEntryRequest,
 )
 from app.models.stats import NorthStarGoal, UserStats
@@ -148,6 +149,39 @@ def list_journal_entries(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     next_cursor = _encode_cursor(entries[-1]) if len(entries) == limit else None
     return JournalListResponse(entries=entries, next_cursor=next_cursor)
+
+
+# ===== GET /me/journal/loggable-matches =====
+#
+# NOTE: This route MUST be declared before GET /journal/{entry_id}, otherwise the
+# dynamic route would capture the literal "loggable-matches" path segment.
+
+
+@router.get(
+    "/journal/loggable-matches",
+    response_model=list[LoggableMatch],
+    summary="List recent completed matches for the journal picker",
+    responses={
+        401: _401,
+        404: _404_user,
+    },
+)
+def list_loggable_matches(
+    current_user: CurrentUser = Depends(get_current_user),
+    journal_service: JournalService = Depends(get_journal_service),
+):
+    """
+    List the authenticated user's recent completed matches, ordered by
+    finished_at DESC, for the journal match picker.
+
+    Each item carries an `already_logged` flag (true when a journal entry for
+    that match is present in the recent-journal cache). Reads only the cached
+    completedMatches on the user doc — no expensive Firestore queries.
+    """
+    try:
+        return journal_service.get_loggable_matches(current_user.uid)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
 # ===== POST /me/journal =====

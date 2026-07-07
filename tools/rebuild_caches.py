@@ -85,7 +85,33 @@ def compute_upcoming(matches: list[dict[str, Any]], now: datetime) -> list[dict[
     ]
 
 
-def compute_recent(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _derive_opponent(
+    match: dict[str, Any], uid: str
+) -> tuple[str | None, str | None]:
+    participants = match.get("participants") or []
+
+    my_team: str | None = None
+    for item in participants:
+        if item.get("uid") == uid:
+            my_team = item.get("team")
+            break
+
+    for item in participants:
+        other_uid = item.get("uid")
+        if not other_uid or other_uid == uid:
+            continue
+        if my_team is not None and item.get("team") == my_team:
+            continue
+        return str(other_uid), item.get("displayName")
+
+    for other_uid in match.get("participantUids") or []:
+        if other_uid and other_uid != uid:
+            return str(other_uid), None
+
+    return None, None
+
+
+def compute_recent(matches: list[dict[str, Any]], uid: str) -> list[dict[str, Any]]:
     completed = [
         m
         for m in matches
@@ -99,17 +125,22 @@ def compute_recent(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ),
         reverse=True,
     )
-    return [
-        {
-            "matchId": str(m.get("matchId", "")),
-            "sport": m.get("sport"),
-            "finishedAt": m.get("finishedAt"),
-            "result": None,
-            "scoreText": None,
-            "leagueId": m.get("leagueId"),
-        }
-        for m in ordered[:10]
-    ]
+    out: list[dict[str, Any]] = []
+    for m in ordered[:10]:
+        opponent_uid, opponent_name = _derive_opponent(m, uid)
+        out.append(
+            {
+                "matchId": str(m.get("matchId", "")),
+                "sport": m.get("sport"),
+                "finishedAt": m.get("finishedAt"),
+                "result": None,
+                "scoreText": None,
+                "leagueId": m.get("leagueId"),
+                "opponentUid": opponent_uid,
+                "opponentName": opponent_name,
+            }
+        )
+    return out
 
 
 def compute_league_summaries(
@@ -238,7 +269,7 @@ def rebuild_uid(client: firestore.Client, uid: str, dry_run: bool, now: datetime
 
     matches = _fetch_matches_for_uid(client, uid)
     upcoming = compute_upcoming(matches, now=now)
-    recent_completed = compute_recent(matches)
+    recent_completed = compute_recent(matches, uid)
 
     memberships = _fetch_league_memberships_for_uid(client, uid)
     leagues = _fetch_leagues_by_ids(client, {str(m.get("leagueId", "")) for m in memberships})

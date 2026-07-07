@@ -6,6 +6,41 @@ from typing import Any
 from google.cloud import firestore  # type: ignore[import-untyped]
 
 
+def derive_opponent(
+    participants: list[dict[str, Any]] | None,
+    participant_uids: list[str] | None,
+    uid: str,
+) -> tuple[str | None, str | None]:
+    """Return (opponent_uid, opponent_name) for ``uid`` from a match's participants.
+
+    Singles / no team info: the first participant whose uid != uid.
+    Doubles (teams present): the first participant on the *other* team.
+    Fallback when participants are missing/empty: the first other uid in
+    participant_uids, with name None.
+    """
+    participants = participants or []
+
+    my_team: str | None = None
+    for item in participants:
+        if item.get("uid") == uid:
+            my_team = item.get("team")
+            break
+
+    for item in participants:
+        other_uid = item.get("uid")
+        if not other_uid or other_uid == uid:
+            continue
+        if my_team is not None and item.get("team") == my_team:
+            continue
+        return str(other_uid), item.get("displayName")
+
+    for other_uid in participant_uids or []:
+        if other_uid and other_uid != uid:
+            return str(other_uid), None
+
+    return None, None
+
+
 def apply_upcoming_cache_update(
     current_cache: list[dict[str, Any]] | None,
     match_id: str,
@@ -91,6 +126,8 @@ def migrate_upcoming_to_completed_for_user(
     league_id: str | None = None,
     result: str | None = None,
     score_text: str | None = None,
+    opponent_uid: str | None = None,
+    opponent_name: str | None = None,
     cap: int = 10,
 ) -> bool:
     doc_ref = client.collection("users").document(uid)
@@ -109,6 +146,8 @@ def migrate_upcoming_to_completed_for_user(
             "leagueId": league_id,
             "result": result,
             "scoreText": score_text,
+            "opponentUid": opponent_uid,
+            "opponentName": opponent_name,
         }
         updated_upcoming, updated_completed = apply_completion_cache_migration(
             upcoming_cache=upcoming_cache,

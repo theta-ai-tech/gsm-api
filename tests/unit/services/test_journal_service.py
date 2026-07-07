@@ -7,6 +7,7 @@ from app.models.common import (
     JournalEntrySummary,
     PerSportLevels,
     PerSportRankings,
+    UserCompletedMatchSummary,
     UserPreferences,
 )
 from app.models.enums import (
@@ -797,6 +798,96 @@ class TestDeleteEntry:
 
         with pytest.raises(JournalEntryNotFoundError, match="not found"):
             journal_service.delete_entry("test_user", "missing")
+
+
+# ---------------------------------------------------------------------------
+# TestGetLoggableMatches
+# ---------------------------------------------------------------------------
+
+
+def _completed(
+    match_id: str,
+    finished_at: datetime,
+    opponent_uid: str | None = None,
+    opponent_name: str | None = None,
+) -> UserCompletedMatchSummary:
+    return UserCompletedMatchSummary(
+        match_id=match_id,
+        sport=SportEnum.TENNIS,
+        finished_at=finished_at,
+        result=MatchResultEnum.WIN,
+        score_text="6-4 7-5",
+        league_id="league_1",
+        opponent_uid=opponent_uid,
+        opponent_name=opponent_name,
+    )
+
+
+class TestGetLoggableMatches:
+    def test_empty_completed_matches_returns_empty_list(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        mock_users_repo.get_private_profile.return_value = _make_profile()
+
+        assert journal_service.get_loggable_matches("test_user") == []
+
+    def test_user_not_found_raises(self, journal_service, mock_users_repo):
+        mock_users_repo.get_private_profile.return_value = None
+
+        with pytest.raises(ValueError, match="User not found"):
+            journal_service.get_loggable_matches("ghost")
+
+    def test_orders_by_finished_at_desc(self, journal_service, mock_users_repo):
+        older = _completed("m_old", datetime(2030, 1, 1, tzinfo=timezone.utc))
+        newer = _completed("m_new", datetime(2030, 1, 5, tzinfo=timezone.utc))
+        mock_users_repo.get_private_profile.return_value = _make_profile(
+            completed_matches=[older, newer]
+        )
+
+        result = journal_service.get_loggable_matches("test_user")
+
+        assert [m.match_id for m in result] == ["m_new", "m_old"]
+
+    def test_already_logged_flag_and_field_values(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        logged = _completed(
+            "m_logged",
+            datetime(2030, 1, 5, tzinfo=timezone.utc),
+            opponent_uid="user_rival",
+            opponent_name="Rival Rick",
+        )
+        unlogged = _completed(
+            "m_unlogged",
+            datetime(2030, 1, 1, tzinfo=timezone.utc),
+        )
+        recent = [
+            JournalEntrySummary(
+                entry_id="e1",
+                created_at=datetime(2030, 1, 6, tzinfo=timezone.utc),
+                title="Match win",
+                match_id="m_logged",
+                entry_type=JournalEntryTypeEnum.MATCH,
+            )
+        ]
+        mock_users_repo.get_private_profile.return_value = _make_profile(
+            journal_recent=recent,
+            completed_matches=[logged, unlogged],
+        )
+
+        result = journal_service.get_loggable_matches("test_user")
+
+        by_id = {m.match_id: m for m in result}
+        assert by_id["m_logged"].already_logged is True
+        assert by_id["m_logged"].opponent_uid == "user_rival"
+        assert by_id["m_logged"].opponent_name == "Rival Rick"
+        assert by_id["m_logged"].score_text == "6-4 7-5"
+        assert by_id["m_logged"].result == MatchResultEnum.WIN
+        assert by_id["m_unlogged"].already_logged is False
 
     def test_delete_entry_cross_user_returns_not_found(
         self, journal_service, mock_journal_repo

@@ -48,6 +48,7 @@ from app.models.journal import (
     CreateJournalEntryRequest,
     CreateJournalEntryResponse,
     JournalEntry,
+    LoggableMatch,
     MatchReflection,
     UpdateJournalEntryRequest,
 )
@@ -132,6 +133,7 @@ __all__ = [
     "ParticipantEntry",
     # journal
     "JournalEntry",
+    "LoggableMatch",
     "MatchReflection",
     "CreateJournalEntryRequest",
     "CreateJournalEntryResponse",
