@@ -95,7 +95,7 @@ firestore_patch "users/user_ignatios" '{
         "matchId": {"stringValue": "match-completed-2"},
         "sport": {"stringValue": "padel"},
         "finishedAt": {"timestampValue": "2020-01-10T18:00:00Z"},
-        "result": {"stringValue": "loss"},
+        "result": {"stringValue": "L"},
         "scoreText": {"stringValue": "3-6 4-6"},
         "leagueId": {"stringValue": "league-padel-local"},
         "opponentUid": {"stringValue": "user_alice"},
@@ -105,7 +105,7 @@ firestore_patch "users/user_ignatios" '{
         "matchId": {"stringValue": "match-completed-1"},
         "sport": {"stringValue": "padel"},
         "finishedAt": {"timestampValue": "2020-01-20T18:00:00Z"},
-        "result": {"stringValue": "win"},
+        "result": {"stringValue": "W"},
         "scoreText": {"stringValue": "6-3 6-4"},
         "leagueId": {"stringValue": "league-padel-local"},
         "opponentUid": {"stringValue": "user_bob"},
@@ -141,7 +141,7 @@ assert_eq "ordered finished_at DESC (last = legacy)" \
 assert_eq "opponent_uid populated" "$(echo "$RESP" | jq -r '.[0].opponent_uid')" "user_bob"
 assert_eq "opponent_name populated" "$(echo "$RESP" | jq -r '.[0].opponent_name')" "Bob Karv"
 assert_eq "score_text passed through" "$(echo "$RESP" | jq -r '.[0].score_text')" "6-3 6-4"
-assert_eq "result passed through" "$(echo "$RESP" | jq -r '.[0].result')" "win"
+assert_eq "result passed through" "$(echo "$RESP" | jq -r '.[0].result')" "W"
 assert_eq "league_id passed through" "$(echo "$RESP" | jq -r '.[0].league_id')" "league-padel-local"
 assert_eq "already_logged true for journaled match" \
   "$(echo "$RESP" | jq -r '.[0].already_logged')" "true"
