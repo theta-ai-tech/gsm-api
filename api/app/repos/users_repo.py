@@ -87,6 +87,16 @@ class UsersRepo(RepoBase):
         prefixed_updates = {f"playTab.{key}": value for key, value in updates.items()}
         self.client.collection("users").document(uid).update(prefixed_updates)
 
+    def update_profile(self, uid: str, updates: dict) -> None:
+        """Field-scoped partial update of the user doc (camelCase dot-path keys).
+
+        Callers own the field mapping; this method must only ever receive
+        profile-editable paths (``name``, ``nameLower``, ``profileUrl``,
+        ``preferences.*``) — never ``rankings.*``. Firestore dot-paths update
+        individual nested fields without replacing the parent map.
+        """
+        self.client.collection("users").document(uid).update(updates)
+
     def upsert_device_token(self, uid: str, token: str, platform: PlatformEnum) -> None:
         """Idempotent: adds token if new, refreshes lastSeenAt if already present."""
         now = datetime.now(timezone.utc)

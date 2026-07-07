@@ -81,6 +81,8 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/players` | Search registered players by name prefix (partner picker) |
 | `POST` | `/leagues/{id}/kickoff` | Admin kickoff: split open league members (or doubles teams) into divisions |
 | `DELETE` | `/me/account` | Permanently delete the caller's account (anonymize-in-place) |
+| `GET` | `/me/clubhouse/profile` | Athlete Card & Resume for the caller's Profile tab |
+| `PATCH` | `/me/clubhouse/profile` | Partial update of the caller's editable profile fields |
 
 ---
 
@@ -112,6 +114,90 @@ leaderboard recompute.
 
 **Errors:**
 - `401` missing/invalid token.
+
+---
+
+### GET /me/clubhouse/profile
+
+**Auth:** Required (Firebase Bearer ID token). Self-only — no target `uid`.
+
+**Request body:** None.
+
+**Response `200`:**
+
+```json
+{
+  "uid": "user_ignatios",
+  "display_name": "Ignatios C.",
+  "avatar_url": "https://cdn.example.com/a.png",
+  "resume": {
+    "total_matches": 2,
+    "total_wins": 1,
+    "leagues_completed": 0,
+    "sports": [
+      {
+        "sport": "tennis",
+        "pts": 820,
+        "tier": "amateur",
+        "global_ranking": 340,
+        "personal_best": 850,
+        "current_streak": 3,
+        "best_streak": 5
+      }
+    ]
+  }
+}
+```
+
+Counts derive from capped denormalized caches (`completedMatches` max 10,
+`leaguesCompleted` max 20).
+
+**Errors:**
+- `401` missing/invalid token.
+- `404` user not found.
+
+---
+
+### PATCH /me/clubhouse/profile
+
+**Auth:** Required (Firebase Bearer ID token). Self-only — no target `uid`.
+
+**Request body** (all fields optional; at least one required):
+
+```json
+{
+  "display_name": "New Name",
+  "avatar_url": "https://cdn.example.com/a.png",
+  "area": 202,
+  "levels": {"tennis": "advanced"}
+}
+```
+
+**Field rules:**
+- `display_name` — whitespace-stripped, non-empty, max length 100. Also updates the
+  `nameLower` search index. Empty/whitespace-only → `422`.
+- `avatar_url` — valid **https** URL; `http://` → `422`. Cannot be cleared (omit to keep).
+- `area` — integer key validated against `config/regions`; unknown → `422`.
+- `levels` — per-sport **merge** (`tennis`/`padel`/`pickleball` → `LevelEnum`); only the
+  provided sports change, others keep their existing level. Invalid sport key or level → `422`.
+- Unknown top-level fields → `422` (strict model).
+
+**Response `200`:** identical shape to `GET /me/clubhouse/profile`, reflecting the update.
+
+**Levels never change rankings:** editing `levels` does not touch `rankings.pts`,
+`rankings.tier`, or any `rankings.*` field.
+
+**Display-name eventual consistency:** there is **no synchronous fan-out**. Historical match
+`participants[].displayName`, ticker names, leaderboard `name`, offer `from_name`/`to_name`,
+and discovery `owner_name` retain the old value; new writes pick up the new name; the scheduled
+leaderboard recompute refreshes leaderboard names. `avatar_url` is read live everywhere.
+
+**Errors:**
+- `400` empty body (no fields provided).
+- `401` missing/invalid token.
+- `404` user not found (including a tombstoned/deleted account).
+- `422` unknown `area`, non-https `avatar_url`, invalid level/sport enum, unknown field, or
+  empty `display_name`.
 
 ---
 
@@ -1448,3 +1534,9 @@ Behavior:
    introduced in LGM-1 / PR #333). The league must be `active` (not `open` or `upcoming`), and
    both offer sender and recipient must be active members of the league. The resulting match carries
    `league_id` and counts toward league standings once completed.
+
+9. **`PATCH /me/clubhouse/profile` — avatar cannot be cleared:** `avatar_url` uses `null`/omission
+   to mean "not provided", so there is no way to clear an existing avatar through this endpoint —
+   only replace it with a new https URL. Clearing an avatar is deferred. A display-name change is
+   eventually consistent across denormalized name caches (no synchronous fan-out); see the
+   `PATCH /me/clubhouse/profile` contract for the exact caches affected.

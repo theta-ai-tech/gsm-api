@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies.repos import get_users_repo
+from app.dependencies.repos import get_region_config_repo, get_users_repo
 from app.deps import get_current_user
 from app.main import app
 from app.models.common import (
@@ -15,7 +15,9 @@ from app.models.common import (
     UserCompletedMatchSummary,
 )
 from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile
+from app.repos.region_config_repo import RegionConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
 
@@ -202,6 +204,218 @@ class TestClubhouseAuthRequired:
         try:
             test_client = TestClient(app)
             resp = test_client.get("/me/clubhouse/profile")
+            assert resp.status_code == 401
+        finally:
+            app.dependency_overrides = previous_overrides
+
+
+@pytest.fixture
+def mock_region_config_repo():
+    repo = Mock(spec=RegionConfigRepo)
+    repo.get.return_value = RegionConfig(
+        mapping={"101": "athens", "202": "thessaloniki"}, version=1
+    )
+    return repo
+
+
+@pytest.fixture
+def patch_client(mock_users_repo, mock_current_user, mock_region_config_repo):
+    previous_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[get_users_repo] = lambda: mock_users_repo
+    app.dependency_overrides[get_current_user] = lambda: mock_current_user
+    app.dependency_overrides[get_region_config_repo] = lambda: mock_region_config_repo
+    yield TestClient(app)
+    app.dependency_overrides = previous_overrides
+
+
+class TestPatchClubhouseProfile:
+    def test_patch_display_name_returns_updated_profile(
+        self, patch_client, mock_users_repo
+    ):
+        before = _make_profile(name="Old Name")
+        after = _make_profile(name="New Name")
+        mock_users_repo.get_private_profile.side_effect = [before, after]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile", json={"display_name": "New Name"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["display_name"] == "New Name"
+        mock_users_repo.update_profile.assert_called_once_with(
+            "test_user", {"name": "New Name", "nameLower": "new name"}
+        )
+
+    def test_patch_avatar_alone(self, patch_client, mock_users_repo):
+        before = _make_profile()
+        after = _make_profile(profile_url="https://cdn.example.com/a.png")
+        mock_users_repo.get_private_profile.side_effect = [before, after]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={"avatar_url": "https://cdn.example.com/a.png"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["avatar_url"] == "https://cdn.example.com/a.png"
+        mock_users_repo.update_profile.assert_called_once_with(
+            "test_user", {"profileUrl": "https://cdn.example.com/a.png"}
+        )
+
+    def test_patch_area_alone(self, patch_client, mock_users_repo):
+        mock_users_repo.get_private_profile.side_effect = [
+            _make_profile(),
+            _make_profile(),
+        ]
+
+        resp = patch_client.patch("/me/clubhouse/profile", json={"area": 202})
+
+        assert resp.status_code == 200
+        mock_users_repo.update_profile.assert_called_once_with(
+            "test_user", {"preferences.area": 202}
+        )
+
+    def test_patch_levels_alone(self, patch_client, mock_users_repo):
+        mock_users_repo.get_private_profile.side_effect = [
+            _make_profile(),
+            _make_profile(),
+        ]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile", json={"levels": {"padel": "intermediate"}}
+        )
+
+        assert resp.status_code == 200
+        mock_users_repo.update_profile.assert_called_once_with(
+            "test_user", {"preferences.levels.padel": "intermediate"}
+        )
+
+    def test_patch_multiple_fields_combined(self, patch_client, mock_users_repo):
+        mock_users_repo.get_private_profile.side_effect = [
+            _make_profile(),
+            _make_profile(),
+        ]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={
+                "display_name": "Combo",
+                "area": 101,
+                "levels": {"tennis": "advanced"},
+            },
+        )
+
+        assert resp.status_code == 200
+        mock_users_repo.update_profile.assert_called_once_with(
+            "test_user",
+            {
+                "name": "Combo",
+                "nameLower": "combo",
+                "preferences.area": 101,
+                "preferences.levels.tennis": "advanced",
+            },
+        )
+
+    def test_levels_update_emits_no_rankings_paths(self, patch_client, mock_users_repo):
+        mock_users_repo.get_private_profile.side_effect = [
+            _make_profile(),
+            _make_profile(),
+        ]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={"levels": {"tennis": "pro", "padel": "beginner"}},
+        )
+
+        assert resp.status_code == 200
+        _, updates = mock_users_repo.update_profile.call_args[0]
+        assert all(not key.startswith("rankings") for key in updates)
+
+    def test_empty_body_returns_400(self, patch_client, mock_users_repo):
+        resp = patch_client.patch("/me/clubhouse/profile", json={})
+        assert resp.status_code == 400
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_empty_levels_object_returns_400(self, patch_client, mock_users_repo):
+        # {"levels": {}} passes the top-level "is anything set" check (levels
+        # is not None) but builds zero dot-paths — must not reach Firestore
+        # with an empty update dict.
+        mock_users_repo.get_private_profile.return_value = _make_profile()
+
+        resp = patch_client.patch("/me/clubhouse/profile", json={"levels": {}})
+
+        assert resp.status_code == 400
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_levels_all_explicit_null_returns_400(self, patch_client, mock_users_repo):
+        # Every sport key present but explicitly null: fields_set is non-empty
+        # so the per-sport loop runs, but each value is None so no dot-path is
+        # emitted — same empty-update hazard as {"levels": {}}.
+        mock_users_repo.get_private_profile.return_value = _make_profile()
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={"levels": {"tennis": None, "padel": None, "pickleball": None}},
+        )
+
+        assert resp.status_code == 400
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_unknown_area_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch("/me/clubhouse/profile", json={"area": 999})
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_http_avatar_url_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch(
+            "/me/clubhouse/profile", json={"avatar_url": "http://cdn.example.com/a.png"}
+        )
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_invalid_level_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch(
+            "/me/clubhouse/profile", json={"levels": {"tennis": "expert"}}
+        )
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_unknown_sport_key_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch(
+            "/me/clubhouse/profile", json={"levels": {"cricket": "advanced"}}
+        )
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_unknown_top_level_field_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch("/me/clubhouse/profile", json={"nickname": "x"})
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_empty_display_name_returns_422(self, patch_client, mock_users_repo):
+        resp = patch_client.patch("/me/clubhouse/profile", json={"display_name": "   "})
+        assert resp.status_code == 422
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_user_not_found_returns_404(self, patch_client, mock_users_repo):
+        mock_users_repo.get_private_profile.return_value = None
+
+        resp = patch_client.patch("/me/clubhouse/profile", json={"display_name": "X"})
+
+        assert resp.status_code == 404
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_no_auth_returns_401(self, mock_region_config_repo):
+        previous_overrides = dict(app.dependency_overrides)
+        app.dependency_overrides.pop(get_current_user, None)
+        app.dependency_overrides[get_region_config_repo] = (
+            lambda: mock_region_config_repo
+        )
+        try:
+            test_client = TestClient(app)
+            resp = test_client.patch(
+                "/me/clubhouse/profile", json={"display_name": "X"}
+            )
             assert resp.status_code == 401
         finally:
             app.dependency_overrides = previous_overrides

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from app.constants import STREAK_MILESTONES
-from app.models.common import SportRanking, UserCompletedMatchSummary
+from app.models.common import PerSportLevels, SportRanking, UserCompletedMatchSummary
 from app.models.enums import MatchResultEnum
 
 
@@ -43,6 +45,40 @@ def compute_match_totals(
     total = len(completed_matches)
     wins = sum(1 for m in completed_matches if m.result == MatchResultEnum.WIN)
     return total, wins
+
+
+def build_profile_update_paths(
+    display_name: str | None,
+    avatar_url: str | None,
+    area: int | None,
+    levels: PerSportLevels | None,
+    levels_fields_set: set[str],
+) -> dict[str, Any]:
+    """Map validated PATCH-profile fields to camelCase Firestore dot-paths.
+
+    Levels are merged per-sport (one dot-path per provided sport), never a whole
+    map replace, so unmentioned sports keep their existing level. ``nameLower`` is
+    written in lockstep with ``name`` to keep the player prefix-search index in
+    sync. This function never emits any ``rankings.*`` path.
+
+    ``display_name`` is expected to be already stripped by the request model, and
+    ``avatar_url`` already ``str(...)``-converted by the caller.
+    """
+    updates: dict[str, Any] = {}
+    if display_name is not None:
+        updates["name"] = display_name
+        updates["nameLower"] = display_name.lower()
+    if avatar_url is not None:
+        updates["profileUrl"] = avatar_url
+    if area is not None:
+        updates["preferences.area"] = area
+    if levels is not None:
+        for sport in ("tennis", "padel", "pickleball"):
+            if sport in levels_fields_set:
+                value = getattr(levels, sport)
+                if value is not None:
+                    updates[f"preferences.levels.{sport}"] = value.value
+    return updates
 
 
 def check_personal_best(new_pts: int, current_best: int | None) -> tuple[bool, int]:
