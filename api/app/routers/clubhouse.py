@@ -188,6 +188,13 @@ def patch_clubhouse_profile(
         levels=request.levels,
         levels_fields_set=request.levels.model_fields_set if request.levels is not None else set(),
     )
+    if not updates:
+        # e.g. {"levels": {}} or {"levels": {"tennis": null}} — levels is not
+        # None so the top-level check passes, but no sport was actually set.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="at least one field must be provided",
+        )
     users_repo.update_profile(current_user.uid, updates)
 
     fresh = users_repo.get_private_profile(current_user.uid)

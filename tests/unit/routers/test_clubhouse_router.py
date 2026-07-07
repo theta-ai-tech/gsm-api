@@ -336,6 +336,31 @@ class TestPatchClubhouseProfile:
         assert resp.status_code == 400
         mock_users_repo.update_profile.assert_not_called()
 
+    def test_empty_levels_object_returns_400(self, patch_client, mock_users_repo):
+        # {"levels": {}} passes the top-level "is anything set" check (levels
+        # is not None) but builds zero dot-paths — must not reach Firestore
+        # with an empty update dict.
+        mock_users_repo.get_private_profile.return_value = _make_profile()
+
+        resp = patch_client.patch("/me/clubhouse/profile", json={"levels": {}})
+
+        assert resp.status_code == 400
+        mock_users_repo.update_profile.assert_not_called()
+
+    def test_levels_all_explicit_null_returns_400(self, patch_client, mock_users_repo):
+        # Every sport key present but explicitly null: fields_set is non-empty
+        # so the per-sport loop runs, but each value is None so no dot-path is
+        # emitted — same empty-update hazard as {"levels": {}}.
+        mock_users_repo.get_private_profile.return_value = _make_profile()
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={"levels": {"tennis": None, "padel": None, "pickleball": None}},
+        )
+
+        assert resp.status_code == 400
+        mock_users_repo.update_profile.assert_not_called()
+
     def test_unknown_area_returns_422(self, patch_client, mock_users_repo):
         resp = patch_client.patch("/me/clubhouse/profile", json={"area": 999})
         assert resp.status_code == 422
