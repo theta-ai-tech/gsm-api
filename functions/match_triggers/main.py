@@ -9,6 +9,7 @@ from functions.match_triggers.on_match_write import (
     qualify_upcoming_match_write,
 )
 from functions.match_triggers.upcoming_cache import (
+    derive_opponent,
     migrate_upcoming_to_completed_for_user,
     update_upcoming_cache_for_user,
 )
@@ -199,8 +200,12 @@ def handle_match_write_migrate_on_completion(
     result_by_user = after.get("resultByUser") or {}
     score = after.get("score") or {}
     score_text = score.get("scoreText")
+    participants = after.get("participants") or []
 
     for uid in result.participant_uids:
+        opponent_uid, opponent_name = derive_opponent(
+            participants, result.participant_uids, uid
+        )
         changed = migrate_upcoming_to_completed_for_user(
             client=client,
             uid=uid,
@@ -210,6 +215,8 @@ def handle_match_write_migrate_on_completion(
             league_id=league_id,
             result=result_by_user.get(uid),
             score_text=score_text,
+            opponent_uid=opponent_uid,
+            opponent_name=opponent_name,
         )
         if changed:
             writes_count += 1

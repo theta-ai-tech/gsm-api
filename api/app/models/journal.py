@@ -55,6 +55,20 @@ class JournalEntry(GsmBaseModel):
     deleted_at: datetime | None = None
 
 
+class LoggableMatch(GsmBaseModel):
+    """A recent completed match offered to the journal match picker."""
+
+    match_id: str
+    sport: SportEnum
+    finished_at: datetime
+    result: MatchResultEnum | None = None
+    score_text: str | None = None
+    league_id: str | None = None
+    opponent_uid: str | None = None
+    opponent_name: str | None = None
+    already_logged: bool = False
+
+
 class CreateJournalEntryRequest(GsmBaseModel):
     model_config = {
         "json_schema_extra": {

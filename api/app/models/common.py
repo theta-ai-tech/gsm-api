@@ -176,6 +176,8 @@ class UserCompletedMatchSummary(GsmBaseModel):
     result: MatchResultEnum | None = None
     score_text: str | None = None
     league_id: str | None = None
+    opponent_uid: str | None = None
+    opponent_name: str | None = None
 
 
 class JournalEntrySummary(GsmBaseModel):

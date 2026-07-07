@@ -50,8 +50,18 @@ def _complete_match_and_run_cache_trigger(
         "scheduledAt": scheduled_at,
         "participantUids": [home_uid, away_uid],
         "participants": [
-            {"uid": home_uid, "role": "player", "team": 1},
-            {"uid": away_uid, "role": "player", "team": 2},
+            {
+                "uid": home_uid,
+                "role": "player",
+                "team": 1,
+                "displayName": "Home Player",
+            },
+            {
+                "uid": away_uid,
+                "role": "player",
+                "team": 2,
+                "displayName": "Away Player",
+            },
         ],
         "leagueId": "league_cross_tab",
     }
@@ -195,3 +205,8 @@ def test_completed_match_picker_shape_matches_quick_entry_needs(db) -> None:
     assert picker_item.result == MatchResultEnum.WIN
     assert picker_item.score_text == "6-4 6-3"
     assert picker_item.league_id == "league_cross_tab"
+    # Opponent identity is denormalized into the cache by the completion trigger.
+    assert picker_item_raw["opponentUid"] == away_uid
+    assert picker_item_raw["opponentName"] == "Away Player"
+    assert picker_item.opponent_uid == away_uid
+    assert picker_item.opponent_name == "Away Player"

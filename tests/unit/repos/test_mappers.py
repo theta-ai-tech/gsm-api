@@ -22,6 +22,7 @@ from app.repos.mappers import (
     _parse_geo_location,
     _parse_journal_entry_summary,
     _parse_sport_ranking,
+    _parse_user_completed_match_summary,
     to_broadcast,
     to_division,
     to_journal_entry,
@@ -1000,3 +1001,33 @@ class TestToLeagueBrowseCard:
         assert card.max_players is None
         assert card.current_players is None
         assert card.start_date is None
+
+
+class TestUserCompletedMatchSummaryMapping:
+    _base = {
+        "matchId": "m1",
+        "sport": "tennis",
+        "finishedAt": datetime(2030, 1, 5, tzinfo=timezone.utc),
+    }
+
+    def test_parses_opponent_fields(self):
+        summary = _parse_user_completed_match_summary(
+            {
+                **self._base,
+                "result": "W",
+                "scoreText": "6-4 7-5",
+                "leagueId": "league_1",
+                "opponentUid": "user_rival",
+                "opponentName": "Rival Rick",
+            }
+        )
+
+        assert summary.match_id == "m1"
+        assert summary.opponent_uid == "user_rival"
+        assert summary.opponent_name == "Rival Rick"
+
+    def test_legacy_doc_without_opponent_fields_defaults_none(self):
+        summary = _parse_user_completed_match_summary(dict(self._base))
+
+        assert summary.opponent_uid is None
+        assert summary.opponent_name is None
