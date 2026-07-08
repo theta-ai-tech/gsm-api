@@ -104,4 +104,5 @@ def get_league_service() -> LeagueService:
         get_users_repo(),
         get_divisions_repo(),
         get_notification_intent_repo(),
+        get_matches_repo(),
     )

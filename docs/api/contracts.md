@@ -73,7 +73,7 @@ Used in offer/broadcast payloads to show opponent skill level.
 | `GET` | `/leagues/{id}/divisions` | List kickoff-created league divisions (auth: member) |
 | `GET` | `/leagues/{id}/divisions/{divisionId}/standings` | Get division standings (auth: member) |
 | `GET` | `/leagues/{id}/divisions/{divisionId}/matches` | List division upcoming or completed matches (auth: member) |
-| `POST` | `/leagues/{id}/join` | Self-serve join: singles self-join, or doubles team invite with a partner |
+| `POST` | `/leagues/{id}/join` | Self-serve join: singles self-join, or doubles team invite with a registered (`partner_uid`) or unregistered (`partner_invite`) partner |
 | `POST` | `/leagues/{id}/teams/{teamId}/accept` | Invited partner accepts a pending team (auth: partner) |
 | `POST` | `/leagues/{id}/teams/{teamId}/decline` | Invited partner declines a pending team (auth: partner) |
 | `DELETE` | `/leagues/{id}/teams/{teamId}` | Captain cancels a pending team invite (auth: captain) |
@@ -1303,14 +1303,56 @@ Preconditions:
 - Neither caller nor partner may already be a member, or in another `pending`/`active`
   team in this league (one team per user per league).
 
-**Key error codes (both formats):**
+#### Doubles leagues (`format: "doubles"`) — unregistered partner invite
+
+**Request body:**
+
+```json
+{ "partner_invite": { "name": "Newbie Nick", "email": "nick@example.com", "phone": "+30…" } }
+```
+
+Use this when the partner is **not on GSM yet**. `partner_uid` and `partner_invite` are
+mutually exclusive. Unlike the registered-partner flow there is **no accept gate**: the team
+is created `active` immediately and consumes **2 capacity slots**. The email is a durable
+match key stored server-side only — it is **never** returned in any response. If someone later
+registers with that email, their placeholder slot is backfilled to their real uid (and the
+captain is notified). `partner_placeholder_uid` = `"invite:" + sha256(normalized_email)[:24]`.
+
+**Response (`201`, LeagueTeam):**
+
+```json
+{
+  "team_id": "aUt0GeNeRaTeD",
+  "status": "active",
+  "captain_uid": "user_captain",
+  "partner_uid": null,
+  "member_uids": ["user_captain", "invite:9f2c…"],
+  "name": "Cap Tain / Newbie Nick",
+  "created_at": "2026-06-10T15:00:00Z",
+  "accepted_at": "2026-06-10T15:00:00Z",
+  "rating_avg": null,
+  "division_id": null,
+  "partner_placeholder_uid": "invite:9f2c…",
+  "partner_invite": { "name": "Newbie Nick", "phone": null }
+}
+```
+
+Preconditions:
+- League must exist, have `format: "doubles"`, and be `open`/`upcoming`.
+- The invite email must not be the caller's own email and must not belong to any registered
+  user (registered partners must use `partner_uid`).
+- Caller must not already be a member or in another `pending`/`active` team.
+- No outstanding invite for the same email may already exist in this league.
+
+**Key error codes (all doubles variants):**
 
 | Code | Condition |
 |------|-----------|
-| `400` | `partner_uid` sent to a singles league; missing `partner_uid` on a doubles league; partner is the caller |
+| `400` | `partner_uid`/`partner_invite` sent to a singles league; missing partner on a doubles league; invite email is the caller's own email |
 | `401` | Missing or invalid token |
-| `404` | League not found; partner uid not a registered user |
-| `409` | Caller or partner already a member; caller or partner already in a pending/active team; league not `open`/`upcoming`; league at full capacity |
+| `404` | League not found; `partner_uid` not a registered user |
+| `409` | Caller or partner already a member; caller or partner already in a pending/active team; league not `open`/`upcoming`; league at full capacity; `partner_invite` email belongs to a registered user (use `partner_uid`); a pending invite for that email already exists in this league |
+| `422` | Both `partner_uid` and `partner_invite` supplied; invalid or missing invite `name`/`email` |
 
 iOS renders the `409` variants as the three calm states (already-in / season-underway /
 full); partner-side conflicts ("partner unavailable") surface inside the partner picker.

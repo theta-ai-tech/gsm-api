@@ -74,6 +74,20 @@ class UsersRepo(RepoBase):
                 break
         return results
 
+    def find_uid_by_email(self, email: str) -> Optional[str]:
+        """Return the uid of the user whose email matches case-insensitively, else None.
+
+        Queries the ``emailLower`` companion field (written normalized at
+        onboarding, mirroring ``nameLower``) via its automatic single-field
+        index — ``email`` itself preserves user-entered casing and must not be
+        used as a match key. ``email`` must be already normalized
+        (lowercased/stripped) by the caller.
+        """
+        docs = self.client.collection("users").where("emailLower", "==", email).limit(1).stream()
+        for doc in docs:
+            return doc.id
+        return None
+
     def update_play_tab(self, uid: str, updates: dict) -> None:
         """
         Update the playTab map on the user document.

@@ -135,6 +135,21 @@ class MatchesRepo(RepoBase):
         docs = query.stream()
         return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in docs]
 
+    def list_for_participant(self, uid: str, limit: int = 100) -> List[Match]:
+        """Return matches where ``uid`` is a participant (any status).
+
+        Used to rewrite a placeholder partner uid to the claimant's real uid on
+        registration. Placeholder uids never appear in matches today (play
+        requires registered members), so this is expected to return empty — it
+        is cheap forward-compat.
+        """
+        query = (
+            self.client.collection("matches")
+            .where("participantUids", "array_contains", uid)
+            .limit(limit)
+        )
+        return [to_match(doc.to_dict() or {}, match_id=doc.id) for doc in query.stream()]
+
     def list_head_to_head(self, pair: str, sport: SportEnum, limit: int = 10) -> List[Match]:
         """Return completed H2H matches for a pair ordered by finishedAt DESC.
 

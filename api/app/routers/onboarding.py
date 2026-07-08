@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.deps import get_current_user
-from app.dependencies.repos import get_tier_config_repo, get_users_repo
+from app.dependencies.repos import get_league_service, get_tier_config_repo, get_users_repo
 from app.models.onboarding import RegisterMeRequest
 from app.models.user import PrivateUserProfile
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
+from app.services.league_service import LeagueService
 from app.services.onboarding_service import OnboardingService
 
 router = APIRouter(prefix="/me", tags=["onboarding"])
@@ -15,8 +16,9 @@ router = APIRouter(prefix="/me", tags=["onboarding"])
 def get_onboarding_service(
     users_repo: UsersRepo = Depends(get_users_repo),
     tier_config_repo: TierConfigRepo = Depends(get_tier_config_repo),
+    league_service: LeagueService = Depends(get_league_service),
 ) -> OnboardingService:
-    return OnboardingService(users_repo, tier_config_repo)
+    return OnboardingService(users_repo, tier_config_repo, league_service)
 
 
 @router.post("", response_model=PrivateUserProfile, status_code=status.HTTP_201_CREATED)

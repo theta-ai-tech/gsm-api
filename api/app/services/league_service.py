@@ -7,8 +7,16 @@ from typing import Any, Generic, Sequence, TypeVar, cast
 
 from google.cloud import firestore  # type: ignore[attr-defined, import-untyped]
 
-from app.constants import DIVISION_TARGET_SIZE
-from app.models import Division, League, LeagueMember, LeagueTeam, RatingRange, StandingsEntry
+from app.constants import DIVISION_TARGET_SIZE, PARTNER_INVITE_UID_PREFIX
+from app.models import (
+    Division,
+    League,
+    LeagueMember,
+    LeagueTeam,
+    LeagueTeamPartnerInvite,
+    RatingRange,
+    StandingsEntry,
+)
 from app.models.enums import (
     LeagueFormatEnum,
     LeagueMemberStatusEnum,
@@ -20,8 +28,10 @@ from app.models.enums import (
 from app.models.notification import PlayNotificationIntent
 from app.repos.divisions_repo import DivisionsRepo
 from app.repos.leagues_repo import LeaguesRepo
+from app.repos.matches_repo import MatchesRepo
 from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.repos.users_repo import UsersRepo
+from app.utils.contact import normalize_email, partner_placeholder_uid
 
 logger = logging.getLogger(__name__)
 
@@ -149,12 +159,14 @@ class LeagueService:
         users_repo: UsersRepo | None = None,
         divisions_repo: DivisionsRepo | None = None,
         notification_intent_repo: NotificationIntentRepo | None = None,
+        matches_repo: MatchesRepo | None = None,
     ):
         self.leagues_repo = leagues_repo
         self.client = firestore_client
         self.users_repo = users_repo or UsersRepo(firestore_client)
         self.divisions_repo = divisions_repo or DivisionsRepo(firestore_client)
         self.notification_intent_repo = notification_intent_repo
+        self.matches_repo = matches_repo or MatchesRepo(firestore_client)
 
     def _emit_notification_intent(self, intent: PlayNotificationIntent) -> None:
         if self.notification_intent_repo is None:
@@ -393,6 +405,336 @@ class LeagueService:
             name=team_name,
             created_at=now,
         )
+
+    def invite_placeholder_team(
+        self,
+        league_id: str,
+        captain_uid: str,
+        partner_name: str,
+        partner_email: str,
+        partner_phone: str | None = None,
+        captain_display_name: str | None = None,
+    ) -> LeagueTeam:
+        """Form a doubles team with an UNREGISTERED partner (email placeholder).
+
+        The team goes ACTIVE immediately (no accept gate) and consumes 2 capacity
+        slots. The normalized email is the durable match key: if someone later
+        registers with it, ``claim_partner_invites`` backfills the real uid.
+        """
+        # Fast pre-checks (non-transactional — stable data).
+        league = self.leagues_repo.get_by_id(league_id)
+        if league is None:
+            raise LeagueTeamNotFoundError(f"League {league_id!r} not found")
+        if league.format != LeagueFormatEnum.DOUBLES:
+            raise LeagueTeamValidationError(f"League {league_id!r} is not a doubles league")
+        if league.status not in (LeagueStatusEnum.OPEN, LeagueStatusEnum.UPCOMING):
+            raise LeagueTeamConflictError(
+                f"Cannot join league with status {league.status!r}; must be OPEN or UPCOMING"
+            )
+
+        invite_name = partner_name.strip()
+        if not invite_name:
+            raise LeagueTeamValidationError("Partner name is required")
+        email_norm = normalize_email(partner_email)
+        if not email_norm:
+            raise LeagueTeamValidationError("Partner email is required")
+
+        captain_doc = self.users_repo.get_user_doc(captain_uid) or {}
+        captain_email = captain_doc.get("email")
+        if isinstance(captain_email, str) and normalize_email(captain_email) == email_norm:
+            raise LeagueTeamValidationError("Cannot invite yourself as a partner")
+
+        registered_uid = self.users_repo.find_uid_by_email(email_norm)
+        if registered_uid is not None:
+            raise LeagueTeamConflictError(
+                "A registered user already has this email; use partner_uid instead"
+            )
+
+        # Captain must not already be a member or in another team in this league.
+        if self.leagues_repo.get_member(league_id, captain_uid) is not None:
+            raise LeagueTeamConflictError(
+                f"User {captain_uid!r} is already a member of league {league_id!r}"
+            )
+        existing_teams = self.leagues_repo.find_teams_for_user(
+            league_id,
+            captain_uid,
+            [LeagueTeamStatusEnum.PENDING, LeagueTeamStatusEnum.ACTIVE],
+        )
+        if existing_teams:
+            raise LeagueTeamConflictError(
+                f"User {captain_uid!r} is already in a team in league {league_id!r}"
+            )
+
+        placeholder_uid = partner_placeholder_uid(email_norm)
+        captain_name = self._display_name_from_doc(captain_doc, captain_uid, captain_display_name)
+        team_name = f"{captain_name} / {invite_name}"
+
+        team_ref = (
+            self.client.collection("leagues").document(league_id).collection("teams").document()
+        )
+        team_id = team_ref.id
+        now = datetime.now(timezone.utc)
+        invite_map: dict[str, Any] = {
+            "name": invite_name,
+            "emailNormalized": email_norm,
+            "phone": partner_phone,
+            "invitedAt": now,
+        }
+        team_data: dict[str, Any] = {
+            "status": LeagueTeamStatusEnum.ACTIVE.value,
+            "captainUid": captain_uid,
+            "partnerUid": None,
+            "partnerPlaceholderUid": placeholder_uid,
+            "partnerInvite": invite_map,
+            "memberUids": [captain_uid, placeholder_uid],
+            "name": team_name,
+            "createdAt": now,
+            "acceptedAt": now,
+        }
+
+        lookup_id = f"{placeholder_uid}__{league_id}"
+        lookup_ref = self.client.collection("partnerInvites").document(lookup_id)
+
+        transaction = self.client.transaction()
+
+        @firestore.transactional
+        def _invite_txn(txn: firestore.Transaction) -> None:
+            league_ref = self.client.collection("leagues").document(league_id)
+            members_col = league_ref.collection("members")
+            captain_member_ref = members_col.document(captain_uid)
+            placeholder_member_ref = members_col.document(placeholder_uid)
+
+            # Reads before writes.
+            league_doc = cast(firestore.DocumentSnapshot, league_ref.get(transaction=txn))
+            captain_member_doc = captain_member_ref.get(transaction=txn)
+            placeholder_member_doc = placeholder_member_ref.get(transaction=txn)
+            lookup_doc = lookup_ref.get(transaction=txn)
+
+            if not league_doc.exists:
+                raise LeagueTeamNotFoundError(f"League {league_id!r} not found")
+            league_data = league_doc.to_dict() or {}
+            status_val = league_data.get("status")
+            if status_val not in (
+                LeagueStatusEnum.OPEN.value,
+                LeagueStatusEnum.UPCOMING.value,
+            ):
+                raise LeagueTeamConflictError(
+                    f"Cannot join league with status {status_val!r}; must be OPEN or UPCOMING"
+                )
+            current = league_data.get("currentPlayers")
+            max_p = league_data.get("maxPlayers")
+            if current is not None and max_p is not None and current + 2 > max_p:
+                raise LeagueTeamConflictError(f"League {league_id!r} is at full capacity")
+
+            if captain_member_doc.exists:
+                raise LeagueTeamConflictError(
+                    f"User {captain_uid!r} is already a member of league {league_id!r}"
+                )
+            if placeholder_member_doc.exists or lookup_doc.exists:
+                raise LeagueTeamConflictError(
+                    f"An invite for {invite_name!r} already exists in league {league_id!r}"
+                )
+
+            txn.set(team_ref, team_data)
+            txn.set(
+                captain_member_ref,
+                {
+                    "uid": captain_uid,
+                    "role": LeagueRoleEnum.PLAYER.value,
+                    "status": LeagueMemberStatusEnum.ACTIVE.value,
+                    "joinedAt": now,
+                    "stats": None,
+                    "displayName": captain_name,
+                    "divisionId": None,
+                    "teamId": team_id,
+                    "partnerUid": placeholder_uid,
+                },
+            )
+            txn.set(
+                placeholder_member_ref,
+                {
+                    "uid": placeholder_uid,
+                    "role": LeagueRoleEnum.PLAYER.value,
+                    "status": LeagueMemberStatusEnum.ACTIVE.value,
+                    "joinedAt": now,
+                    "stats": None,
+                    "displayName": invite_name,
+                    "divisionId": None,
+                    "teamId": team_id,
+                    "partnerUid": captain_uid,
+                },
+            )
+            txn.set(
+                lookup_ref,
+                {
+                    "emailNormalized": email_norm,
+                    "leagueId": league_id,
+                    "teamId": team_id,
+                    "placeholderUid": placeholder_uid,
+                    "captainUid": captain_uid,
+                    "inviteName": invite_name,
+                    "phone": partner_phone,
+                    "createdAt": now,
+                },
+            )
+            txn.update(league_ref, {"currentPlayers": firestore.Increment(2)})
+
+        _invite_txn(transaction)
+
+        return LeagueTeam(
+            team_id=team_id,
+            status=LeagueTeamStatusEnum.ACTIVE,
+            captain_uid=captain_uid,
+            partner_uid=None,
+            member_uids=[captain_uid, placeholder_uid],
+            name=team_name,
+            created_at=now,
+            accepted_at=now,
+            partner_placeholder_uid=placeholder_uid,
+            partner_invite=LeagueTeamPartnerInvite(name=invite_name, phone=partner_phone),
+        )
+
+    def claim_partner_invites(self, uid: str, email: str) -> None:
+        """Backfill every outstanding placeholder invite for ``email`` to ``uid``.
+
+        Called from onboarding after the user doc is created. Idempotent per
+        lookup doc and best-effort overall — a partial failure never blocks
+        registration (the caller wraps this non-fatally).
+        """
+        email_norm = normalize_email(email)
+        if not email_norm:
+            return
+        invites = self.leagues_repo.list_partner_invites_by_email(email_norm)
+        for invite in invites:
+            try:
+                self._claim_single_invite(uid, invite)
+            except Exception:
+                logger.exception(
+                    "Failed to claim partner invite %s for uid %s (non-fatal)",
+                    invite.get("id"),
+                    uid,
+                )
+
+    def _claim_single_invite(self, uid: str, invite: dict[str, Any]) -> None:
+        lookup_id = invite.get("id")
+        league_id = invite.get("leagueId")
+        team_id = invite.get("teamId")
+        placeholder_uid = invite.get("placeholderUid")
+        captain_uid = invite.get("captainUid")
+        if not (lookup_id and league_id and team_id and placeholder_uid):
+            return
+
+        claimant_name = self._user_display_name(uid)
+        league = self.leagues_repo.get_by_id(league_id)
+        league_name = league.name if league is not None else ""
+
+        league_ref = self.client.collection("leagues").document(league_id)
+        team_ref = league_ref.collection("teams").document(team_id)
+        members_col = league_ref.collection("members")
+        placeholder_member_ref = members_col.document(placeholder_uid)
+        real_member_ref = members_col.document(uid)
+        lookup_ref = self.client.collection("partnerInvites").document(lookup_id)
+
+        transaction = self.client.transaction()
+        claimed: dict[str, bool] = {"did_claim": False}
+
+        @firestore.transactional
+        def _claim_txn(txn: firestore.Transaction) -> None:
+            team_doc = cast(firestore.DocumentSnapshot, team_ref.get(transaction=txn))
+            placeholder_member_doc = placeholder_member_ref.get(transaction=txn)
+            existing_real_member_doc = real_member_ref.get(transaction=txn)
+
+            # Idempotent: if the team is gone or already claimed, just drop the
+            # lookup doc and move on.
+            if not team_doc.exists:
+                txn.delete(lookup_ref)
+                return
+            team_data = team_doc.to_dict() or {}
+            if team_data.get("partnerPlaceholderUid") != placeholder_uid:
+                txn.delete(lookup_ref)
+                return
+
+            captain_member_ref = members_col.document(team_data.get("captainUid") or captain_uid)
+
+            new_member_uids = [
+                uid if u == placeholder_uid else u for u in team_data.get("memberUids", [])
+            ]
+            captain_name = (team_data.get("name") or "").split(" / ")[0]
+            new_team_name = f"{captain_name} / {claimant_name}" if captain_name else claimant_name
+
+            placeholder_data = placeholder_member_doc.to_dict() or {}
+            new_member_data = {
+                "uid": uid,
+                "role": placeholder_data.get("role", LeagueRoleEnum.PLAYER.value),
+                "status": placeholder_data.get("status", LeagueMemberStatusEnum.ACTIVE.value),
+                "joinedAt": placeholder_data.get("joinedAt", datetime.now(timezone.utc)),
+                "stats": placeholder_data.get("stats"),
+                "displayName": claimant_name,
+                "divisionId": placeholder_data.get("divisionId"),
+                "teamId": team_id,
+                "partnerUid": team_data.get("captainUid") or captain_uid,
+            }
+
+            txn.update(
+                team_ref,
+                {
+                    "partnerUid": uid,
+                    "memberUids": new_member_uids,
+                    "name": new_team_name,
+                    "partnerInvite": firestore.DELETE_FIELD,
+                    "partnerPlaceholderUid": firestore.DELETE_FIELD,
+                },
+            )
+            if not existing_real_member_doc.exists:
+                txn.set(real_member_ref, new_member_data)
+            txn.update(captain_member_ref, {"partnerUid": uid})
+            txn.delete(placeholder_member_ref)
+            txn.delete(lookup_ref)
+            claimed["did_claim"] = True
+
+        _claim_txn(transaction)
+
+        if not claimed["did_claim"]:
+            return
+
+        self._rewrite_matches_for_claimed_partner(placeholder_uid, uid)
+
+        if captain_uid:
+            self._emit_notification_intent(
+                PlayNotificationIntent(
+                    type=PlayNotificationIntentTypeEnum.LEAGUE_TEAM_INVITE_ACCEPTED,
+                    target_uid=captain_uid,
+                    title="Team invite accepted",
+                    body=f"{claimant_name} joined your team in {league_name}".rstrip(),
+                    dedupe_key=f"league_team_invite_accepted:{league_id}:{team_id}",
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+    def _rewrite_matches_for_claimed_partner(self, placeholder_uid: str, uid: str) -> None:
+        """Best-effort: swap the placeholder uid for the real uid on any matches.
+
+        Expected to be a no-op today (placeholder uids never enter matches), so
+        failures are logged and swallowed.
+        """
+        try:
+            matches = self.matches_repo.list_for_participant(placeholder_uid)
+        except Exception:
+            logger.exception(
+                "Failed to list matches for placeholder %s (non-fatal)", placeholder_uid
+            )
+            return
+        if not matches:
+            return
+        batch = self.client.batch()
+        for match in matches:
+            match_ref = self.client.collection("matches").document(match.match_id)
+            new_participants = [uid if p == placeholder_uid else p for p in match.participant_uids]
+            batch.update(match_ref, {"participantUids": new_participants})
+        try:
+            batch.commit()
+        except Exception:
+            logger.exception("Failed to rewrite matches for claimed partner (non-fatal)")
 
     def accept_team(self, league_id: str, team_id: str, caller_uid: str) -> LeagueTeam:
         team = self.leagues_repo.get_team(league_id, team_id)
@@ -678,7 +1020,14 @@ class LeagueService:
         )
 
     def _team_pts(self, team: LeagueTeam, sport: str) -> int:
-        pts = [self._member_pts(uid, sport) for uid in team.member_uids]
+        # Skip placeholder (unregistered) partners: they have no user doc, so
+        # _member_pts would return 0 and halve the team rating. Seed on the
+        # captain-only mean until the partner registers and backfills.
+        pts = [
+            self._member_pts(uid, sport)
+            for uid in team.member_uids
+            if not uid.startswith(PARTNER_INVITE_UID_PREFIX)
+        ]
         if not pts:
             return 0
         return sum(pts) // len(pts)
@@ -839,7 +1188,9 @@ class LeagueService:
         }
         rows: list[tuple[int, int, str, LeagueTeam]] = []
         for team in teams:
-            source = members_by_uid.get(team.captain_uid) or members_by_uid.get(team.partner_uid)
+            source = members_by_uid.get(team.captain_uid)
+            if source is None and team.partner_uid is not None:
+                source = members_by_uid.get(team.partner_uid)
             stats = (source.stats if source else None) or {}
             wins = int(stats.get("wins", 0))
             losses = int(stats.get("losses", 0))

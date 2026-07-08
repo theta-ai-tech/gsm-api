@@ -478,9 +478,16 @@ curl -s \
 Self-serve join flow. Branches on the league's `format`:
 - **singles** (default when the field is absent): adds the authenticated user as a `player`
   member. No request body required — identical to the pre-doubles behavior.
-- **doubles**: creates a **pending team invite** with a registered partner. Nobody becomes a
-  member and no capacity is consumed until the partner accepts
+- **doubles** with `partner_uid`: creates a **pending team invite** with a registered partner.
+  Nobody becomes a member and no capacity is consumed until the partner accepts
   (`POST /leagues/{id}/teams/{teamId}/accept`).
+- **doubles** with `partner_invite`: forms a team with an **unregistered** partner (name +
+  email). The team goes **active immediately** — no accept gate — and consumes 2 capacity
+  slots. The email is a durable identifier only; if that person later registers, their
+  placeholder slot is automatically backfilled to their real uid. The email is **never**
+  returned in any response.
+
+Exactly one of `partner_uid` / `partner_invite` may be supplied (they are mutually exclusive).
 
 iOS must branch on the returned `format` field of the league (browse card / detail), not on
 the sport.
@@ -493,8 +500,10 @@ Required (Firebase Bearer token).
 
 ### Request body
 - Singles league: none (empty body or `{}`).
-- Doubles league (required): `{"partner_uid": "<registered uid>"}` — find partners via
+- Doubles league, registered partner: `{"partner_uid": "<registered uid>"}` — find partners via
   `GET /players?search=`.
+- Doubles league, unregistered partner: `{"partner_invite": {"name": "<display name>", "email":
+  "<email>", "phone": "<optional>"}}`.
 
 ### Example call — singles (unchanged)
 ```bash
@@ -543,6 +552,25 @@ curl -s -X POST \
 }
 ```
 
+### Example success response — doubles unregistered partner (`201`, LeagueTeam)
+```json
+{
+  "team_id": "aUt0GeNeRaTeD",
+  "status": "active",
+  "captain_uid": "user_ignatios",
+  "partner_uid": null,
+  "member_uids": ["user_ignatios", "invite:9f2c…"],
+  "name": "Ignatios / Newbie Nick",
+  "created_at": "2026-06-10T15:00:00+00:00",
+  "accepted_at": "2026-06-10T15:00:00+00:00",
+  "rating_avg": null,
+  "division_id": null,
+  "partner_placeholder_uid": "invite:9f2c…",
+  "partner_invite": {"name": "Newbie Nick", "phone": null}
+}
+```
+Note the absence of any `email` field — the invited email is stored server-side only.
+
 ### Behavior
 - **Singles** — checks performed transactionally:
   1. League must exist.
@@ -551,7 +579,7 @@ curl -s -X POST \
   4. League must not be at full capacity (`currentPlayers >= maxPlayers`, if both are set).
   On success: creates `leagues/{leagueId}/members/{uid}` doc and increments `currentPlayers`
   on the league doc in one Firestore transaction.
-- **Doubles** — pre-checks + transaction:
+- **Doubles, registered partner** (`partner_uid`) — pre-checks + transaction:
   1. League must exist, be `format: doubles`, and be `open` or `upcoming`.
   2. `partner_uid` must be present, registered, and not the caller.
   3. Neither caller nor partner already a member, nor in another `pending`/`active` team in
@@ -559,12 +587,27 @@ curl -s -X POST \
   On success: creates `leagues/{leagueId}/teams/{teamId}` with status `pending` and sends a
   `league_team_invite` push notification to the partner. **No member docs, no capacity
   change** — those happen on accept.
+- **Doubles, unregistered partner** (`partner_invite`) — pre-checks + transaction:
+  1. League must exist, be `format: doubles`, and be `open` or `upcoming`.
+  2. The email must not belong to the caller and must not belong to any registered user
+     (use `partner_uid` for registered users).
+  3. Caller must not already be a member or in another `pending`/`active` team.
+  4. No outstanding invite for the same email may already exist in this league.
+  On success (one transaction): creates the team `status: active` with `partnerUid: null`, a
+  `partnerPlaceholderUid` (`invite:` + `sha256(email)[:24]`) and a `partnerInvite` map; creates
+  both member docs (captain + placeholder); writes a `partnerInvites/{placeholderUid}__{leagueId}`
+  lookup doc; and increments `currentPlayers` by 2. When someone registers with that email the
+  slot is backfilled to their uid and the captain gets a `league_team_invite_accepted` notification.
 
 ### Common error responses
-- `400` `partner_uid` sent to a singles league; missing `partner_uid` on a doubles league; partner is the caller
+- `400` `partner_uid`/`partner_invite` sent to a singles league; missing partner on a doubles
+  league; invite email is the caller's own email
 - `401` missing/invalid token
-- `404` league not found; partner uid not registered
-- `409` caller/partner already a member; caller/partner already in a pending/active team; league not open/upcoming; league at full capacity
+- `404` league not found; `partner_uid` not registered
+- `409` caller/partner already a member; caller/partner already in a pending/active team; league
+  not open/upcoming; league at full capacity; `partner_invite` email belongs to a registered user
+  (use `partner_uid`); a pending invite for that email already exists in this league
+- `422` both `partner_uid` and `partner_invite` supplied; invalid/missing invite `name` or `email`
 
 ---
 

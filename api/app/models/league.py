@@ -63,17 +63,30 @@ class LeagueMember(GsmBaseModel):
     partner_uid: str | None = None
 
 
+class LeagueTeamPartnerInvite(GsmBaseModel):
+    """Public view of an unregistered partner slot on a team.
+
+    Email is the durable match key but is intentionally NOT exposed here — only
+    the display name and optional phone ever leave the server.
+    """
+
+    name: str
+    phone: str | None = None
+
+
 class LeagueTeam(GsmBaseModel):
     team_id: str
     status: LeagueTeamStatusEnum
     captain_uid: str
-    partner_uid: str
+    partner_uid: str | None = None
     member_uids: list[str]
     name: str
     created_at: datetime
     accepted_at: datetime | None = None
     rating_avg: int | None = None
     division_id: str | None = None
+    partner_placeholder_uid: str | None = None
+    partner_invite: LeagueTeamPartnerInvite | None = None
 
 
 class LeagueBrowseCard(GsmBaseModel):

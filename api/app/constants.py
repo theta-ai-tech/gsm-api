@@ -38,6 +38,10 @@ DISCOVERY_FEED_DEFAULT_LIMIT = 25
 # League divisions
 DIVISION_TARGET_SIZE = 6
 
+# Doubles partner invite (unregistered partner placeholder)
+PARTNER_INVITE_UID_PREFIX = "invite:"
+PARTNER_INVITE_NAME_MAX = 100
+
 # Account deletion (tombstone / anonymize-in-place)
 DELETED_PLAYER_NAME = "Deleted Player"
 
