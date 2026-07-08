@@ -473,6 +473,30 @@ class TestSetNorthStar:
             "test_user",
             goal_text="Win 10 matches",
             target_date=None,
+            progress_pct=None,
+        )
+
+    def test_set_north_star_persists_progress_pct(self, client, mock_journal_service):
+        """A client-supplied progress_pct is forwarded and echoed back."""
+        now = datetime.now(timezone.utc)
+        mock_journal_service.set_north_star.return_value = NorthStarGoal(
+            goal_text="Win 10 matches",
+            progress_pct=42.5,
+            created_at=now,
+        )
+
+        response = client.put(
+            "/me/north-star",
+            json={"goal_text": "Win 10 matches", "progress_pct": 42.5},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["progress_pct"] == 42.5
+        mock_journal_service.set_north_star.assert_called_once_with(
+            "test_user",
+            goal_text="Win 10 matches",
+            target_date=None,
+            progress_pct=42.5,
         )
 
     def test_set_north_star_user_not_found_returns_404(
@@ -495,6 +519,52 @@ class TestSetNorthStar:
 
         assert response.status_code == 422
         mock_journal_service.set_north_star.assert_not_called()
+
+    @pytest.mark.parametrize("bad_progress", [-1, 101])
+    def test_set_north_star_progress_out_of_range_returns_422(
+        self, client, mock_journal_service, bad_progress
+    ):
+        """progress_pct outside 0–100 is rejected before reaching the service."""
+        response = client.put(
+            "/me/north-star",
+            json={"goal_text": "Win 10 matches", "progress_pct": bad_progress},
+        )
+
+        assert response.status_code == 422
+        mock_journal_service.set_north_star.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# GET /me/north-star
+# ---------------------------------------------------------------------------
+
+
+class TestGetNorthStar:
+    def test_get_north_star_returns_200_with_values(self, client, mock_journal_service):
+        """Returns 200 with the stored NorthStarGoal fields."""
+        now = datetime.now(timezone.utc)
+        mock_journal_service.get_north_star.return_value = NorthStarGoal(
+            goal_text="Win the club championship",
+            progress_pct=33.0,
+            created_at=now,
+        )
+
+        response = client.get("/me/north-star")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["goal_text"] == "Win the club championship"
+        assert data["progress_pct"] == 33.0
+        mock_journal_service.get_north_star.assert_called_once_with("test_user")
+
+    def test_get_north_star_not_set_returns_404(self, client, mock_journal_service):
+        """No goal set maps to 404 with a descriptive detail."""
+        mock_journal_service.get_north_star.return_value = None
+
+        response = client.get("/me/north-star")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "North Star goal not set"
 
 
 # ---------------------------------------------------------------------------

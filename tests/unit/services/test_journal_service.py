@@ -682,9 +682,11 @@ class TestSetNorthStar:
     def test_set_north_star_persists_goal(
         self,
         journal_service,
+        mock_users_repo,
         mock_firestore_client,
     ):
         """NorthStarGoal is written to Firestore and returned with correct fields."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
         goal_text = "Win 10 matches this month"
 
         result = journal_service.set_north_star("test_user", goal_text)
@@ -702,6 +704,84 @@ class TestSetNorthStar:
         goal_data = update_mock.call_args[0][0]["northStarGoal"]
         assert goal_data["goalText"] == goal_text
         assert goal_data["progressPct"] == 0.0
+
+    def test_set_north_star_missing_user_raises(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        """A missing user doc raises ValueError (routed to 404)."""
+        mock_users_repo.get_user_doc.return_value = None
+
+        with pytest.raises(ValueError, match="User not found"):
+            journal_service.set_north_star("ghost", "Win the league")
+
+    def test_set_north_star_persists_explicit_progress(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_firestore_client,
+    ):
+        """A client-supplied progress_pct is persisted verbatim."""
+        mock_users_repo.get_user_doc.return_value = {"uid": "test_user"}
+
+        result = journal_service.set_north_star(
+            "test_user", "Reach 5.0 rating", progress_pct=42.5
+        )
+
+        assert result.progress_pct == 42.5
+        update_mock = (
+            mock_firestore_client.collection.return_value.document.return_value.update
+        )
+        goal_data = update_mock.call_args[0][0]["northStarGoal"]
+        assert goal_data["progressPct"] == 42.5
+
+    def test_set_north_star_preserves_existing_progress_when_omitted(
+        self,
+        journal_service,
+        mock_users_repo,
+        mock_firestore_client,
+    ):
+        """Omitting progress_pct on a text-only update preserves the stored value."""
+        mock_users_repo.get_user_doc.return_value = {
+            "northStarGoal": {
+                "goalText": "Old goal",
+                "progressPct": 65.0,
+                "createdAt": datetime.now(timezone.utc),
+                "targetDate": None,
+            }
+        }
+
+        result = journal_service.set_north_star("test_user", "Updated goal")
+
+        assert result.progress_pct == 65.0
+        update_mock = (
+            mock_firestore_client.collection.return_value.document.return_value.update
+        )
+        goal_data = update_mock.call_args[0][0]["northStarGoal"]
+        assert goal_data["progressPct"] == 65.0
+        assert goal_data["goalText"] == "Updated goal"
+
+    def test_set_north_star_explicit_zero_overwrites_existing(
+        self,
+        journal_service,
+        mock_users_repo,
+    ):
+        """An explicit progress_pct of 0 overwrites a non-zero stored value."""
+        mock_users_repo.get_user_doc.return_value = {
+            "northStarGoal": {
+                "goalText": "Old goal",
+                "progressPct": 80.0,
+                "createdAt": datetime.now(timezone.utc),
+                "targetDate": None,
+            }
+        }
+
+        result = journal_service.set_north_star(
+            "test_user", "Reset goal", progress_pct=0.0
+        )
+
+        assert result.progress_pct == 0.0
 
 
 # ---------------------------------------------------------------------------

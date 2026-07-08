@@ -441,6 +441,46 @@ class TestNorthStarGoal:
         result = service.get_north_star(uid)
         assert result.goal_text == "New goal"
 
+    def test_get_north_star_returns_none_when_unset(self, db):
+        """A user with no goal set returns None (routed to 404)."""
+        uid = "alice_no_goal"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        assert service.get_north_star(uid) is None
+
+    def test_set_north_star_persists_client_progress(self, db):
+        """A client-supplied progress_pct is stored and read back."""
+        uid = "alice_progress_set"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        result = service.set_north_star(uid, "Reach 4.5", progress_pct=55.0)
+
+        assert result.progress_pct == 55.0
+        assert get_user_doc(db, uid)["northStarGoal"]["progressPct"] == 55.0
+        assert service.get_north_star(uid).progress_pct == 55.0
+
+    def test_set_north_star_preserves_progress_on_text_only_update(self, db):
+        """Omitting progress_pct on a later update preserves the stored value."""
+        uid = "alice_progress_preserved"
+        seed_user(db, uid)
+        service = make_journal_service(db)
+
+        service.set_north_star(uid, "Original goal", progress_pct=70.0)
+        result = service.set_north_star(uid, "Reworded goal")
+
+        assert result.goal_text == "Reworded goal"
+        assert result.progress_pct == 70.0
+        assert service.get_north_star(uid).progress_pct == 70.0
+
+    def test_set_north_star_missing_user_raises(self, db):
+        """set_north_star on a non-existent user raises ValueError."""
+        service = make_journal_service(db)
+
+        with pytest.raises(ValueError, match="User not found"):
+            service.set_north_star("ghost_no_user", "Win it all")
+
 
 # ---------------------------------------------------------------------------
 # EX-01/02/03 integration coverage
