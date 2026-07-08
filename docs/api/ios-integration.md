@@ -48,7 +48,7 @@ against the base URL in [`README.md`](README.md)).
 | Play — offers | `POST /me/offers`, `…/{id}/accept`, `…/{id}/decline`, `…/{id}/cancel` | Drives the offer queue. |
 | Post-match — submit/confirm score | `POST /matches/{id}/verify-score` | Score submit/confirm; can move match to `disputed`. |
 | **Tab 2 — Improve** | `GET/POST/PATCH/DELETE /me/journal`, `GET /me/journal/{id}` | Journal CRUD. |
-| Improve — stats / north star | `GET /me/stats`, `PUT /me/north-star` | Player stats & goal. |
+| Improve — stats / north star | `GET /me/stats`, `GET /me/north-star`, `PUT /me/north-star` | Player stats & goal. |
 | **Tab 3 — Lab** | `GET /me/lab/{progression,dashboard,skill-dna,leaderboard,ticker,training-plan}` | Analytics surfaces. |
 | Lab — opponent insight | `GET /me/lab/rivalry/{opponentUid}`, `GET /me/lab/scouting/{opponentUid}` | Head-to-head / scouting. |
 | **Tab 4 — Clubhouse** | `GET /me/clubhouse/profile` | Public-facing profile. |

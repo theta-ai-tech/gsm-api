@@ -1908,6 +1908,96 @@ Same shape as `GET /me/clubhouse/profile`, reflecting the applied changes.
 ---
 
 
+## `GET /me/north-star`
+
+### Purpose
+Return the caller's current North Star goal for the Improve tab's goal-entry/edit screen.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`). Only the caller's own goal is
+returned — there is no target `uid` parameter.
+
+### Behavior
+Reads `users/{uid}` and returns the `northStarGoal` map. Returns `404` when no goal has
+been set.
+
+### Request body
+None.
+
+### Example call
+```bash
+curl -s -H "Authorization: Bearer $ID_TOKEN" \
+  http://localhost:8000/me/north-star
+```
+
+### Example success response (`200`)
+```json
+{
+  "goal_text": "Reduce double faults by 20%",
+  "progress_pct": 40.0,
+  "created_at": "2026-07-08T10:00:00Z",
+  "target_date": "2026-09-01T00:00:00Z"
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `404` North Star goal not set
+
+---
+
+
+## `PUT /me/north-star`
+
+### Purpose
+Upsert the caller's North Star goal.
+
+### Auth
+Required (`Authorization: Bearer <Firebase ID token>`).
+
+### Behavior
+Overwrites the `northStarGoal` map on `users/{uid}` and stamps a fresh `created_at` on
+every write. `progress_pct` is **client-set** (no server computation):
+- provided (`0`–`100`) → persisted as sent (on create and update)
+- omitted on a brand-new goal → `0.0`
+- omitted on an update → the existing goal's progress is **preserved** (not reset)
+
+### Request body
+```json
+{
+  "goal_text": "Reduce double faults by 20%",
+  "target_date": "2026-09-01T00:00:00Z",
+  "progress_pct": 40.0
+}
+```
+`target_date` and `progress_pct` are optional.
+
+### Example call
+```bash
+curl -s -X PUT -H "Authorization: Bearer $ID_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"goal_text": "Reduce double faults by 20%", "progress_pct": 40}' \
+  http://localhost:8000/me/north-star
+```
+
+### Example success response (`200`)
+```json
+{
+  "goal_text": "Reduce double faults by 20%",
+  "progress_pct": 40.0,
+  "created_at": "2026-07-08T10:00:00Z",
+  "target_date": null
+}
+```
+
+### Common error responses
+- `401` missing/invalid token
+- `404` user not found
+- `422` `progress_pct` outside `0`–`100`, or `goal_text` too long
+
+---
+
+
 ## Cross-cutting behavior
 
 ### Headers
