@@ -156,6 +156,7 @@ def user_to_firestore_doc(user: PrivateUserProfile) -> Dict[str, Any]:
         "name": user.name,
         "nameLower": user.name.strip().lower(),
         "email": user.email,
+        "emailLower": user.email.strip().lower(),
         "profileUrl": str(user.profile_url) if user.profile_url else None,
         "phone": user.phone,
         "rankings": _per_sport_rankings_to_dict(user.rankings),

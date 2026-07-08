@@ -67,6 +67,18 @@ def test_claim_failure_does_not_fail_registration():
     users_repo.create_profile.assert_called_once()
 
 
+def test_register_writes_normalized_email_lower():
+    """The doc must carry emailLower (the case-insensitive match key used by
+    find_uid_by_email) alongside the casing-preserving email field."""
+    svc, users_repo = _make_service(None)
+
+    svc.register_me(_UID, _TOKEN_EMAIL, None, _request())
+
+    _, doc = users_repo.create_profile.call_args.args
+    assert doc["email"] == _TOKEN_EMAIL
+    assert doc["emailLower"] == "newbie@example.com"
+
+
 def test_no_league_service_skips_claim():
     svc, users_repo = _make_service(None)
     profile = svc.register_me(_UID, _TOKEN_EMAIL, None, _request())

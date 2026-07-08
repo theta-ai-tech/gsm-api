@@ -174,7 +174,7 @@ try:
 
     # 5. Invited person registers with that email -> claim backfills
     db.collection("users").document(CLAIMANT).set(
-        {"uid": CLAIMANT, "name": "Real Nick", "email": INVITE_EMAIL_NORM}
+        {"uid": CLAIMANT, "name": "Real Nick", "email": INVITE_EMAIL_NORM, "emailLower": INVITE_EMAIL_NORM}
     )
     LeagueService(LeaguesRepo(db), db).claim_partner_invites(CLAIMANT, INVITE_EMAIL)
 

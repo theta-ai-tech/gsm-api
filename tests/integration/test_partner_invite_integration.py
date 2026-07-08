@@ -53,6 +53,7 @@ def _seed(db) -> None:
             "uid": _CAPTAIN,
             "name": "Captain One",
             "email": "captain.one@example.com",
+            "emailLower": "captain.one@example.com",
             "rankings": {"padel": {"pts": 1500}},
         }
     )
@@ -138,7 +139,32 @@ def test_self_email_rejected(invite_client):
 
 def test_registered_email_rejected(invite_client, db):
     db.collection("users").document(_CLAIMANT).set(
-        {"uid": _CLAIMANT, "name": "Already Here", "email": _INVITE_EMAIL_NORM}
+        {
+            "uid": _CLAIMANT,
+            "name": "Already Here",
+            "email": _INVITE_EMAIL_NORM,
+            "emailLower": _INVITE_EMAIL_NORM,
+        }
+    )
+    resp = invite_client.post(
+        f"/leagues/{_LEAGUE_ID}/join",
+        json={"partner_invite": {"name": "Dup", "email": _INVITE_EMAIL}},
+    )
+    assert resp.status_code == 409, resp.text
+
+
+def test_registered_email_rejected_case_insensitive(invite_client, db):
+    # User doc as onboarding writes it: `email` keeps the user-entered casing,
+    # `emailLower` is the normalized match key. The invite arrives with yet
+    # another casing — the guard must still 409 instead of creating a
+    # placeholder for an already-registered user.
+    db.collection("users").document(_CLAIMANT).set(
+        {
+            "uid": _CLAIMANT,
+            "name": "Already Here",
+            "email": "NEWBIE@Example.COM",
+            "emailLower": _INVITE_EMAIL_NORM,
+        }
     )
     resp = invite_client.post(
         f"/leagues/{_LEAGUE_ID}/join",

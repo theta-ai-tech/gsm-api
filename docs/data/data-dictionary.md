@@ -128,6 +128,7 @@ These fields are denormalized summaries for fast reads. Treat as cache with capp
 | nameLower | string | optional | — | cache | index=range | Lowercased `name` for `GET /players?search=` prefix queries. Written at registration; existing users need a one-off backfill (users without it are invisible to player search). Must be rewritten if a name-edit path is ever added. |
 | profileUrl | string (url) | optional | — | canonical | — | Public. Nulled on account deletion. |
 | email | string | optional | — | canonical | — | Private. |
+| emailLower | string | optional | — | cache | index=filter | Lowercased/stripped `email` — case-insensitive match key for the partner-invite registered-user guard (`find_uid_by_email`). Written at registration; `email` itself preserves user-entered casing and must not be used as a match key. |
 | phone | string | optional | — | canonical | — | Private. |
 | rankings | map | optional | — | canonical | — | Public; per-sport rankings. |
 | rankings.tennis | map | optional | sport | canonical | — | `{sport, pts, globalRanking, tier?, registrationTier?, lastUpdated?}`. |

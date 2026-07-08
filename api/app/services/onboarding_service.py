@@ -7,6 +7,7 @@ from app.models.user import PrivateUserProfile
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.services.league_service import LeagueService
+from app.utils.contact import normalize_email
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class OnboardingService:
             "name": request.name,
             "nameLower": request.name.strip().lower(),
             "email": str(email),
+            "emailLower": normalize_email(str(email)),
             "profileUrl": str(request.profile_url) if request.profile_url else token_picture,
             "isPro": False,
             "phone": None,
