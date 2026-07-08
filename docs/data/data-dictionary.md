@@ -605,17 +605,26 @@ Purpose: doubles team unit for `format: doubles` leagues. Created in `pending` s
 (both member docs are created and `currentPlayers` +2 in the same transaction). Pending
 teams consume no capacity. One `pending`/`active` team per user per league.
 
+**Unregistered-partner variant** (`POST /leagues/{id}/join {partner_invite}`): the team is
+created `active` immediately (no accept gate) and consumes 2 capacity slots at invite time.
+`partnerUid` is `null`; `partnerPlaceholderUid` and `partnerInvite` hold the placeholder slot.
+Both member docs (captain + placeholder) exist from the start. On registration with the
+invited email the placeholder is backfilled: `partnerUid` is set, `partnerInvite` /
+`partnerPlaceholderUid` are deleted, the placeholder member doc is replaced by the real one.
+
 ### Fields: leagues/{leagueId}/teams/{teamId}
 | Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | status | string | required | leagueTeamStatus | canonical | index=filter | Team lifecycle. |
 | captainUid | string | required | — | canonical | — | The inviter. |
-| partnerUid | string | required | — | canonical | — | The invited player; only they may accept/decline. |
-| memberUids | array<string> | required | — | canonical | index=array-contains | Both uids; used by "my teams/invites" queries. |
+| partnerUid | string | optional | — | canonical | — | The registered partner. `null` for an unclaimed placeholder team (see `partnerPlaceholderUid`). |
+| partnerPlaceholderUid | string | optional | — | canonical | — | Present only for an unregistered-partner team: `"invite:" + sha256(normalized_email)[:24]`. Removed on claim. |
+| partnerInvite | map | optional | — | canonical | — | Present only for an unregistered-partner team: `{name, emailNormalized, phone, invitedAt}`. `emailNormalized` is stored server-side only and **never** returned by the API. Removed on claim. |
+| memberUids | array<string> | required | — | canonical | index=array-contains | Both uids (placeholder uid for an unclaimed team); used by "my teams/invites" queries. |
 | name | string | optional | — | cache | — | Display name, "Captain / Partner". |
 | createdAt | timestamp | required | — | canonical | — | Invite creation time. |
-| acceptedAt | timestamp | optional | — | canonical | — | Set on accept. |
-| ratingAvg | number | optional | — | cache | — | Integer mean of partners' per-sport pts; the doubles division-seeding rating. |
+| acceptedAt | timestamp | optional | — | canonical | — | Set on accept (or invite time for the immediate-active placeholder team). |
+| ratingAvg | number | optional | — | cache | — | Integer mean of partners' per-sport pts; the doubles division-seeding rating. Placeholder members are skipped (captain-only mean until claimed). |
 | divisionId | string | optional | — | canonical | — | Stamped at kickoff (also stamped on both member docs). |
 
 ### leagues/{leagueId}/teams/{teamId}
@@ -635,6 +644,31 @@ teams consume no capacity. One `pending`/`active` team per user per league.
 ### Common queries
 - My teams/invites in a league: `memberUids array_contains {uid}` (status filtered in app code — avoids a composite index).
 - League teams by status: `status == "pending"` etc.
+
+## Collection: partnerInvites
+Path: `partnerInvites/{placeholderUid}__{leagueId}`
+
+Purpose: top-level lookup index that maps an unregistered partner's normalized email to the
+placeholder team slot it belongs to, so registration can backfill it. Created in the same
+transaction as an unregistered-partner team (`POST /leagues/{id}/join {partner_invite}`). The
+deterministic doc id (`{placeholderUid}__{leagueId}`) also enforces one invite per email per
+league. **Consume-and-delete:** the doc (and its stored email) is deleted the moment the invite
+is claimed at registration. Unclaimed docs persist until a future cleanup job removes them.
+
+### Fields: partnerInvites/{placeholderUid}__{leagueId}
+| Field | Type | Required | Enum | Canonical|Cache | Index | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| emailNormalized | string | required | — | canonical | index=filter | Lowercased/stripped invite email — the durable match key. Queried at registration; never returned by the API. |
+| leagueId | string | required | — | canonical | — | League the placeholder team belongs to. |
+| teamId | string | required | — | canonical | — | Target `leagues/{leagueId}/teams/{teamId}`. |
+| placeholderUid | string | required | — | canonical | — | `"invite:" + sha256(emailNormalized)[:24]`. |
+| captainUid | string | required | — | canonical | — | Captain to notify on claim. |
+| inviteName | string | optional | — | cache | — | Display name captured at invite time. |
+| phone | string | optional | — | canonical | — | Display-only; not used as a match key. |
+| createdAt | timestamp | required | — | canonical | — | Invite creation time. |
+
+### Common queries
+- Backfill on registration: `partnerInvites where emailNormalized == {email}` (single-field index).
 
 ## Collection: courts
 Path: `courts/{courtId}`

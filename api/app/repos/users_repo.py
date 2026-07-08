@@ -74,6 +74,17 @@ class UsersRepo(RepoBase):
                 break
         return results
 
+    def find_uid_by_email(self, email: str) -> Optional[str]:
+        """Return the uid of the user whose ``email`` matches exactly, else None.
+
+        Uses the automatic single-field index on ``email``. ``email`` must be
+        already normalized (lowercased/stripped) by the caller.
+        """
+        docs = self.client.collection("users").where("email", "==", email).limit(1).stream()
+        for doc in docs:
+            return doc.id
+        return None
+
     def update_play_tab(self, uid: str, updates: dict) -> None:
         """
         Update the playTab map on the user document.

@@ -59,6 +59,7 @@ from app.models.league import (
     LeagueBrowseCard,
     LeagueMember,
     LeagueTeam,
+    LeagueTeamPartnerInvite,
     RatingRange,
     StandingsEntry,
 )
@@ -146,6 +147,7 @@ __all__ = [
     "LeagueBrowseCard",
     "LeagueMember",
     "LeagueTeam",
+    "LeagueTeamPartnerInvite",
     "StandingsEntry",
     # match
     "Match",

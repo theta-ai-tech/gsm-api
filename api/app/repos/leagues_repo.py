@@ -123,6 +123,26 @@ class LeaguesRepo(RepoBase):
             team_id
         ).set(doc)
 
+    def list_partner_invites_by_email(self, email_normalized: str) -> List[dict]:
+        """Return raw ``partnerInvites`` lookup docs matching a normalized email.
+
+        Top-level ``partnerInvites`` collection keyed by
+        ``{placeholderUid}__{leagueId}``. Used at registration to backfill every
+        outstanding invite across leagues. Each returned dict carries an injected
+        ``id`` (the lookup doc id).
+        """
+        docs = (
+            self.client.collection("partnerInvites")
+            .where("emailNormalized", "==", email_normalized)
+            .stream()
+        )
+        results: List[dict] = []
+        for doc in docs:
+            data = doc.to_dict() or {}
+            data["id"] = doc.id
+            results.append(data)
+        return results
+
     def find_teams_for_user(
         self, league_id: str, uid: str, statuses: list[LeagueTeamStatusEnum]
     ) -> List[LeagueTeam]:

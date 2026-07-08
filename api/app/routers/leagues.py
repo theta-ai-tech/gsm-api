@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import EmailStr, Field, model_validator
 
+from app.constants import PARTNER_INVITE_NAME_MAX
 from app.dependencies.repos import (
     get_divisions_repo,
     get_league_service,
@@ -50,8 +52,21 @@ class LeagueBrowseResponse(GsmBaseModel):
     next_cursor: str | None = None
 
 
+class PartnerInviteRequest(GsmBaseModel):
+    name: str = Field(min_length=1, max_length=PARTNER_INVITE_NAME_MAX)
+    email: EmailStr
+    phone: str | None = None
+
+
 class LeagueJoinRequest(GsmBaseModel):
     partner_uid: str | None = None
+    partner_invite: PartnerInviteRequest | None = None
+
+    @model_validator(mode="after")
+    def _partner_uid_xor_invite(self) -> LeagueJoinRequest:
+        if self.partner_uid is not None and self.partner_invite is not None:
+            raise ValueError("Provide either partner_uid or partner_invite, not both")
+        return self
 
 
 class LeagueTeamsResponse(GsmBaseModel):
@@ -245,16 +260,29 @@ def join_league(
     league_service: LeagueService = Depends(get_league_service),
 ) -> LeagueMember | LeagueTeam:
     partner_uid = body.partner_uid if body is not None else None
+    partner_invite = body.partner_invite if body is not None else None
 
     league = leagues_repo.get_by_id(league_id)
     if league is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="League not found")
 
     if league.format == LeagueFormatEnum.DOUBLES:
+        if partner_invite is not None:
+            try:
+                return league_service.invite_placeholder_team(
+                    league_id,
+                    current_user.uid,
+                    partner_invite.name,
+                    partner_invite.email,
+                    partner_invite.phone,
+                    current_user.display_name,
+                )
+            except LeagueTeamError as e:
+                raise _map_team_error(e)
         if not partner_uid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This doubles league requires a partner_uid",
+                detail="This doubles league requires a partner_uid or partner_invite",
             )
         try:
             return league_service.invite_team(
@@ -263,10 +291,10 @@ def join_league(
         except LeagueTeamError as e:
             raise _map_team_error(e)
 
-    if partner_uid:
+    if partner_uid or partner_invite:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This singles league does not accept a partner_uid",
+            detail="This singles league does not accept a partner",
         )
     try:
         return league_service.join_league(league_id, current_user.uid, current_user.display_name)

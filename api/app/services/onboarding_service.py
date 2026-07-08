@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from app.models.enums import LevelEnum, TierEnum
@@ -5,6 +6,9 @@ from app.models.onboarding import RegisterMeRequest
 from app.models.user import PrivateUserProfile
 from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
+from app.services.league_service import LeagueService
+
+logger = logging.getLogger(__name__)
 
 LEVEL_TO_TIER: dict[LevelEnum, TierEnum] = {
     LevelEnum.BEGINNER: TierEnum.AMATEUR,
@@ -15,9 +19,15 @@ LEVEL_TO_TIER: dict[LevelEnum, TierEnum] = {
 
 
 class OnboardingService:
-    def __init__(self, users_repo: UsersRepo, tier_config_repo: TierConfigRepo) -> None:
+    def __init__(
+        self,
+        users_repo: UsersRepo,
+        tier_config_repo: TierConfigRepo,
+        league_service: LeagueService | None = None,
+    ) -> None:
         self.users_repo = users_repo
         self.tier_config_repo = tier_config_repo
+        self.league_service = league_service
 
     def register_me(
         self,
@@ -93,6 +103,15 @@ class OnboardingService:
 
         # 5. Persist and return
         self.users_repo.create_profile(uid, doc)
+
+        # 6. Backfill any outstanding doubles partner invites addressed to this
+        # email (consume-and-delete). Never fail registration if this errors.
+        if self.league_service is not None:
+            try:
+                self.league_service.claim_partner_invites(uid, str(email))
+            except Exception:
+                logger.exception("claim_partner_invites failed during registration (non-fatal)")
+
         profile = self.users_repo.get_private_profile(uid)
         assert profile is not None
         return profile

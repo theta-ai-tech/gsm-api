@@ -30,6 +30,7 @@ from app.models import (
     LeagueStatusEnum,
     LeagueSummary,
     LeagueTeam,
+    LeagueTeamPartnerInvite,
     LeagueTeamStatusEnum,
     LevelEnum,
     Match,
@@ -468,19 +469,35 @@ def to_league_member(doc: dict[str, Any], uid: str | None = None) -> LeagueMembe
     )
 
 
+def _parse_partner_invite(data: dict[str, Any] | None) -> LeagueTeamPartnerInvite | None:
+    """Parse the public view of a placeholder partner slot.
+
+    Only name + phone are surfaced; the stored ``emailNormalized`` is never
+    exposed in API responses.
+    """
+    if not data:
+        return None
+    name = data.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    return LeagueTeamPartnerInvite(name=name, phone=data.get("phone"))
+
+
 def to_league_team(doc: dict[str, Any], team_id: str | None = None) -> LeagueTeam:
     status_val = _require(doc, "status")
     return LeagueTeam(
         team_id=team_id or doc.get("teamId") or doc.get("id") or "",
         status=LeagueTeamStatusEnum(status_val),
         captain_uid=_require(doc, "captainUid"),
-        partner_uid=_require(doc, "partnerUid"),
+        partner_uid=doc.get("partnerUid"),
         member_uids=list(doc.get("memberUids", []) or []),
         name=doc.get("name", ""),
         created_at=_require(doc, "createdAt"),
         accepted_at=doc.get("acceptedAt"),
         rating_avg=doc.get("ratingAvg"),
         division_id=doc.get("divisionId"),
+        partner_placeholder_uid=doc.get("partnerPlaceholderUid"),
+        partner_invite=_parse_partner_invite(doc.get("partnerInvite")),
     )
 
 
