@@ -105,6 +105,7 @@ class JournalUpdateResponse(GsmBaseModel):
 class SetNorthStarRequest(GsmBaseModel):
     goal_text: str = Field(max_length=NORTH_STAR_GOAL_MAX)
     target_date: datetime | None = None
+    progress_pct: float | None = Field(default=None, ge=0, le=100)
 
 
 # ===== GET /me/journal =====
@@ -342,6 +343,31 @@ def delete_journal_entry(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
 
+# ===== GET /me/north-star =====
+
+_404_north_star = {"description": "North Star goal not set"}
+
+
+@router.get(
+    "/north-star",
+    response_model=NorthStarGoal,
+    summary="Get North Star goal",
+    responses={
+        401: _401,
+        404: _404_north_star,
+    },
+)
+def get_north_star(
+    current_user: CurrentUser = Depends(get_current_user),
+    journal_service: JournalService = Depends(get_journal_service),
+):
+    """Return the authenticated user's current North Star goal."""
+    goal = journal_service.get_north_star(current_user.uid)
+    if goal is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="North Star goal not set")
+    return goal
+
+
 # ===== PUT /me/north-star =====
 
 
@@ -362,14 +388,17 @@ def set_north_star(
     """
     Upsert the authenticated user's North Star goal.
 
-    Always overwrites any previous goal, resets progress to 0%, and stamps
-    a new createdAt. target_date is optional.
+    Overwrites any previous goal and stamps a new createdAt. progress_pct is
+    client-settable: when provided (0–100) it is persisted; when omitted an
+    existing goal's progress is preserved (0% for a brand-new goal). target_date
+    is optional.
     """
     try:
         return journal_service.set_north_star(
             current_user.uid,
             goal_text=request.goal_text,
             target_date=request.target_date,
+            progress_pct=request.progress_pct,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

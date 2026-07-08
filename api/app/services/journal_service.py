@@ -380,23 +380,36 @@ class JournalService:
         uid: str,
         goal_text: str,
         target_date: datetime | None = None,
+        progress_pct: float | None = None,
     ) -> NorthStarGoal:
         """
-        Overwrite the user's North Star goal.
+        Upsert the user's North Star goal.
 
-        Always resets progressPct to 0.0 and stamps a new createdAt.
+        ``progress_pct`` is client-settable: when provided it is persisted as-is;
+        when omitted it is preserved from any existing goal, defaulting to 0.0 for
+        a brand-new goal. A fresh createdAt is stamped on every write.
         """
+        user_doc = self.users_repo.get_user_doc(uid)
+        if not user_doc:
+            raise ValueError("User not found")
+
+        if progress_pct is not None:
+            effective_progress = progress_pct
+        else:
+            existing = _parse_north_star_goal(user_doc.get("northStarGoal"))
+            effective_progress = existing.progress_pct if existing else 0.0
+
         now = datetime.now(timezone.utc)
         goal_data = {
             "goalText": goal_text,
-            "progressPct": 0.0,
+            "progressPct": effective_progress,
             "createdAt": now,
             "targetDate": target_date,
         }
         self.client.collection("users").document(uid).update({"northStarGoal": goal_data})
         return NorthStarGoal(
             goal_text=goal_text,
-            progress_pct=0.0,
+            progress_pct=effective_progress,
             created_at=now,
             target_date=target_date,
         )
