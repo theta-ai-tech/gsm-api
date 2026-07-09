@@ -10,11 +10,12 @@ from app.dependencies.repos import get_region_config_repo, get_users_repo
 from app.deps import get_current_user
 from app.main import app
 from app.models.common import (
+    PerSportLevels,
     PerSportRankings,
     SportRanking,
     UserCompletedMatchSummary,
 )
-from app.models.enums import MatchResultEnum, SportEnum, TierEnum
+from app.models.enums import LevelEnum, MatchResultEnum, SportEnum, TierEnum
 from app.models.region_config import RegionConfig
 from app.models.user import PrivateUserProfile
 from app.repos.region_config_repo import RegionConfigRepo
@@ -52,6 +53,8 @@ def _make_profile(
     rankings: PerSportRankings | None = None,
     completed_matches: list[UserCompletedMatchSummary] | None = None,
     leagues_completed: list | None = None,
+    area: int = 101,
+    levels: "PerSportLevels | None" = None,
 ) -> PrivateUserProfile:
     from app.models.common import PerSportLevels, UserPreferences
 
@@ -62,8 +65,8 @@ def _make_profile(
         profile_url=profile_url,
         rankings=rankings or PerSportRankings(),
         preferences=UserPreferences(
-            area=101,
-            levels=PerSportLevels(),
+            area=area,
+            levels=levels or PerSportLevels(),
             sports=[],
         ),
         leagues_active=[],
@@ -150,6 +153,27 @@ class TestGetClubhouseProfile:
         assert resume["total_wins"] == 0
         assert resume["leagues_completed"] == 0
         assert resume["sports"] == []
+
+    def test_returns_area_and_levels_from_preferences(self, client, mock_users_repo):
+        profile = _make_profile(
+            area=202,
+            levels=PerSportLevels(
+                tennis=LevelEnum.ADVANCED,
+                padel=LevelEnum.INTERMEDIATE,
+            ),
+        )
+        mock_users_repo.get_private_profile.return_value = profile
+
+        resp = client.get("/me/clubhouse/profile")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["area"] == 202
+        assert data["levels"] == {
+            "tennis": "advanced",
+            "padel": "intermediate",
+            "pickleball": None,
+        }
 
     def test_user_not_found_returns_404(self, client, mock_users_repo):
         mock_users_repo.get_private_profile.return_value = None
@@ -315,6 +339,33 @@ class TestPatchClubhouseProfile:
                 "preferences.levels.tennis": "advanced",
             },
         )
+
+    def test_patch_area_and_levels_round_trip_in_response(
+        self, patch_client, mock_users_repo
+    ):
+        before = _make_profile(area=101, levels=PerSportLevels())
+        after = _make_profile(
+            area=202,
+            levels=PerSportLevels(
+                tennis=LevelEnum.ADVANCED,
+                padel=LevelEnum.BEGINNER,
+            ),
+        )
+        mock_users_repo.get_private_profile.side_effect = [before, after]
+
+        resp = patch_client.patch(
+            "/me/clubhouse/profile",
+            json={"area": 202, "levels": {"tennis": "advanced", "padel": "beginner"}},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["area"] == 202
+        assert data["levels"] == {
+            "tennis": "advanced",
+            "padel": "beginner",
+            "pickleball": None,
+        }
 
     def test_levels_update_emits_no_rankings_paths(self, patch_client, mock_users_repo):
         mock_users_repo.get_private_profile.side_effect = [

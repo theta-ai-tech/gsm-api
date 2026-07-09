@@ -49,6 +49,8 @@ class ClubhouseProfileResponse(GsmBaseModel):
     uid: str
     display_name: str
     avatar_url: str | None
+    area: int
+    levels: PerSportLevels
     resume: AthleteResume
 
 
@@ -121,6 +123,8 @@ def _build_profile_response(profile: PrivateUserProfile) -> ClubhouseProfileResp
         uid=profile.uid,
         display_name=profile.name,
         avatar_url=str(profile.profile_url) if profile.profile_url else None,
+        area=profile.preferences.area,
+        levels=profile.preferences.levels,
         resume=resume,
     )
 

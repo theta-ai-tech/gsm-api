@@ -130,6 +130,8 @@ leaderboard recompute.
   "uid": "user_ignatios",
   "display_name": "Ignatios C.",
   "avatar_url": "https://cdn.example.com/a.png",
+  "area": 202,
+  "levels": {"tennis": "advanced", "padel": "intermediate", "pickleball": "beginner"},
   "resume": {
     "total_matches": 2,
     "total_wins": 1,

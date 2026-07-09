@@ -1836,7 +1836,8 @@ Rules:
 
 ### Purpose
 Return the caller's Athlete Card & Resume for the Clubhouse (Profile) tab: identity
-(`display_name`, `avatar_url`) plus an aggregated `resume` (total matches/wins, leagues
+(`display_name`, `avatar_url`), editable preferences (`area`, `levels` — used to prefill
+the Edit-profile pickers), plus an aggregated `resume` (total matches/wins, leagues
 completed, and per-sport ranking cards).
 
 ### Auth
@@ -1846,7 +1847,8 @@ returned — there is no target `uid` parameter.
 ### Behavior
 Reads `users/{uid}` and builds the resume from the denormalized `rankings`,
 `completedMatches`, and `leaguesCompleted` caches. Counts come from capped caches
-(`completedMatches` max 10, `leaguesCompleted` max 20).
+(`completedMatches` max 10, `leaguesCompleted` max 20). `area` and `levels` are sourced
+directly from `preferences` so the client can prefill the Edit-profile pickers.
 
 ### Request body
 None.
@@ -1863,6 +1865,8 @@ curl -s -H "Authorization: Bearer $ID_TOKEN" \
   "uid": "user_ignatios",
   "display_name": "Ignatios C.",
   "avatar_url": "https://cdn.example.com/a.png",
+  "area": 101,
+  "levels": {"tennis": "advanced", "padel": "intermediate", "pickleball": null},
   "resume": {
     "total_matches": 2,
     "total_wins": 1,

@@ -154,6 +154,44 @@ class TestPatchProfileRoundTrip:
         assert raw["preferences"]["sports"] == ["tennis", "padel"]
 
 
+class TestAreaAndLevelsInResponse:
+    def test_get_returns_seeded_area_and_levels(self, db, client):
+        _seed_region_config(db)
+        _seed_user(db)
+
+        resp = client.get("/me/clubhouse/profile")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["area"] == 101
+        assert data["levels"] == {
+            "tennis": "advanced",
+            "padel": "beginner",
+            "pickleball": None,
+        }
+
+    def test_patch_then_get_reflects_new_area_and_levels(self, db, client):
+        _seed_region_config(db)
+        _seed_user(db)
+
+        patch_resp = client.patch(
+            "/me/clubhouse/profile",
+            json={"area": 202, "levels": {"padel": "intermediate"}},
+        )
+        assert patch_resp.status_code == 200
+        patched = patch_resp.json()
+        assert patched["area"] == 202
+        # per-sport merge: padel updated, tennis preserved
+        assert patched["levels"]["padel"] == "intermediate"
+        assert patched["levels"]["tennis"] == "advanced"
+
+        get_resp = client.get("/me/clubhouse/profile")
+        assert get_resp.status_code == 200
+        got = get_resp.json()
+        assert got["area"] == 202
+        assert got["levels"]["padel"] == "intermediate"
+        assert got["levels"]["tennis"] == "advanced"
+
+
 class TestLevelsMergeAndRankingsUntouched:
     def test_levels_merge_preserves_other_sport_and_rankings(self, db, client):
         _seed_region_config(db)
