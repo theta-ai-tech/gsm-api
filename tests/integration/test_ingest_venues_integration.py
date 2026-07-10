@@ -122,6 +122,21 @@ def test_hand_added_row_seeds_with_stable_venue_id(
     assert db.collection(VENUES_COLLECTION).document(expected_id).get().exists
 
 
+def test_duplicate_venue_id_aborts_before_any_write(
+    db: firestore.Client, _cleanup_venues
+):
+    dup_id = f"{_PREFIX}dup"
+    _cleanup_venues.append(dup_id)
+
+    rows = [_row(dup_id, name="First"), _row(dup_id, name="Second")]
+
+    with pytest.raises(CheckpointValidationError):
+        # Duplicate venueId is caught in validate_rows before any write happens.
+        ingest_venues(db, validate_rows(rows))
+
+    assert _count(db, [dup_id]) == 0
+
+
 def test_invalid_area_aborts_before_any_write(db: firestore.Client, _cleanup_venues):
     good_id = f"{_PREFIX}good"
     bad_id = f"{_PREFIX}bad"

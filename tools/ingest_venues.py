@@ -29,6 +29,12 @@ hand-added row omits ``venueId``, it is derived deterministically with
 ``venue_id_for_manual(name, area)`` before validation, so the same hand-added
 venue always resolves to the same document.
 
+Note: because a derived ``venueId`` is a function of ``name`` + ``area``,
+renaming a hand-added row (or moving its metro) mints a *new* derived
+``venueId`` and ingests a fresh document — the old ``venues/{venueId}`` doc is
+not touched and lingers behind. Pruning that stale document is a manual step for
+now.
+
 Target
 ------
 Emulator only (``--env=emu``). The real dev/prod write target is out of scope
@@ -51,7 +57,6 @@ from pydantic import ValidationError
 
 from app.models.venue import VenueSummary
 
-from tools.seed_data import REGION_MAPPING
 from tools.seed_mapping import venue_summary_to_firestore_doc
 from tools.venue_ids import venue_id_for_manual
 
@@ -63,10 +68,12 @@ DEFAULT_INPUT_PATH = Path(__file__).resolve().parent / "data" / "venue_checkpoin
 # Firestore collection curated venues live in (mirrors VenueRepo.COLLECTION).
 VENUES_COLLECTION = "venues"
 
-# ``area`` must be one of the metro region strings in REGION_MAPPING. The
-# reviewer forward-flag from #386: the checkpoint README documents this, the
-# ingest enforces it.
-ALLOWED_AREAS: frozenset[str] = frozenset(REGION_MAPPING.values())
+# ``area`` must be one of the epic's three launch metros. This is an explicit
+# allowlist rather than ``frozenset(REGION_MAPPING.values())`` on purpose:
+# REGION_MAPPING still carries a legacy ``london`` fixture entry ("303") that is
+# NOT a real launch metro, and we don't want it to leak through ingest. Extend
+# this set deliberately when a new metro launches.
+ALLOWED_AREAS: frozenset[str] = frozenset({"athens", "thessaloniki", "patras"})
 
 
 class CheckpointValidationError(ValueError):
@@ -149,8 +156,30 @@ def validate_row(row: dict[str, Any], index: int) -> VenueSummary:
 
 
 def validate_rows(rows: list[dict[str, Any]]) -> list[VenueSummary]:
-    """Validate every row before any write happens (validate-all, write-after)."""
-    return [validate_row(row, index) for index, row in enumerate(rows)]
+    """Validate every row before any write happens (validate-all, write-after).
+
+    In addition to per-row validation, this rejects two checkpoint rows that
+    resolve to the same ``venueId``. Left unchecked, the second row's
+    ``set(merge=False)`` would silently overwrite the first and the summary would
+    double-count. Duplicates are realistic via hand-added slug collisions
+    (e.g. "Ten-Twenty Club" vs "Ten Twenty Club") or copy-pasted rows, so a
+    duplicate aborts the whole run — naming BOTH offending row indices — before
+    any write happens.
+    """
+    venues: list[VenueSummary] = []
+    seen: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        venue = validate_row(row, index)
+        first_index = seen.get(venue.venue_id)
+        if first_index is not None:
+            raise CheckpointValidationError(
+                f"Duplicate venueId {venue.venue_id!r}: rows {first_index} and "
+                f"{index} resolve to the same venue. Two rows sharing a venueId "
+                f"would overwrite each other on ingest — dedupe or rename one."
+            )
+        seen[venue.venue_id] = index
+        venues.append(venue)
+    return venues
 
 
 def classify_change(existing: dict[str, Any] | None, target: dict[str, Any]) -> str:

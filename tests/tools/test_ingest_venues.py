@@ -50,10 +50,22 @@ def test_validate_rows_preserves_order():
     assert [v.venue_id for v in venues] == ["osm_node_1", "osm_node_2"]
 
 
-def test_allowed_areas_are_region_mapping_metros():
-    assert "athens" in ALLOWED_AREAS
-    assert "thessaloniki" in ALLOWED_AREAS
-    assert "patras" in ALLOWED_AREAS
+def test_allowed_areas_are_the_three_launch_metros():
+    assert ALLOWED_AREAS == {"athens", "thessaloniki", "patras"}
+
+
+def test_allowed_areas_reject_legacy_london():
+    # REGION_MAPPING still carries a legacy "303" -> "london" fixture entry; the
+    # explicit allowlist must not let it through.
+    assert "london" not in ALLOWED_AREAS
+
+
+def test_london_area_row_is_rejected():
+    with pytest.raises(CheckpointValidationError) as exc:
+        validate_row(_row(area="london"), 5)
+    message = str(exc.value)
+    assert "london" in message
+    assert "Row 5" in message
 
 
 # --- hand-added rows derive a stable venueId --------------------------------
@@ -109,6 +121,40 @@ def test_validate_rows_aborts_on_first_bad_row():
     rows = [_row(venueId="osm_node_ok"), _row(venueId="osm_node_bad", area="mars")]
     with pytest.raises(CheckpointValidationError):
         validate_rows(rows)
+
+
+# --- duplicate venueId detection --------------------------------------------
+
+
+def test_validate_rows_rejects_duplicate_explicit_venue_id():
+    rows = [
+        _row(venueId="osm_node_dup", name="First"),
+        _row(venueId="osm_node_ok"),
+        _row(venueId="osm_node_dup", name="Second"),
+    ]
+    with pytest.raises(CheckpointValidationError) as exc:
+        validate_rows(rows)
+    message = str(exc.value)
+    assert "osm_node_dup" in message
+    # Names BOTH offending rows (0 and 2), not just the second.
+    assert "0" in message
+    assert "2" in message
+
+
+def test_validate_rows_rejects_hand_added_slug_collision():
+    # "Ten-Twenty Club" and "Ten Twenty Club" slugify to the same venueId.
+    row_a = _row(name="Ten-Twenty Club")
+    del row_a["venueId"]
+    row_b = _row(name="Ten Twenty Club")
+    del row_b["venueId"]
+    with pytest.raises(CheckpointValidationError) as exc:
+        validate_rows([row_a, row_b])
+    assert "manual_athens_ten_twenty_club" in str(exc.value)
+
+
+def test_validate_rows_rejects_identical_copy_pasted_rows():
+    with pytest.raises(CheckpointValidationError):
+        validate_rows([_row(), _row()])
 
 
 # --- classification ---------------------------------------------------------

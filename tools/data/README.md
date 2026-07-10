@@ -70,8 +70,9 @@ venues/{venueId}             curated Firestore collection
    > ℹ️ **Stay within the `VenueSummary` schema.** The model uses
    > `extra="forbid"`, so any extra/unknown keys added by hand are **rejected**
    > on load — do not introduce new fields. Also, `area` must be exactly one of
-   > the `REGION_MAPPING` metro values (`athens` / `thessaloniki` / `patras`);
-   > any other string will not match the `GET /venues` metro filter.
+   > the three launch metros (`athens` / `thessaloniki` / `patras`); any other
+   > string (including the legacy `london` fixture region) is rejected by ingest
+   > and will not match the `GET /venues` metro filter.
 
 4. **Approve & ingest.** Once the checkpoint is approved, the ingest step (#387)
    reads it and upserts `venues/{venueId}` documents:
@@ -83,13 +84,23 @@ venues/{venueId}             curated Firestore collection
    `tools/ingest_venues.py` validates **every** row into `VenueSummary` before it
    writes anything (validate-all, write-after), so a single malformed row aborts
    the run naming the offending index/`venueId` — bad data never lands partially.
-   It enforces that `area` is one of the `REGION_MAPPING` metro values. Each row
+   It also rejects two rows that resolve to the same `venueId` (naming both) so a
+   copy-pasted or slug-colliding duplicate aborts before any write. It enforces
+   that `area` is one of the three launch metros (`athens` / `thessaloniki` /
+   `patras`) via an explicit allowlist — the legacy `london` fixture entry in
+   `REGION_MAPPING` is intentionally excluded. Each row
    is upserted with `set(..., merge=False)` keyed on `venueId` and classified as
    **created / updated / unchanged** against the existing document; unchanged rows
    are skipped, so a re-run against an unedited checkpoint performs zero writes and
    never duplicates a venue. Hand-added rows without a `venueId` get one derived
    deterministically via `venue_id_for_manual(name, area)`. Emulator only
    (`--env=emu`); the real dev/prod write target is out of scope (#340).
+
+   > ℹ️ **Renaming a hand-added row leaves a stale doc.** A derived `venueId` is a
+   > function of `name` + `area`, so renaming a hand-added venue (or changing its
+   > metro) mints a *new* `venueId` and ingests a fresh `venues/{venueId}`
+   > document. The old document is not touched and lingers behind — pruning it is
+   > a manual step for now.
 
 ## Conventions
 
