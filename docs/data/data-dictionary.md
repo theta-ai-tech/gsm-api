@@ -1198,7 +1198,7 @@ here.
 | `venueId` | string (doc id) | Deterministic slug so re-running the seed upserts in place and never duplicates. OSM-sourced venues derive it from the OSM element id; hand-added venues derive it from a documented name+metro rule |
 | `name` | string | Venue name |
 | `coordinates` | map `{lat, lng}` | Lat/lng pair |
-| `area` | string | **Metro region string** — one of `athens`, `thessaloniki`, `patras` (lowercase, matching the *values* in `config/regions.mapping`). This is metro-level, not neighbourhood-level. A client resolves a user's numeric `preferences.area` code → metro via `config/regions`, then filters venues by that metro string. NOTE: legacy `SAMPLE_VENUES` rows still carry neighbourhood-name strings ("Voula"); the venue-seeding epic migrates them to this convention |
+| `area` | string | **Metro region string** — one of `athens`, `thessaloniki`, `patras` (lowercase, matching the *values* in `config/regions.mapping`). This is metro-level, not neighbourhood-level. A client resolves a user's numeric `preferences.area` code → metro via `config/regions`, then filters venues by that metro string. `SAMPLE_VENUES` rows now carry metro strings — the venue-seeding epic migrated legacy neighbourhood-name values ("Voula") to this convention |
 | `sports` | array<string (enum)> | Subset of `tennis`, `padel`, `pickleball`; multi-sport venues carry multiple entries in one document |
 | `courtCount` | int \| null | From OSM `courts` tag where present, else null |
 | `indoor` | bool \| null | Inferred from OSM tags where possible, else null |

@@ -61,7 +61,28 @@ def test_parse_node_uses_lat_lon_directly():
         "courts": "6",
         "surface": "clay",
         "building": None,
+        "indoor": None,
     }
+
+
+def test_parse_extracts_indoor_tag():
+    payload = {
+        "elements": [
+            {
+                "type": "way",
+                "id": 666,
+                "center": {"lat": 37.9, "lon": 23.7},
+                "tags": {
+                    "name": "Indoor Padel Arena",
+                    "sport": "padel",
+                    "leisure": "sports_centre",
+                    "indoor": "yes",
+                },
+            }
+        ]
+    }
+    [candidate] = parse_overpass_response(payload)
+    assert candidate["indoor"] == "yes"
 
 
 def test_parse_way_uses_center_coordinates():
