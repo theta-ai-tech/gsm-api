@@ -1182,11 +1182,15 @@ TIER_CONFIG = TierConfig(
 #   user_ignatios: area=101 -> athens
 #   user_alice:    area=202 -> thessaloniki
 #   user_bob:      area=303 -> london
+# Patras (301/302) completes the user-area-code -> metro -> venues resolution
+# chain for the venue-seeding launch metros (athens/thessaloniki/patras).
 REGION_MAPPING: dict[str, str] = {
     "101": "athens",
     "102": "athens",
     "201": "thessaloniki",
     "202": "thessaloniki",
+    "301": "patras",
+    "302": "patras",
     "303": "london",
 }
 

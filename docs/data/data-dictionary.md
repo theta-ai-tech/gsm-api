@@ -1182,6 +1182,44 @@ Purpose: notable events feed for a region (upsets, personal bests, win streaks, 
 
 ---
 
+## Collection: venues
+
+Curated venue documents backing `GET /venues?sport=&area=` (the league/PLAY
+venue picker). Seeded offline — historically from `tools/seed_venues.py`
+(`SAMPLE_VENUES`), and, for the multi-metro launch seed, from the OSM →
+review-checkpoint → ingest pipeline (`venue-seeding` epic). Non-curated venues
+resolved on demand via Google Places are represented as `VenueRef`, not stored
+here.
+
+### Fields: venues/{venueId}
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `venueId` | string (doc id) | Deterministic slug so re-running the seed upserts in place and never duplicates. OSM-sourced venues derive it from the OSM element id; hand-added venues derive it from a documented name+metro rule |
+| `name` | string | Venue name |
+| `coordinates` | map `{lat, lng}` | Lat/lng pair |
+| `area` | string | **Metro region string** — one of `athens`, `thessaloniki`, `patras` (lowercase, matching the *values* in `config/regions.mapping`). This is metro-level, not neighbourhood-level. A client resolves a user's numeric `preferences.area` code → metro via `config/regions`, then filters venues by that metro string. `SAMPLE_VENUES` rows now carry metro strings — the venue-seeding epic migrated legacy neighbourhood-name values ("Voula") to this convention |
+| `sports` | array<string (enum)> | Subset of `tennis`, `padel`, `pickleball`; multi-sport venues carry multiple entries in one document |
+| `courtCount` | int \| null | From OSM `courts` tag where present, else null |
+| `indoor` | bool \| null | Inferred from OSM tags where possible, else null |
+| `placeId` | string \| null | Google Places id; null at MVP launch (deferred to VEN-4) |
+
+### Example
+
+```json
+{
+  "name": "Athens Padel Club (Olympico)",
+  "coordinates": {"lat": 37.8721, "lng": 23.7582},
+  "area": "athens",
+  "sports": ["padel"],
+  "courtCount": 3,
+  "indoor": true,
+  "placeId": null
+}
+```
+
+---
+
 ## Collection: venueSuggestions
 
 User-submitted venue suggestions awaiting human moderation. Documents are

@@ -126,8 +126,9 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[dict[str, Any]]:
     """Parse an Overpass JSON response into raw venue candidates.
 
     Each candidate carries: ``name``, ``lat``, ``lng``, ``sports`` (list),
-    ``osm_type``, ``osm_id``, and the ``courts``/``surface``/``building`` tags
-    when present. Elements without resolvable coordinates are skipped.
+    ``osm_type``, ``osm_id``, and the ``courts``/``surface``/``building``/
+    ``indoor`` tags when present. Elements without resolvable coordinates are
+    skipped.
     """
     candidates: list[dict[str, Any]] = []
     for element in payload.get("elements", []):
@@ -152,6 +153,7 @@ def parse_overpass_response(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "courts": tags.get("courts"),
                 "surface": tags.get("surface"),
                 "building": tags.get("building"),
+                "indoor": tags.get("indoor"),
             }
         )
     return candidates

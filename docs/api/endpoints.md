@@ -1556,7 +1556,7 @@ Required (Firebase Bearer ID token).
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `sport` | `tennis \| padel \| pickleball` | Yes | Sport to filter by |
-| `area` | string | No | Exact area string match (e.g. `"Glyfada"`) |
+| `area` | string | No | Exact metro area string match (e.g. `"athens"`) |
 | `limit` | int (1–100, default 20) | No | Max venues to return |
 | `cursor` | string | No | Opaque pagination token from previous response |
 
