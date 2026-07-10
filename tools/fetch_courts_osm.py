@@ -89,11 +89,13 @@ def build_overpass_query(
                 key, value = tag.split("=", 1)
                 for element in ("node", "way", "relation"):
                     lines.append(
-                        f'  {element}["{key}"="{value}"]["sport"~"{sport}"]({bbox_str});'
+                        f'  {element}["{key}"="{value}"]'
+                        f'["sport"~"(^|;){sport}($|;)"]({bbox_str});'
                     )
     lines.append(");")
-    # `out center` gives ways/relations a centroid; tags come along by default.
-    lines.append("out center tags;")
+    # `out center` prints geometry: nodes keep lat/lon, ways/relations gain a
+    # centroid. `out center tags` would drop node coordinates, so keep it plain.
+    lines.append("out center;")
     return "\n".join(lines)
 
 

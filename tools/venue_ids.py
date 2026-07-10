@@ -69,7 +69,7 @@ def venue_id_for_osm(element_type: str, osm_id: int | str) -> str:
             f"expected one of {sorted(_VALID_OSM_ELEMENT_TYPES)}."
         )
     osm_id_str = str(osm_id).strip()
-    if not osm_id_str.isdigit():
+    if not (osm_id_str.isascii() and osm_id_str.isdigit()):
         raise ValueError(f"OSM id must be a positive integer, got {osm_id!r}.")
     return f"osm_{normalized_type}_{osm_id_str}"
 

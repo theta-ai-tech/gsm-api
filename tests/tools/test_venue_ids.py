@@ -31,6 +31,12 @@ def test_osm_id_rejects_non_numeric_id():
         venue_id_for_osm("way", "abc")
 
 
+def test_osm_id_rejects_non_ascii_digits():
+    # Arabic-Indic digits satisfy str.isdigit() but are not ASCII decimals.
+    with pytest.raises(ValueError):
+        venue_id_for_osm("way", "١٢٣")
+
+
 def test_manual_id_is_deterministic_and_documented_rule():
     first = venue_id_for_manual("Ten Twenty Club", "Athens")
     second = venue_id_for_manual("Ten Twenty Club", "Athens")

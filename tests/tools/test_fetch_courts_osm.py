@@ -11,13 +11,14 @@ def test_query_covers_all_metros_and_sports():
     for metro in METRO_BBOXES:
         assert f"// {metro}" in query
     for sport in SPORTS:
-        assert f'"sport"~"{sport}"' in query
+        assert f'"sport"~"(^|;){sport}($|;)"' in query
 
 
 def test_query_uses_out_center_and_json():
     query = build_overpass_query()
     assert query.startswith("[out:json]")
-    assert "out center tags;" in query
+    assert "out center;" in query
+    assert "out center tags;" not in query
 
 
 def test_query_includes_all_tag_and_element_permutations():
@@ -28,7 +29,7 @@ def test_query_includes_all_tag_and_element_permutations():
     bbox = "37.8,23.55,38.15,23.95"
     for tag in ('"leisure"="pitch"', '"leisure"="sports_centre"', '"club"="sport"'):
         for element in ("node", "way", "relation"):
-            assert f'{element}[{tag}]["sport"~"tennis"]({bbox});' in query
+            assert f'{element}[{tag}]["sport"~"(^|;)tennis($|;)"]({bbox});' in query
 
 
 def test_parse_node_uses_lat_lon_directly():
