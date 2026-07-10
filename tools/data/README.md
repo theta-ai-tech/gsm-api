@@ -74,7 +74,22 @@ venues/{venueId}             curated Firestore collection
    > any other string will not match the `GET /venues` metro filter.
 
 4. **Approve & ingest.** Once the checkpoint is approved, the ingest step (#387)
-   reads it and upserts `venues/{venueId}` documents.
+   reads it and upserts `venues/{venueId}` documents:
+
+   ```bash
+   python -m tools.ingest_venues --env=emu
+   ```
+
+   `tools/ingest_venues.py` validates **every** row into `VenueSummary` before it
+   writes anything (validate-all, write-after), so a single malformed row aborts
+   the run naming the offending index/`venueId` — bad data never lands partially.
+   It enforces that `area` is one of the `REGION_MAPPING` metro values. Each row
+   is upserted with `set(..., merge=False)` keyed on `venueId` and classified as
+   **created / updated / unchanged** against the existing document; unchanged rows
+   are skipped, so a re-run against an unedited checkpoint performs zero writes and
+   never duplicates a venue. Hand-added rows without a `venueId` get one derived
+   deterministically via `venue_id_for_manual(name, area)`. Emulator only
+   (`--env=emu`); the real dev/prod write target is out of scope (#340).
 
 ## Conventions
 
