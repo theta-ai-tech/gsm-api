@@ -818,7 +818,7 @@ Returns at most 5 results. Curated venues (with `venueId`) appear first; Google 
 | Param | Type | Required | Constraints |
 |-------|------|----------|-------------|
 | `sport` | `tennis\|padel\|pickleball` | Yes | |
-| `area` | string | No | Exact area match |
+| `area` | string | No | Exact metro area string match (e.g. `"athens"`, lowercase, matching `config/regions` values) |
 | `limit` | int | No | 1–100, default 20 |
 | `cursor` | string | No | Opaque pagination token |
 
@@ -831,7 +831,7 @@ Returns at most 5 results. Curated venues (with `venueId`) appear first; Google 
       "venueId": "venue_flisvos",
       "name": "Flisvos Padel Academy",
       "coordinates": {"lat": 37.93, "lng": 23.68},
-      "area": "Palaio Faliro",
+      "area": "athens",
       "sports": ["padel", "tennis"],
       "courtCount": 6,
       "indoor": false,

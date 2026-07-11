@@ -70,7 +70,7 @@ class TestGetById:
         mock_snap.to_dict.return_value = {
             "name": "Flisvos Padel Academy",
             "coordinates": _geo_point(37.93, 23.68),
-            "area": "Palaio Faliro",
+            "area": "athens",
             "sports": ["padel", "tennis"],
             "courtCount": 6,
             "indoor": False,
@@ -88,7 +88,7 @@ class TestGetById:
         assert result.name == "Flisvos Padel Academy"
         assert result.coordinates.lat == 37.93
         assert result.coordinates.lng == 23.68
-        assert result.area == "Palaio Faliro"
+        assert result.area == "athens"
         assert result.sports == [SportEnum.PADEL, SportEnum.TENNIS]
         assert result.court_count == 6
         assert result.indoor is False
@@ -102,7 +102,7 @@ class TestGetById:
         mock_snap.to_dict.return_value = {
             "name": "Glyfada Tennis Club",
             "coordinates": {"lat": 37.86, "lng": 23.75},
-            "area": "Glyfada",
+            "area": "athens",
             "sports": ["tennis"],
         }
         client.collection.return_value.document.return_value.get.return_value = (
@@ -139,7 +139,7 @@ class TestListBySportAndArea:
                 name="Flisvos Padel Academy",
                 lat=37.93,
                 lng=23.68,
-                area="Palaio Faliro",
+                area="athens",
                 sports=["padel"],
                 court_count=6,
                 indoor=False,
@@ -149,7 +149,7 @@ class TestListBySportAndArea:
                 name="Glyfada Padel Club",
                 lat=37.86,
                 lng=23.75,
-                area="Glyfada",
+                area="athens",
                 sports=["padel", "tennis"],
                 court_count=4,
                 indoor=True,
@@ -166,7 +166,7 @@ class TestListBySportAndArea:
         where_sport_mock.order_by.assert_called_once_with("name")
         assert len(result) == 2
         assert [v.venue_id for v in result] == ["venue_flisvos", "venue_glyfada"]
-        assert result[0].area == "Palaio Faliro"
+        assert result[0].area == "athens"
         assert result[1].sports == [SportEnum.PADEL, SportEnum.TENNIS]
 
     def test_filters_by_sport_and_area_when_area_provided(self) -> None:
@@ -188,7 +188,7 @@ class TestListBySportAndArea:
                 name="Glyfada Tennis Club",
                 lat=37.86,
                 lng=23.75,
-                area="Glyfada",
+                area="athens",
                 sports=["tennis"],
                 court_count=8,
                 indoor=False,
@@ -196,17 +196,17 @@ class TestListBySportAndArea:
             ),
         ]
 
-        result = repo.list_by_sport_and_area("tennis", area="Glyfada")
+        result = repo.list_by_sport_and_area("tennis", area="athens")
 
         collection_mock.where.assert_called_once_with(
             "sports", "array_contains", "tennis"
         )
-        where_sport_mock.where.assert_called_once_with("area", "==", "Glyfada")
+        where_sport_mock.where.assert_called_once_with("area", "==", "athens")
         where_area_mock.order_by.assert_called_once_with("name")
         assert len(result) == 1
         venue = result[0]
         assert venue.venue_id == "venue_glyfada_tennis"
-        assert venue.area == "Glyfada"
+        assert venue.area == "athens"
         assert venue.sports == [SportEnum.TENNIS]
         assert venue.place_id == "ChIJGlyfada"
 

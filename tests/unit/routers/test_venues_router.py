@@ -75,7 +75,7 @@ def _curated_venue(
         venue_id=venue_id,
         name=name,
         coordinates=GeoCoordinates(lat=lat, lng=lng),
-        area="Athens",
+        area="athens",
         sports=[SportEnum.PADEL],
         place_id=place_id,
     )
@@ -398,10 +398,10 @@ class TestListVenues:
     def test_area_forwarded_to_repo(
         self, list_client: TestClient, mock_venue_repo: Mock
     ):
-        list_client.get("/venues", params={"sport": "padel", "area": "Glyfada"})
+        list_client.get("/venues", params={"sport": "padel", "area": "athens"})
         mock_venue_repo.list_by_sport_and_area.assert_called_once()
         call_kwargs = mock_venue_repo.list_by_sport_and_area.call_args
-        assert call_kwargs.kwargs.get("area") == "Glyfada"
+        assert call_kwargs.kwargs.get("area") == "athens"
 
     def test_area_is_optional(self, list_client: TestClient):
         resp = list_client.get("/venues", params={"sport": "padel"})
