@@ -1568,7 +1568,7 @@ Required (Firebase Bearer ID token).
       "venueId": "venue_flisvos",
       "name": "Flisvos Padel Academy",
       "coordinates": {"lat": 37.93, "lng": 23.68},
-      "area": "Palaio Faliro",
+      "area": "athens",
       "sports": ["padel", "tennis"],
       "courtCount": 6,
       "indoor": false,

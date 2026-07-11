@@ -73,7 +73,7 @@ class TestToVenueSummary:
         doc = {
             "name": "Flisvos Padel Academy",
             "coordinates": SimpleNamespace(latitude=37.93, longitude=23.68),
-            "area": "Palaio Faliro",
+            "area": "athens",
             "sports": ["padel", "tennis"],
             "courtCount": 6,
             "indoor": False,
@@ -86,7 +86,7 @@ class TestToVenueSummary:
         assert venue.name == "Flisvos Padel Academy"
         assert venue.coordinates.lat == 37.93
         assert venue.coordinates.lng == 23.68
-        assert venue.area == "Palaio Faliro"
+        assert venue.area == "athens"
         assert venue.sports == [SportEnum.PADEL, SportEnum.TENNIS]
         assert venue.court_count == 6
         assert venue.indoor is False
@@ -96,7 +96,7 @@ class TestToVenueSummary:
         doc = {
             "name": "Glyfada Tennis Club",
             "coordinates": {"lat": 37.86, "lng": 23.75},
-            "area": "Glyfada",
+            "area": "athens",
             "sports": ["tennis"],
         }
 
@@ -113,7 +113,7 @@ class TestToVenueSummary:
             "id": "venue_fallback",
             "name": "Fallback Courts",
             "coordinates": {"lat": 0.0, "lng": 0.0},
-            "area": "Athens",
+            "area": "athens",
             "sports": ["pickleball"],
         }
 
@@ -126,7 +126,7 @@ class TestToVenueSummary:
         doc = {
             "name": "No ID Venue",
             "coordinates": {"lat": 37.93, "lng": 23.68},
-            "area": "Athens",
+            "area": "athens",
             "sports": ["padel"],
         }
 
@@ -136,7 +136,7 @@ class TestToVenueSummary:
     def test_raises_when_name_missing(self) -> None:
         doc = {
             "coordinates": {"lat": 37.93, "lng": 23.68},
-            "area": "Athens",
+            "area": "athens",
             "sports": ["padel"],
         }
 
@@ -157,7 +157,7 @@ class TestToVenueSummary:
         doc = {
             "name": "No Sports Venue",
             "coordinates": {"lat": 37.93, "lng": 23.68},
-            "area": "Athens",
+            "area": "athens",
         }
 
         with pytest.raises(ValueError, match="sports"):
