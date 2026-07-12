@@ -12,6 +12,7 @@ from app.models.enums import (
     MatchResultEnum,
     SportEnum,
     TierEnum,
+    VenueStatusEnum,
 )
 
 
@@ -37,6 +38,7 @@ class VenueRef(GsmBaseModel):
     place_id: str | None = Field(default=None, alias="placeId")
     name: str
     coordinates: GeoCoordinates
+    status: VenueStatusEnum | None = None
 
     @model_validator(mode="after")
     def _ensure_identifier(self) -> "VenueRef":

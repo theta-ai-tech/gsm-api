@@ -14,7 +14,7 @@ from app.dependencies.repos import get_venue_repo, get_venue_suggestions_repo
 from app.deps import get_current_user
 from app.main import app
 from app.models.common import GeoCoordinates, VenueRef
-from app.models.enums import SportEnum
+from app.models.enums import SportEnum, VenueStatusEnum
 from app.models.venue import VenueSummary
 from app.security import CurrentUser
 from app.services.places_service import PlacesService, PlacesUpstreamError
@@ -70,6 +70,7 @@ def _curated_venue(
     place_id: str | None = None,
     lat: float = 37.9,
     lng: float = 23.7,
+    status: VenueStatusEnum = VenueStatusEnum.LIVE,
 ) -> VenueSummary:
     return VenueSummary(
         venue_id=venue_id,
@@ -78,6 +79,7 @@ def _curated_venue(
         area="athens",
         sports=[SportEnum.PADEL],
         place_id=place_id,
+        status=status,
     )
 
 
@@ -163,8 +165,32 @@ class TestSearchVenuesHappyPath:
         resp = client.get("/venues/search", params={"q": "flisvos"})
         assert resp.status_code == 200
         r = resp.json()["results"][0]
-        assert set(r.keys()) == {"placeId", "venueId", "name", "coordinates"}
+        assert set(r.keys()) == {"placeId", "venueId", "name", "coordinates", "status"}
         assert r["coordinates"] == {"lat": 37.93, "lng": 23.68}
+
+    def test_google_only_result_status_is_null(
+        self, client: TestClient, mock_places_service: Mock
+    ):
+        mock_places_service.autocomplete.return_value = [
+            _google_ref("ChIJ_abc", "Flisvos Padel"),
+        ]
+        resp = client.get("/venues/search", params={"q": "flisvos"})
+        assert resp.status_code == 200
+        assert resp.json()["results"][0]["status"] is None
+
+    def test_curated_unverified_result_carries_status(
+        self, client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.search_by_name_prefix.return_value = [
+            _curated_venue(
+                "ven_generic",
+                "Generic Court",
+                status=VenueStatusEnum.UNVERIFIED,
+            ),
+        ]
+        resp = client.get("/venues/search", params={"q": "Generic"})
+        assert resp.status_code == 200
+        assert resp.json()["results"][0]["status"] == "unverified"
 
 
 class TestSearchVenuesValidation:
@@ -429,6 +455,21 @@ class TestListVenues:
         venue = resp.json()["venues"][0]
         assert "venueId" in venue
         assert "courtCount" in venue
+        assert "status" in venue
+
+    def test_unverified_venue_carries_status_value(
+        self, list_client: TestClient, mock_venue_repo: Mock
+    ):
+        mock_venue_repo.list_by_sport_and_area.return_value = [
+            _curated_venue(
+                "ven_generic",
+                "Generic Court",
+                status=VenueStatusEnum.UNVERIFIED,
+            )
+        ]
+        resp = list_client.get("/venues", params={"sport": "padel", "limit": "1"})
+        assert resp.status_code == 200
+        assert resp.json()["venues"][0]["status"] == "unverified"
 
     def test_next_cursor_none_when_fewer_than_limit(
         self, list_client: TestClient, mock_venue_repo: Mock

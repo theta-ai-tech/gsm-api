@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools.ingest_venues import (
-    ALLOWED_AREAS,
+    LIVE_AREAS,
     CheckpointValidationError,
     classify_change,
     load_checkpoint,
@@ -42,6 +42,7 @@ def test_validate_row_returns_venue_summary():
     assert venue.venue_id == "osm_node_111"
     assert venue.area == "athens"
     assert venue.court_count == 4
+    assert venue.status.value == "live"
 
 
 def test_validate_rows_preserves_order():
@@ -50,22 +51,53 @@ def test_validate_rows_preserves_order():
     assert [v.venue_id for v in venues] == ["osm_node_1", "osm_node_2"]
 
 
-def test_allowed_areas_are_the_three_launch_metros():
-    assert ALLOWED_AREAS == {"athens", "thessaloniki", "patras"}
+def test_live_areas_are_the_three_launch_metros():
+    assert LIVE_AREAS == {"athens", "thessaloniki", "patras"}
 
 
-def test_allowed_areas_reject_legacy_london():
+def test_live_areas_reject_legacy_london():
     # REGION_MAPPING still carries a legacy "303" -> "london" fixture entry; the
-    # explicit allowlist must not let it through.
-    assert "london" not in ALLOWED_AREAS
+    # explicit allowlist must not treat it as live.
+    assert "london" not in LIVE_AREAS
 
 
-def test_london_area_row_is_rejected():
+def test_non_live_area_without_hidden_status_is_rejected():
     with pytest.raises(CheckpointValidationError) as exc:
-        validate_row(_row(area="london"), 5)
+        validate_row(_row(area="lavrio"), 5)
     message = str(exc.value)
-    assert "london" in message
+    assert "lavrio" in message
     assert "Row 5" in message
+    assert 'status="hidden"' in message
+
+
+def test_non_live_area_with_hidden_status_is_accepted():
+    venue = validate_row(_row(area="lavrio", status="hidden"), 0)
+    assert venue.area == "lavrio"
+    assert venue.status.value == "hidden"
+
+
+def test_non_live_area_with_unverified_status_is_rejected():
+    # unverified is client-visible, so it must never leak an unlaunched region.
+    with pytest.raises(CheckpointValidationError) as exc:
+        validate_row(_row(area="lavrio", status="unverified"), 0)
+    assert "lavrio" in str(exc.value)
+
+
+def test_live_area_row_may_carry_any_status():
+    for status in ("live", "hidden", "unverified"):
+        venue = validate_row(_row(status=status), 0)
+        assert venue.status.value == status
+
+
+def test_uppercase_area_is_rejected():
+    with pytest.raises(CheckpointValidationError) as exc:
+        validate_row(_row(area="Athens"), 0)
+    assert "lowercase" in str(exc.value)
+
+
+def test_empty_area_is_rejected():
+    with pytest.raises(CheckpointValidationError):
+        validate_row(_row(area=""), 0)
 
 
 # --- hand-added rows derive a stable venueId --------------------------------
@@ -96,14 +128,6 @@ def test_missing_venue_id_without_name_raises():
 # --- invalid data fails loudly ----------------------------------------------
 
 
-def test_invalid_area_raises_with_venue_id():
-    with pytest.raises(CheckpointValidationError) as exc:
-        validate_row(_row(area="berlin"), 2)
-    message = str(exc.value)
-    assert "osm_node_111" in message
-    assert "berlin" in message
-
-
 def test_extra_field_is_rejected():
     with pytest.raises(CheckpointValidationError) as exc:
         validate_row(_row(bogus="x"), 1)
@@ -117,10 +141,20 @@ def test_missing_required_field_raises():
         validate_row(row, 0)
 
 
-def test_validate_rows_aborts_on_first_bad_row():
-    rows = [_row(venueId="osm_node_ok"), _row(venueId="osm_node_bad", area="mars")]
-    with pytest.raises(CheckpointValidationError):
+def test_validate_rows_collects_all_violations():
+    rows = [
+        _row(venueId="osm_node_ok"),
+        _row(venueId="osm_node_bad_1", area="mars"),
+        _row(venueId="osm_node_bad_2", area="jupiter"),
+    ]
+    with pytest.raises(CheckpointValidationError) as exc:
         validate_rows(rows)
+    message = str(exc.value)
+    assert "osm_node_bad_1" in message
+    assert "osm_node_bad_2" in message
+    assert "mars" in message
+    assert "jupiter" in message
+    assert "2 checkpoint row(s)" in message
 
 
 # --- duplicate venueId detection --------------------------------------------

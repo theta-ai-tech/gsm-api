@@ -24,7 +24,7 @@ venues/{venueId}             curated Firestore collection
 | File | Written by | Shape |
 |------|-----------|-------|
 | `osm_courts_raw.json` | `tools/fetch_courts_osm.py` | List of raw candidates: `name`, `lat`, `lng`, `sports[]`, `osm_type`, `osm_id`, `courts`, `surface`, `building`, `indoor` |
-| `venue_checkpoint.json` | `tools/normalize_courts.py` | List of `VenueSummary` rows (camelCase): `venueId`, `name`, `coordinates`, `area`, `sports[]`, `courtCount`, `indoor`, `placeId` |
+| `venue_checkpoint.json` | `tools/normalize_courts.py` | List of `VenueSummary` rows (camelCase): `venueId`, `name`, `coordinates`, `area`, `sports[]`, `courtCount`, `indoor`, `placeId`, `status` (optional, default `"live"`) |
 
 ## Review → edit → approve flow
 
@@ -69,10 +69,12 @@ venues/{venueId}             curated Firestore collection
 
    > ℹ️ **Stay within the `VenueSummary` schema.** The model uses
    > `extra="forbid"`, so any extra/unknown keys added by hand are **rejected**
-   > on load — do not introduce new fields. Also, `area` must be exactly one of
-   > the three launch metros (`athens` / `thessaloniki` / `patras`); any other
-   > string (including the legacy `london` fixture region) is rejected by ingest
-   > and will not match the `GET /venues` metro filter.
+   > on load — do not introduce new fields. `area` may be any non-empty,
+   > already-lowercase slug, but a row whose `area` is not one of the launch
+   > metros (`athens` / `thessaloniki` / `patras`) MUST set `status: "hidden"` —
+   > otherwise ingest rejects it. `unverified` is never allowed outside a
+   > launch metro (it would leak an unlaunched region past the client-visible
+   > `GET /venues` filter). Rows in a launch metro may carry any `status`.
 
 4. **Approve & ingest.** Once the checkpoint is approved, the ingest step (#387)
    reads it and upserts `venues/{venueId}` documents:
@@ -82,19 +84,27 @@ venues/{venueId}             curated Firestore collection
    ```
 
    `tools/ingest_venues.py` validates **every** row into `VenueSummary` before it
-   writes anything (validate-all, write-after), so a single malformed row aborts
-   the run naming the offending index/`venueId` — bad data never lands partially.
-   It also rejects two rows that resolve to the same `venueId` (naming both) so a
-   copy-pasted or slug-colliding duplicate aborts before any write. It enforces
-   that `area` is one of the three launch metros (`athens` / `thessaloniki` /
-   `patras`) via an explicit allowlist — the legacy `london` fixture entry in
-   `REGION_MAPPING` is intentionally excluded. Each row
-   is upserted with `set(..., merge=False)` keyed on `venueId` and classified as
-   **created / updated / unchanged** against the existing document; unchanged rows
-   are skipped, so a re-run against an unedited checkpoint performs zero writes and
-   never duplicates a venue. Hand-added rows without a `venueId` get one derived
-   deterministically via `venue_id_for_manual(name, area)`. Emulator only
-   (`--env=emu`); the real dev/prod write target is out of scope (#340).
+   writes anything (validate-all, write-after); ALL per-row violations are
+   collected and raised together, naming the offending index/`venueId` for each
+   — bad data never lands partially and a reviewer sees every problem in one
+   pass. It also rejects two rows that resolve to the same `venueId` (naming
+   both) so a copy-pasted or slug-colliding duplicate aborts before any write.
+   It enforces the live-regions invariant: `area` may be any non-empty
+   lowercase slug, but `area not in LIVE_AREAS` (`athens` / `thessaloniki` /
+   `patras`) requires `status: "hidden"` — the legacy `london` fixture entry in
+   `REGION_MAPPING` is intentionally excluded from `LIVE_AREAS`. Each row
+   is upserted with `set(..., merge=False)` keyed on `venueId` (writing `status`
+   on every doc) and classified as **created / updated / unchanged** against the
+   existing document; unchanged rows are skipped, so a re-run against an
+   unedited checkpoint performs zero writes and never duplicates a venue.
+   Hand-added rows without a `venueId` get one derived deterministically via
+   `venue_id_for_manual(name, area)`. Emulator only (`--env=emu`); the real
+   dev/prod write target is out of scope (#340).
+
+   When a hidden region launches, flip its venues with
+   `python -m tools.set_area_status --area=<slug> --from=hidden --to=live
+   --env=emu` — it only touches rows matching both `area` and `status ==
+   hidden`, so any `unverified` row in the same area is left untouched.
 
    > ℹ️ **Renaming a hand-added row leaves a stale doc.** A derived `venueId` is a
    > function of `name` + `area`, so renaming a hand-added venue (or changing its
@@ -104,9 +114,15 @@ venues/{venueId}             curated Firestore collection
 
 ## Conventions
 
-- `area` = **metro region string**, lowercase, one of `athens` /
-  `thessaloniki` / `patras`. Matches the *values* in `config/regions.mapping`
-  (see `REGION_MAPPING` in `tools/seed_data.py`).
+- `area` = **metro region string**, lowercase, any non-empty slug. For a
+  launch metro this matches the *values* in `config/regions.mapping` (see
+  `REGION_MAPPING` in `tools/seed_data.py`) — currently `athens` /
+  `thessaloniki` / `patras`.
+- `status` = venue lifecycle enum (`live` / `hidden` / `unverified`), optional
+  on the checkpoint (default `"live"`). Invariant: `area not in LIVE_AREAS`
+  (the launch metros above) requires `status: "hidden"`; `unverified` is only
+  valid in a launch metro. `hidden` venues never reach clients; `unverified`
+  venues are returned but flagged for user confirmation.
 - `placeId` is `null` at MVP launch (Places enrichment deferred).
 - `courtCount` / `indoor` are populated only where OSM provides a signal, else
   `null`.

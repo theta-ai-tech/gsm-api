@@ -15,7 +15,7 @@ venues.
 from __future__ import annotations
 
 from app.models.common import GeoCoordinates
-from app.models.enums import SportEnum
+from app.models.enums import SportEnum, VenueStatusEnum
 from app.models.venue import VenueSummary
 
 # ---------------------------------------------------------------------------
@@ -31,6 +31,7 @@ _TEN_TWENTY = VenueSummary(
     court_count=4,
     indoor=None,  # mixed indoor/outdoor
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _FLISVOS = VenueSummary(
@@ -42,6 +43,7 @@ _FLISVOS = VenueSummary(
     court_count=3,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _ATHENS_PADEL_OLYMPICO = VenueSummary(
@@ -53,6 +55,7 @@ _ATHENS_PADEL_OLYMPICO = VenueSummary(
     court_count=3,
     indoor=True,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 # ---------------------------------------------------------------------------
@@ -68,6 +71,7 @@ _GOLDEN_POINT = VenueSummary(
     court_count=None,
     indoor=None,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _LA_BANDEJA = VenueSummary(
@@ -79,6 +83,7 @@ _LA_BANDEJA = VenueSummary(
     court_count=None,
     indoor=None,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _HALANDRI = VenueSummary(
@@ -90,6 +95,7 @@ _HALANDRI = VenueSummary(
     court_count=2,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _ARENA_PADEL = VenueSummary(
@@ -101,6 +107,7 @@ _ARENA_PADEL = VenueSummary(
     court_count=1,
     indoor=True,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _RENTI_ARENA = VenueSummary(
@@ -112,6 +119,7 @@ _RENTI_ARENA = VenueSummary(
     court_count=3,
     indoor=True,  # roofed
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _GREEK_PADEL_ACADEMY = VenueSummary(
@@ -123,6 +131,7 @@ _GREEK_PADEL_ACADEMY = VenueSummary(
     court_count=None,
     indoor=None,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _NORTHPOINT = VenueSummary(
@@ -134,6 +143,7 @@ _NORTHPOINT = VenueSummary(
     court_count=None,
     indoor=None,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 # ---------------------------------------------------------------------------
@@ -149,6 +159,7 @@ _ATHENS_TENNIS_CLUB = VenueSummary(
     court_count=6,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _GLYFADA_TENNIS = VenueSummary(
@@ -160,6 +171,7 @@ _GLYFADA_TENNIS = VenueSummary(
     court_count=8,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _KIFISIA_TENNIS = VenueSummary(
@@ -171,6 +183,7 @@ _KIFISIA_TENNIS = VenueSummary(
     court_count=4,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _PALEO_FALIRO_TENNIS = VenueSummary(
@@ -182,6 +195,7 @@ _PALEO_FALIRO_TENNIS = VenueSummary(
     court_count=5,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 _MAROUSI_TENNIS = VenueSummary(
@@ -193,6 +207,7 @@ _MAROUSI_TENNIS = VenueSummary(
     court_count=3,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 # ---------------------------------------------------------------------------
@@ -208,6 +223,7 @@ _VOULA_SPORTS_COMPLEX = VenueSummary(
     court_count=6,
     indoor=False,
     place_id=None,
+    status=VenueStatusEnum.LIVE,
 )
 
 # ---------------------------------------------------------------------------

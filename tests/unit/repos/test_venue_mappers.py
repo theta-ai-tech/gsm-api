@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.models.enums import SportEnum
+from app.models.enums import SportEnum, VenueStatusEnum
 from app.repos.mappers import _parse_geo_coordinates, to_venue_summary
 
 
@@ -107,6 +107,44 @@ class TestToVenueSummary:
         assert venue.court_count is None
         assert venue.indoor is None
         assert venue.place_id is None
+
+    def test_missing_status_defaults_to_live(self) -> None:
+        doc = {
+            "name": "Glyfada Tennis Club",
+            "coordinates": {"lat": 37.86, "lng": 23.75},
+            "area": "athens",
+            "sports": ["tennis"],
+        }
+
+        venue = to_venue_summary(doc, venue_id="venue_glyfada")
+
+        assert venue.status == VenueStatusEnum.LIVE
+
+    def test_hidden_status_round_trips_from_doc(self) -> None:
+        doc = {
+            "name": "Not Yet Launched Club",
+            "coordinates": {"lat": 37.86, "lng": 23.75},
+            "area": "lavrio",
+            "sports": ["tennis"],
+            "status": "hidden",
+        }
+
+        venue = to_venue_summary(doc, venue_id="venue_hidden")
+
+        assert venue.status == VenueStatusEnum.HIDDEN
+
+    def test_unverified_status_round_trips_from_doc(self) -> None:
+        doc = {
+            "name": "Generic Court",
+            "coordinates": {"lat": 37.86, "lng": 23.75},
+            "area": "athens",
+            "sports": ["tennis"],
+            "status": "unverified",
+        }
+
+        venue = to_venue_summary(doc, venue_id="venue_generic")
+
+        assert venue.status == VenueStatusEnum.UNVERIFIED
 
     def test_falls_back_to_id_field_when_venue_id_not_passed(self) -> None:
         doc = {

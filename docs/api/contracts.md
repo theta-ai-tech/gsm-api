@@ -18,7 +18,8 @@ Used wherever a venue is attached to a broadcast, offer, or match.
   "venueId": "venue_flisvos",
   "placeId": "ChIJFlisvos",
   "name": "Flisvos Padel Academy",
-  "coordinates": {"lat": 37.93, "lng": 23.68}
+  "coordinates": {"lat": 37.93, "lng": 23.68},
+  "status": "live"
 }
 ```
 
@@ -26,6 +27,9 @@ Used wherever a venue is attached to a broadcast, offer, or match.
 - `placeId` — Google Places ID; `null` for fully curated venues without a Places match.
 - `name` — display name.
 - `coordinates` — `{lat, lng}` floats.
+- `status` — venue lifecycle state (`live` \| `unverified`) for curated venues resolved from the
+  `venues` collection; `null` for Google-only results (they have no lifecycle state). `hidden`
+  venues are never returned to clients, so this field never carries `"hidden"` in a response.
 
 ### MatchScore
 
@@ -783,20 +787,24 @@ None.
       "venueId": "venue_flisvos",
       "placeId": "ChIJFlisvos",
       "name": "Flisvos Padel Academy",
-      "coordinates": {"lat": 37.93, "lng": 23.68}
+      "coordinates": {"lat": 37.93, "lng": 23.68},
+      "status": "live"
     },
     {
       "venueId": null,
       "placeId": "ChIJGoogleResult",
       "name": "Glyfada Padel Club",
-      "coordinates": {"lat": 37.88, "lng": 23.74}
+      "coordinates": {"lat": 37.88, "lng": 23.74},
+      "status": null
     }
   ]
 }
 ```
 
 Returns at most 5 results. Curated venues (with `venueId`) appear first; Google Places results
-(with `venueId: null`) follow. Results are deduped by `placeId`.
+(with `venueId: null`) follow. Results are deduped by `placeId`. Only `live`/`unverified` curated
+venues are matched (`hidden` venues are excluded); curated results carry `status: "live"` or
+`status: "unverified"`, Google-only results carry `status: null`.
 
 #### Key error codes
 
@@ -835,14 +843,17 @@ Returns at most 5 results. Curated venues (with `venueId`) appear first; Google 
       "sports": ["padel", "tennis"],
       "courtCount": 6,
       "indoor": false,
-      "placeId": "ChIJFlisvos"
+      "placeId": "ChIJFlisvos",
+      "status": "live"
     }
   ],
   "nextCursor": null
 }
 ```
 
-Returns `200` with `venues: []` when no venues match (never `404`).
+Returns `200` with `venues: []` when no venues match (never `404`). Only `live`/`unverified`
+venues are returned (`hidden` venues, in not-yet-launched regions, are excluded); `status` is
+always present and is one of `"live"` or `"unverified"`.
 
 #### Key error codes
 

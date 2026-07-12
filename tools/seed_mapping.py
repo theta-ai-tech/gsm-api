@@ -493,6 +493,7 @@ def venue_summary_to_firestore_doc(venue: VenueSummary) -> Dict[str, Any]:
         },
         "area": venue.area,
         "sports": [s.value for s in venue.sports],
+        "status": venue.status.value,
     }
     if venue.court_count is not None:
         doc["courtCount"] = venue.court_count

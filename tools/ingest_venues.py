@@ -55,6 +55,7 @@ from typing import Any
 from google.cloud import firestore
 from pydantic import ValidationError
 
+from app.models.enums import VenueStatusEnum
 from app.models.venue import VenueSummary
 
 from tools.seed_mapping import venue_summary_to_firestore_doc
@@ -68,12 +69,14 @@ DEFAULT_INPUT_PATH = Path(__file__).resolve().parent / "data" / "venue_checkpoin
 # Firestore collection curated venues live in (mirrors VenueRepo.COLLECTION).
 VENUES_COLLECTION = "venues"
 
-# ``area`` must be one of the epic's three launch metros. This is an explicit
+# Areas that are launched and visible to clients today. This is an explicit
 # allowlist rather than ``frozenset(REGION_MAPPING.values())`` on purpose:
 # REGION_MAPPING still carries a legacy ``london`` fixture entry ("303") that is
-# NOT a real launch metro, and we don't want it to leak through ingest. Extend
-# this set deliberately when a new metro launches.
-ALLOWED_AREAS: frozenset[str] = frozenset({"athens", "thessaloniki", "patras"})
+# NOT a real launch metro, and we don't want it to leak through ingest as live.
+# Any other lowercase area slug is now accepted, but a row in a non-live area
+# MUST carry ``status="hidden"`` (see the live-regions invariant in
+# ``validate_row``) — extend this set deliberately when a new metro launches.
+LIVE_AREAS: frozenset[str] = frozenset({"athens", "thessaloniki", "patras"})
 
 
 class CheckpointValidationError(ValueError):
@@ -132,8 +135,15 @@ def validate_row(row: dict[str, Any], index: int) -> VenueSummary:
     """Validate one raw checkpoint row into a ``VenueSummary``.
 
     Derives a ``venueId`` for hand-added rows first, then validates the model and
-    enforces ``area`` membership. Raises :class:`CheckpointValidationError` with
-    the offending index/``venueId`` on any failure.
+    enforces the ``area``/``status`` invariants below. Raises
+    :class:`CheckpointValidationError` with the offending index/``venueId`` on
+    any failure.
+
+    Live-regions invariant: ``area`` may be any non-empty lowercase slug, but a
+    row whose ``area`` is not in :data:`LIVE_AREAS` MUST set
+    ``status="hidden"`` — otherwise it would leak an unlaunched region's venue
+    into the client-visible ``status in ["live", "unverified"]`` query. Rows in
+    a live area may carry any status.
     """
     if not isinstance(row, dict):
         raise CheckpointValidationError(
@@ -147,10 +157,15 @@ def validate_row(row: dict[str, Any], index: int) -> VenueSummary:
             f"Row {index} (venueId={prepared.get('venueId')!r}) failed "
             f"VenueSummary validation: {exc}"
         ) from exc
-    if venue.area not in ALLOWED_AREAS:
+    if not venue.area or venue.area != venue.area.strip().lower():
         raise CheckpointValidationError(
             f"Row {index} (venueId={venue.venue_id!r}) has invalid area "
-            f"{venue.area!r}; expected one of {sorted(ALLOWED_AREAS)}."
+            f"{venue.area!r}; area must be a non-empty, already-lowercase slug."
+        )
+    if venue.area not in LIVE_AREAS and venue.status != VenueStatusEnum.HIDDEN:
+        raise CheckpointValidationError(
+            f"Row {index} (venueId={venue.venue_id!r}): area {venue.area!r} is "
+            'not live; row must set status="hidden".'
         )
     return venue
 
@@ -158,18 +173,33 @@ def validate_row(row: dict[str, Any], index: int) -> VenueSummary:
 def validate_rows(rows: list[dict[str, Any]]) -> list[VenueSummary]:
     """Validate every row before any write happens (validate-all, write-after).
 
-    In addition to per-row validation, this rejects two checkpoint rows that
-    resolve to the same ``venueId``. Left unchecked, the second row's
-    ``set(merge=False)`` would silently overwrite the first and the summary would
-    double-count. Duplicates are realistic via hand-added slug collisions
+    Per-row validation errors are accumulated across ALL rows and raised as a
+    single :class:`CheckpointValidationError` naming every offending row, so a
+    reviewer can fix every violation in one pass instead of one-at-a-time.
+
+    Once every row passes individually, this also rejects two checkpoint rows
+    that resolve to the same ``venueId``. Left unchecked, the second row's
+    ``set(merge=False)`` would silently overwrite the first and the summary
+    would double-count. Duplicates are realistic via hand-added slug collisions
     (e.g. "Ten-Twenty Club" vs "Ten Twenty Club") or copy-pasted rows, so a
     duplicate aborts the whole run — naming BOTH offending row indices — before
     any write happens.
     """
     venues: list[VenueSummary] = []
-    seen: dict[str, int] = {}
+    errors: list[str] = []
     for index, row in enumerate(rows):
-        venue = validate_row(row, index)
+        try:
+            venues.append(validate_row(row, index))
+        except CheckpointValidationError as exc:
+            errors.append(str(exc))
+    if errors:
+        raise CheckpointValidationError(
+            f"{len(errors)} checkpoint row(s) failed validation:\n"
+            + "\n".join(f"- {message}" for message in errors)
+        )
+
+    seen: dict[str, int] = {}
+    for index, venue in enumerate(venues):
         first_index = seen.get(venue.venue_id)
         if first_index is not None:
             raise CheckpointValidationError(
@@ -178,7 +208,6 @@ def validate_rows(rows: list[dict[str, Any]]) -> list[VenueSummary]:
                 f"would overwrite each other on ingest — dedupe or rename one."
             )
         seen[venue.venue_id] = index
-        venues.append(venue)
     return venues
 
 

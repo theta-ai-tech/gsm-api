@@ -174,3 +174,9 @@ class DeliveryStatusEnum(StrEnum):
     DELIVERED = "delivered"
     NO_TOKENS = "no_tokens"
     FAILED = "failed"
+
+
+class VenueStatusEnum(StrEnum):
+    LIVE = "live"
+    HIDDEN = "hidden"
+    UNVERIFIED = "unverified"
