@@ -670,7 +670,9 @@ class PlayService:
             "availability": request.availability.value,
             "courtStatus": request.court_status.value,
             "courtLocation": request.court_location,
-            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+            "venueRef": venue_ref.model_dump(by_alias=True, exclude={"status"})
+            if venue_ref
+            else None,
             "status": "active",
             "expiresAt": request.expires_at,
             "createdAt": now,
@@ -953,7 +955,9 @@ class PlayService:
             "partnerUid": partner_uid,
             "proposedTime": request.proposed_time,
             "courtLocation": request.court_location,
-            "venueRef": request.venue_ref.model_dump(by_alias=True) if request.venue_ref else None,
+            "venueRef": request.venue_ref.model_dump(by_alias=True, exclude={"status"})
+            if request.venue_ref
+            else None,
             "sourceBroadcastId": request.source_broadcast_id,
             "leagueId": request.league_id,
             "message": request.message,
@@ -1077,7 +1081,9 @@ class PlayService:
             "resultSubmittedBy": [],
             "leagueId": offer.league_id,
             "courtId": None,
-            "venueRef": venue_ref.model_dump(by_alias=True) if venue_ref else None,
+            "venueRef": venue_ref.model_dump(by_alias=True, exclude={"status"})
+            if venue_ref
+            else None,
         }
 
     # ===== POST /me/offers/{offer_id}/accept =====

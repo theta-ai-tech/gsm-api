@@ -30,6 +30,10 @@ Used wherever a venue is attached to a broadcast, offer, or match.
 - `status` — venue lifecycle state (`live` \| `unverified`) for curated venues resolved from the
   `venues` collection; `null` for Google-only results (they have no lifecycle state). `hidden`
   venues are never returned to clients, so this field never carries `"hidden"` in a response.
+  `status` is populated on venue search responses only; it is **not** stored on the embedded
+  `venueRef` maps persisted into broadcasts/offers/matches (the authoritative status lives on the
+  `venues/{id}` document). Any client-supplied `status` on a write request is stripped before
+  persistence.
 
 ### MatchScore
 
