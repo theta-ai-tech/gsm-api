@@ -778,6 +778,7 @@ def to_venue_summary(doc: dict[str, Any], venue_id: str | None = None) -> VenueS
             "courtCount": doc.get("courtCount"),
             "indoor": doc.get("indoor"),
             "placeId": doc.get("placeId"),
+            "status": doc.get("status", "live"),
         }
     )
 

@@ -145,6 +145,7 @@ def search_venues(
                 "place_id": v.place_id,
                 "name": v.name,
                 "coordinates": {"lat": v.coordinates.lat, "lng": v.coordinates.lng},
+                "status": v.status,
             }
         )
         if v.place_id:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from app.models import VenueSummary
+from app.models.enums import VenueStatusEnum
 from app.repos.base import RepoBase
 from app.repos.mappers import to_venue_summary
+
+CLIENT_VISIBLE_STATUSES: list[str] = [VenueStatusEnum.LIVE.value, VenueStatusEnum.UNVERIFIED.value]
 
 
 class VenueRepo(RepoBase):
@@ -17,7 +20,13 @@ class VenueRepo(RepoBase):
     COLLECTION = "venues"
 
     def get_by_id(self, venue_id: str) -> VenueSummary | None:
-        """Fetch a single curated venue by its Firestore document ID."""
+        """Fetch a single curated venue by its Firestore document ID.
+
+        Intentionally unfiltered by ``status`` — this is a direct/internal
+        lookup (e.g. resolving a stored ``venue_id`` reference), not a
+        client-facing discovery query, so ``hidden``/``unverified`` venues
+        are still resolvable here.
+        """
         doc = self.client.collection(self.COLLECTION).document(venue_id).get()
         data = self._doc_to_dict(doc)
         if data is None:
@@ -35,12 +44,14 @@ class VenueRepo(RepoBase):
 
         ``sport`` is matched via ``array_contains`` against the venue's
         ``sports`` array. ``area`` (when provided) is matched as an exact
-        string on the ``area`` field. Results are ordered by ``name`` for
-        stable pagination.
+        string on the ``area`` field. Only ``live``/``unverified`` venues are
+        returned — ``hidden`` venues (not-yet-launched regions) are excluded.
+        Results are ordered by ``name`` for stable pagination.
         """
         query = self.client.collection(self.COLLECTION).where("sports", "array_contains", sport)
         if area is not None:
             query = query.where("area", "==", area)
+        query = query.where("status", "in", CLIENT_VISIBLE_STATUSES)
         query = query.order_by("name").limit(limit)
         if cursor and cursor.get("name"):
             query = query.start_after([cursor["name"]])
@@ -50,13 +61,15 @@ class VenueRepo(RepoBase):
         """Return curated venues whose ``name`` starts with ``prefix`` (case-sensitive).
 
         Uses the Firestore ``>=`` / ``<`` range trick on the ``name`` field
-        to approximate a prefix search. Limited to ``limit`` results.
+        to approximate a prefix search. Only ``live``/``unverified`` venues
+        are returned. Limited to ``limit`` results.
         """
         upper = prefix[:-1] + chr(ord(prefix[-1]) + 1) if prefix else ""
         query = (
             self.client.collection(self.COLLECTION)
             .where("name", ">=", prefix)
             .where("name", "<", upper)
+            .where("status", "in", CLIENT_VISIBLE_STATUSES)
             .order_by("name")
             .limit(limit)
         )

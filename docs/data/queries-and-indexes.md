@@ -99,6 +99,29 @@ schema evolve behind a stable, testable API.
 - **Repo:** `LeaguesRepo.list_teams`
 - **Index:** single-field only.
 
+### Q9 — Venues by sport and area
+- **Purpose:** `GET /venues?sport=&area=` — curated venue picker.
+- **Collection:** `venues`
+- **Filters:** `sports array_contains {sport}`; `area == {area}` (optional); `status in
+  ["live", "unverified"]` (always applied — excludes `hidden` venues in not-yet-launched regions)
+- **Ordering:** `name ASC`
+- **Pagination:** cursor-based (`startAfter(last_name)`)
+- **Repo:** `VenueRepo.list_by_sport_and_area`
+- **Index:** composite, two shapes (with/without `area`) — see `firestore.indexes.json`:
+  `sports CONTAINS, status ASC, name ASC` and `sports CONTAINS, area ASC, status ASC, name ASC`.
+
+### Q10 — Venue search by name prefix
+- **Purpose:** `GET /venues/search` — curated-venue half of the merged Places+Firestore search.
+- **Collection:** `venues`
+- **Filters:** `name >= {prefix}` AND `name < {prefix_upper}` (prefix range trick); `status in
+  ["live", "unverified"]` (always applied)
+- **Ordering:** `name ASC`
+- **Repo:** `VenueRepo.search_by_name_prefix`
+- **Index:** composite — `status ASC, name ASC` (see `firestore.indexes.json`).
+
+`VenueRepo.get_by_id` (direct doc fetch by `venueId`) is intentionally unfiltered by `status` —
+it's an internal/by-id lookup, not a client-facing discovery query.
+
 ## Field assumptions
 - `matches.participantUids` — array of uid strings
 - `matches.status` — string enum
@@ -108,6 +131,8 @@ schema evolve behind a stable, testable API.
 - `users/{uid}/journalEntries.createdAt` — timestamp
 - `users.nameLower` — lowercased `name`, written at registration (backfill required for older users)
 - `leagues/{leagueId}/teams.memberUids` — array of exactly two uid strings
+- `venues.status` — string enum (`live` \| `hidden` \| `unverified`); REQUIRED on every doc, since
+  Firestore's `in` operator excludes docs missing the field entirely (see `data-dictionary.md`)
 
 Field names use the camelCase convention shared with seeding/mapping.
 

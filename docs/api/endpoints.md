@@ -1572,7 +1572,8 @@ Required (Firebase Bearer ID token).
       "sports": ["padel", "tennis"],
       "courtCount": 6,
       "indoor": false,
-      "placeId": "ChIJFlisvos"
+      "placeId": "ChIJFlisvos",
+      "status": "live"
     }
   ],
   "nextCursor": null
@@ -1582,6 +1583,11 @@ Required (Firebase Bearer ID token).
 ### Behavior
 - Queries the `venues/{venueId}` Firestore collection using `array_contains` on `sports`.
 - If `area` is provided, adds an exact-match filter on the `area` field.
+- Only `live` and `unverified` venues are returned — `hidden` venues (not-yet-launched regions)
+  are excluded via a `status in ["live", "unverified"]` filter.
+- Every venue payload carries a `status` field with one of two possible wire values: `"live"`
+  (verified, shown normally) or `"unverified"` (real venue with unconfirmed details; the client
+  should show a badge and prompt the user to confirm/correct via `POST /venues/suggest`).
 - Results are ordered by `name` alphabetically.
 - Pagination: pass `nextCursor` from a previous response as `cursor` to fetch the next page.
 - Returns `200` with `venues: []` when no venues match (never 404).
@@ -1612,10 +1618,14 @@ Required (Firebase Bearer ID token).
 
 ### Behavior
 - Curated venues from the `venues` Firestore collection are prefix-matched on `name` and returned first.
+- Only `live` and `unverified` curated venues are matched — `hidden` venues (not-yet-launched
+  regions) are excluded via a `status in ["live", "unverified"]` filter.
 - Google Places Autocomplete is called with `q` (and optional lat/lng bias).
 - Results are merged: curated first, then Google Places, deduped by `placeId`.
 - Returns at most 5 results total.
 - Curated venues have a `venueId` populated; Google-only results have `venueId: null`.
+- Curated results carry `status: "live"` or `status: "unverified"`; Google-only results carry
+  `status: null` (they have no lifecycle state — they're not stored in `venues`).
 
 ### Example call
 ```bash
@@ -1632,13 +1642,15 @@ curl -s \
       "venueId": "venue_flisvos",
       "placeId": "ChIJFlisvos",
       "name": "Flisvos Padel Academy",
-      "coordinates": {"lat": 37.93, "lng": 23.68}
+      "coordinates": {"lat": 37.93, "lng": 23.68},
+      "status": "live"
     },
     {
       "venueId": null,
       "placeId": "ChIJGoogleResult",
       "name": "Glyfada Padel Club",
-      "coordinates": {"lat": 37.88, "lng": 23.74}
+      "coordinates": {"lat": 37.88, "lng": 23.74},
+      "status": null
     }
   ]
 }

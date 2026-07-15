@@ -69,6 +69,7 @@ def test_ingest_writes_correct_field_shape(db: firestore.Client, _cleanup_venues
         "sports": ["tennis"],
         "courtCount": 4,
         "indoor": False,
+        "status": "live",
     }
 
 
@@ -137,7 +138,9 @@ def test_duplicate_venue_id_aborts_before_any_write(
     assert _count(db, [dup_id]) == 0
 
 
-def test_invalid_area_aborts_before_any_write(db: firestore.Client, _cleanup_venues):
+def test_non_live_area_without_hidden_status_aborts_before_any_write(
+    db: firestore.Client, _cleanup_venues
+):
     good_id = f"{_PREFIX}good"
     bad_id = f"{_PREFIX}bad"
     _cleanup_venues.extend([good_id, bad_id])
@@ -149,3 +152,18 @@ def test_invalid_area_aborts_before_any_write(db: firestore.Client, _cleanup_ven
         ingest_venues(db, validate_rows(rows))
 
     assert _count(db, [good_id, bad_id]) == 0
+
+
+def test_non_live_area_with_hidden_status_ingests_as_hidden(
+    db: firestore.Client, _cleanup_venues
+):
+    venue_id = f"{_PREFIX}lavrio_hidden"
+    _cleanup_venues.append(venue_id)
+
+    rows = [_row(venue_id, area="lavrio", status="hidden")]
+    summary = ingest_venues(db, validate_rows(rows))
+
+    assert summary.created == 1
+    doc = db.collection(VENUES_COLLECTION).document(venue_id).get().to_dict()
+    assert doc["area"] == "lavrio"
+    assert doc["status"] == "hidden"

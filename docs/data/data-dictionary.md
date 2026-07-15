@@ -1198,11 +1198,12 @@ here.
 | `venueId` | string (doc id) | Deterministic slug so re-running the seed upserts in place and never duplicates. OSM-sourced venues derive it from the OSM element id; hand-added venues derive it from a documented name+metro rule |
 | `name` | string | Venue name |
 | `coordinates` | map `{lat, lng}` | Lat/lng pair |
-| `area` | string | **Metro region string** — one of `athens`, `thessaloniki`, `patras` (lowercase, matching the *values* in `config/regions.mapping`). This is metro-level, not neighbourhood-level. A client resolves a user's numeric `preferences.area` code → metro via `config/regions`, then filters venues by that metro string. `SAMPLE_VENUES` rows now carry metro strings — the venue-seeding epic migrated legacy neighbourhood-name values ("Voula") to this convention |
+| `area` | string | **Metro region string** — any non-empty, lowercase slug (matching the *values* in `config/regions.mapping` for launch metros). This is metro-level, not neighbourhood-level. A client resolves a user's numeric `preferences.area` code → metro via `config/regions`, then filters venues by that metro string. `SAMPLE_VENUES` rows now carry metro strings — the venue-seeding epic migrated legacy neighbourhood-name values ("Voula") to this convention |
 | `sports` | array<string (enum)> | Subset of `tennis`, `padel`, `pickleball`; multi-sport venues carry multiple entries in one document |
 | `courtCount` | int \| null | From OSM `courts` tag where present, else null |
 | `indoor` | bool \| null | Inferred from OSM tags where possible, else null |
 | `placeId` | string \| null | Google Places id; null at MVP launch (deferred to VEN-4) |
+| `status` | string (enum: `live` \| `hidden` \| `unverified`) | Venue lifecycle state, default `live`. **REQUIRED on every doc** — `VenueRepo`'s client-visible queries filter `status in ["live", "unverified"]`, and Firestore's `in` operator excludes documents that lack the field entirely, so any doc missing `status` silently disappears from `GET /venues` / `GET /venues/search`. `hidden` = venue in a not-yet-launched region, never returned to clients (region launch = flip to `live` via `tools/set_area_status.py`). `unverified` = real venue with unconfirmed/generic details, returned to clients with a badge prompting confirmation via `POST /venues/suggest`. Invariant enforced by `tools/ingest_venues.py`: `area` outside the launch metros (`athens`/`thessaloniki`/`patras`) requires `status: "hidden"` (an `unverified` row is never allowed outside a launch metro, since that would leak an unlaunched region past the visibility filter). `get_by_id` reads are intentionally unfiltered by `status` (internal/by-id lookup) |
 
 ### Example
 
@@ -1214,7 +1215,8 @@ here.
   "sports": ["padel"],
   "courtCount": 3,
   "indoor": true,
-  "placeId": null
+  "placeId": null,
+  "status": "live"
 }
 ```
 

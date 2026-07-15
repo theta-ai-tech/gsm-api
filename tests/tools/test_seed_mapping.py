@@ -21,11 +21,15 @@ from app.models import (
     SportRanking,
     UserPreferences,
     LevelEnum,
+    VenueStatusEnum,
+    VenueSummary,
 )
+from app.models.common import GeoCoordinates
 from tools.seed_mapping import (
     journal_entry_to_firestore_doc,
     match_to_firestore_doc,
     user_to_firestore_doc,
+    venue_summary_to_firestore_doc,
 )
 
 
@@ -152,3 +156,28 @@ def test_journal_mapping_basic():
     doc = journal_entry_to_firestore_doc(entry)
     assert doc["title"] == "Note"
     assert doc["createdAt"].tzinfo is not None
+
+
+def test_venue_mapping_writes_default_live_status():
+    venue = VenueSummary(
+        venue_id="venue_x",
+        name="Test Club",
+        coordinates=GeoCoordinates(lat=37.9, lng=23.7),
+        area="athens",
+        sports=[SportEnum.TENNIS],
+    )
+    doc = venue_summary_to_firestore_doc(venue)
+    assert doc["status"] == "live"
+
+
+def test_venue_mapping_writes_explicit_hidden_status():
+    venue = VenueSummary(
+        venue_id="venue_y",
+        name="Not Yet Launched Club",
+        coordinates=GeoCoordinates(lat=37.9, lng=23.7),
+        area="lavrio",
+        sports=[SportEnum.TENNIS],
+        status=VenueStatusEnum.HIDDEN,
+    )
+    doc = venue_summary_to_firestore_doc(venue)
+    assert doc["status"] == "hidden"

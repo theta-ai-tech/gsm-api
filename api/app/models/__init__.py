@@ -43,6 +43,7 @@ from app.models.enums import (
     TickerEventTypeEnum,
     TierEnum,
     TrainingFocusEnum,
+    VenueStatusEnum,
 )
 from app.models.journal import (
     CreateJournalEntryRequest,
@@ -111,6 +112,7 @@ __all__ = [
     "CourtStatusEnum",
     "OfferStatusEnum",
     "TierEnum",
+    "VenueStatusEnum",
     "PointHistoryReasonEnum",
     "TickerEventTypeEnum",
     "PlatformEnum",

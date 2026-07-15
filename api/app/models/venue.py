@@ -4,7 +4,7 @@ from pydantic import Field
 
 from app.models.base import GsmBaseModel
 from app.models.common import GeoCoordinates
-from app.models.enums import SportEnum
+from app.models.enums import SportEnum, VenueStatusEnum
 
 
 class VenueSummary(GsmBaseModel):
@@ -24,3 +24,4 @@ class VenueSummary(GsmBaseModel):
     court_count: int | None = Field(default=None, alias="courtCount")
     indoor: bool | None = None
     place_id: str | None = Field(default=None, alias="placeId")
+    status: VenueStatusEnum = VenueStatusEnum.LIVE
