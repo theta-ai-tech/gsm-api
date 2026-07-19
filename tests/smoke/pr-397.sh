@@ -71,11 +71,29 @@ skip() {
 
 # Returns the last matching JSON log line (by "event" field) from the API log,
 # tailing only lines appended since $1 (a line count captured before the request).
+# Log messages are JSON with sort_keys=True, so "event" is not necessarily the
+# first key — match the JSON object anywhere on the line via python instead of
+# assuming key order in a grep pattern.
 last_log_line_since() {
   local event="$1" since_lines="$2"
   tail -n "+$((since_lines + 1))" "$API_LOG_FILE" 2>/dev/null \
-    | grep -o '{"event":"'"$event"'".*}' \
-    | tail -n 1
+    | python3 -c "
+import json, re, sys
+target = sys.argv[1]
+last = None
+for line in sys.stdin:
+    m = re.search(r'\{.*\}', line)
+    if not m:
+        continue
+    try:
+        d = json.loads(m.group(0))
+    except ValueError:
+        continue
+    if d.get('event') == target:
+        last = m.group(0)
+if last:
+    print(last)
+" "$event"
 }
 
 line_count() {
