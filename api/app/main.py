@@ -4,11 +4,16 @@ import time
 from fastapi import Depends, FastAPI, Path, status, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 
 from app.deps import get_current_user
 from app.deps import get_firestore_client
+from app.observability import (
+    bodies_logging_enabled,
+    log_error_response,
+    log_request_response_bodies,
+)
 from app.routers.account import router as account_router
 from app.routers.clubhouse import router as clubhouse_router
 from app.routers.device_tokens import router as device_tokens_router
@@ -59,6 +64,38 @@ if settings.cors_origins:
 
 
 @app.middleware("http")
+async def body_logging_middleware(request: Request, call_next):
+    if not bodies_logging_enabled():
+        return await call_next(request)
+
+    request_body = await request.body()
+
+    # Replay the consumed body for downstream handlers: BaseHTTPMiddleware's
+    # call_next re-reads from the receive channel, which is now exhausted.
+    async def receive() -> dict:
+        return {"type": "http.request", "body": request_body, "more_body": False}
+
+    request = Request(request.scope, receive)
+
+    response = await call_next(request)
+
+    response_body = b"".join([chunk async for chunk in response.body_iterator])
+    log_request_response_bodies(
+        request,
+        request_body,
+        response_body,
+        response.status_code,
+        response.headers.get("content-type", ""),
+    )
+    return Response(
+        content=response_body,
+        status_code=response.status_code,
+        headers=dict(response.headers),
+        media_type=response.media_type,
+    )
+
+
+@app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -100,6 +137,7 @@ async def timing_middleware(request: Request, call_next):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    log_error_response(request, exc.status_code, exc.detail)
     detail = exc.detail
     if isinstance(detail, dict):
         payload = detail
@@ -126,6 +164,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         return obj
 
     details = [_sanitize(err) for err in exc.errors()]
+    logged_details = [{k: err.get(k) for k in ("loc", "msg", "type")} for err in details]
+    log_error_response(request, status.HTTP_422_UNPROCESSABLE_CONTENT, logged_details)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
@@ -138,6 +178,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    log_error_response(
+        request,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        f"unhandled_exception: {type(exc).__name__}",
+        exc=exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"error": "internal_error", "message": "Something went wrong"},

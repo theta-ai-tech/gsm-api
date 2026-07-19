@@ -14,6 +14,27 @@
 - Timing middleware measures each request; if duration exceeds the threshold (currently 500ms) it
   logs path, method, status, duration, threshold, and `request_id`.
 
+## Error-response logging (always on)
+
+Every non-2xx response is logged as a compact JSON line — WARNING for 4xx, ERROR for 5xx
+(with traceback for unhandled exceptions):
+
+`{"event":"http_error","request_id":"…","method":"POST","path":"/me","status":400,"detail":"Tier config not found in Firestore (config/tiers)"}`
+
+Correlate a client-reported failure to the exact log line via the `X-Request-Id` the client
+received. 422 validation errors log `loc`/`msg`/`type` only — never the submitted values.
+No request/response bodies and no PII are logged on this path. Non-2xx responses returned
+directly by a route (rather than raised) bypass the exception handlers and are not logged here;
+`/ready`'s 503 is the only such case and logs its own `readiness_failure` line.
+
+## Gated body logging (dev/QA only)
+
+Set `GSM_LOG_BODIES=1` (truthy: `1|true|on|yes`, default OFF) to log full request/response
+bodies as `{"event":"http_body",…}` lines. JSON bodies are redacted (password/token/secret/
+api_key/email → `[REDACTED]`), headers are never logged, bodies over 10 KB are elided, and
+non-JSON/non-text bodies are summarized. Intended for the emulator QA loop only — leave unset
+in prod.
+
 ## Auth regression tests & CI
 Regression tests for `GET /users/{uid}` lock in current auth behavior (401 no/invalid token; 403
 valid token with uid mismatch; 200 valid token, matching uid). GitHub Actions CI runs the unit
