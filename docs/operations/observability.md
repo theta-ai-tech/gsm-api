@@ -23,7 +23,12 @@ Every non-2xx response is logged as a compact JSON line — WARNING for 4xx, ERR
 
 Correlate a client-reported failure to the exact log line via the `X-Request-Id` the client
 received. 422 validation errors log `loc`/`msg`/`type` only — never the submitted values.
-No request/response bodies and no PII are logged on this path. Non-2xx responses returned
+The structured `event=http_error` JSON payload carries no PII by construction — it holds only
+`request_id`/`method`/`path`/`status`/`detail`, and for 5xx the `detail` is the exception
+CLASS name (e.g. `unhandled_exception: ValueError`), never `str(exc)`. Note that 5xx lines
+additionally attach a Python traceback (via `exc_info`) for debuggability; a traceback's last
+line follows standard Python logging convention (`<ClassName>: <str(exc)>`) and so may include
+the original exception's message. No request/response bodies are logged on this path. Non-2xx responses returned
 directly by a route (rather than raised) bypass the exception handlers and are not logged here;
 `/ready`'s 503 is the only such case and logs its own `readiness_failure` line.
 

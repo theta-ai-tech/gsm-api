@@ -43,6 +43,17 @@ def log_error_response(
     JSON goes in the message itself because the root logger's default formatter
     (configured via logging.basicConfig in main.py) renders only the message —
     `extra` fields never reach stdout or Cloud Logging.
+
+    PII scope: the JSON `detail` field carries no PII by construction. For 5xx the
+    caller passes only the exception CLASS name (e.g. "unhandled_exception: ValueError"),
+    never `str(exc)`, so the message string itself cannot leak a user-supplied
+    exception argument. The 5xx branch additionally attaches the exception via
+    `exc_info` so the log record carries a full traceback — this is essential for
+    debugging real unhandled bugs and is standard Python / Cloud Logging behavior.
+    Note that a rendered traceback's last line is always "<ClassName>: <str(exc)>",
+    so the traceback CAN include the original exception message (which may embed
+    user data). This is an intentional, accepted tradeoff scoped to the 5xx-only
+    path; 4xx paths never receive `exc_info` and so never attach a traceback.
     """
     payload = {
         "event": "http_error",
@@ -54,6 +65,9 @@ def log_error_response(
     }
     message = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     if status_code >= 500:
+        # exc_info attaches the traceback (last line "<ClassName>: <str(exc)>", so it
+        # may include the exception's own message). Kept deliberately: tracebacks are
+        # required to debug unhandled 5xx bugs. The JSON message above stays PII-free.
         logger.error(message, exc_info=exc)
     else:
         logger.warning(message)

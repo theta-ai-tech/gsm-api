@@ -129,9 +129,18 @@ def test_500_logs_error_with_exception_class_and_traceback(caplog):
     assert len(records) == 1
     record, payload = records[0]
     assert record.levelno == logging.ERROR
+    # The JSON `detail` (and the message string) carries only the exception class
+    # name, never str(exc) — so the structured payload stays PII-free.
     assert payload["detail"] == "unhandled_exception: RuntimeError"
-    assert record.exc_info is not None
     assert "boom-secret" not in record.getMessage()
+
+    # But exc_info IS attached (needed to debug unhandled 5xx bugs), and a rendered
+    # traceback's last line is "<ClassName>: <str(exc)>" — so the exception's own
+    # message DOES reach the traceback. This is the intentional, accepted 5xx-only
+    # tradeoff; assert the real behavior rather than a false absence.
+    assert record.exc_info is not None
+    rendered_traceback = logging.Formatter().formatException(record.exc_info)
+    assert "boom-secret" in rendered_traceback
 
 
 def test_2xx_logs_nothing(caplog):
@@ -192,6 +201,30 @@ def test_flag_on_bodies_logged_with_redaction(caplog, monkeypatch):
     assert payload["request_id"] == "body-corr-1"
     assert payload["response_body"] is not None
     assert "hunter2" not in record.getMessage()
+
+
+def test_flag_on_redaction_under_real_app_middleware(caplog, monkeypatch):
+    """Prove redaction works under the PRODUCTION middleware stack, not just the mirror app.
+
+    The mirror app rebuilds middleware via add_middleware (which inserts at position 0,
+    inverting order), so it does not guarantee the real topology. Here we hit the real
+    `app` from app.main directly. POST /me is unauthenticated → 401, but the body-logging
+    middleware runs regardless of the downstream auth outcome, so the request body is still
+    logged and must be redacted.
+    """
+    monkeypatch.setenv("GSM_LOG_BODIES", "1")
+    caplog.set_level(logging.INFO, logger="gsm-api")
+    client = TestClient(base_app)
+    resp = client.post("/me", json={"name": "x", "password": "hunter2-secret"})
+    assert resp.status_code == 401
+
+    records = _http_body_records(caplog)
+    assert len(records) == 1
+    record, payload = records[0]
+    assert payload["path"] == "/me"
+    assert payload["request_body"]["password"] == "[REDACTED]"
+    assert payload["request_body"]["name"] == "x"
+    assert "hunter2-secret" not in record.getMessage()
 
 
 def test_nested_redaction(caplog, monkeypatch):
