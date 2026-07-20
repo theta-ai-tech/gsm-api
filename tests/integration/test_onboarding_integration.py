@@ -102,6 +102,28 @@ def onboarding_client(firestore_client: firestore.Client) -> TestClient:
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def onboarding_client_no_tier_config(firestore_client: firestore.Client) -> TestClient:
+    """Like onboarding_client, but config/tiers is deliberately absent."""
+    import app.repos.tier_config_repo as tcr
+
+    tcr._cache = None
+    firestore_client.collection("config").document("tiers").delete()
+
+    app.dependency_overrides[get_users_repo] = lambda: UsersRepo(firestore_client)
+    app.dependency_overrides[get_tier_config_repo] = lambda: TierConfigRepo(
+        firestore_client
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        uid=_TEST_UID, email=_TEST_EMAIL
+    )
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+    # Restore config/tiers for any other test in the suite that assumes it exists.
+    tcr._cache = None
+    _seed_tier_config(firestore_client)
+
+
 @pytest.fixture(autouse=True)
 def _cleanup(firestore_client: firestore.Client):
     yield
@@ -164,3 +186,14 @@ class TestOnboardingIntegration:
         # beginner → amateur → floor 1000
         assert padel_ranking["registrationTier"] == "amateur"
         assert padel_ranking["pts"] == 1000
+
+
+class TestOnboardingConfigMisconfig:
+    def test_missing_tier_config_returns_500(
+        self, onboarding_client_no_tier_config: TestClient
+    ) -> None:
+        """config/tiers absent → 500, not 400 — real Firestore/TierConfigRepo path."""
+        response = onboarding_client_no_tier_config.post("/me", json=_PAYLOAD)
+
+        assert response.status_code == 500
+        assert "Tier config not found" in response.json()["detail"]
