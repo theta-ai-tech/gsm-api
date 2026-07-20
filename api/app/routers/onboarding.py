@@ -8,7 +8,7 @@ from app.repos.tier_config_repo import TierConfigRepo
 from app.repos.users_repo import UsersRepo
 from app.security import CurrentUser
 from app.services.league_service import LeagueService
-from app.services.onboarding_service import OnboardingService
+from app.services.onboarding_service import OnboardingConfigError, OnboardingService
 
 router = APIRouter(prefix="/me", tags=["onboarding"])
 
@@ -38,6 +38,8 @@ def register_me(
             token_picture=current_user.picture,
             request=request,
         )
+    except OnboardingConfigError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
     except ValueError as exc:
         msg = str(exc)
         if msg == "already_registered":

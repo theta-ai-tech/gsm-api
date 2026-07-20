@@ -11,6 +11,17 @@ from app.utils.contact import normalize_email
 
 logger = logging.getLogger(__name__)
 
+
+class OnboardingConfigError(RuntimeError):
+    """Raised when server-side configuration required for registration is missing or
+    invalid (e.g. config/tiers not seeded, or a tier has no configured floor).
+
+    This is a server/environment fault, not a client input problem — callers should
+    map it to 5xx, never 4xx. Deliberately NOT a ValueError subclass so it is never
+    accidentally swept up by a bare `except ValueError` clause.
+    """
+
+
 LEVEL_TO_TIER: dict[LevelEnum, TierEnum] = {
     LevelEnum.BEGINNER: TierEnum.AMATEUR,
     LevelEnum.INTERMEDIATE: TierEnum.INTERMEDIATE,
@@ -43,12 +54,19 @@ class OnboardingService:
             raise ValueError("email_required")
 
         # 2. Build per-sport rankings (camelCase for Firestore)
-        tier_config = self.tier_config_repo.get()
+        try:
+            tier_config = self.tier_config_repo.get()
+        except ValueError as exc:
+            raise OnboardingConfigError(str(exc)) from exc
+
         rankings: dict = {}
         for sport in request.sports:
             level = getattr(request.levels, sport.value)
             reg_tier = LEVEL_TO_TIER[level]
-            pts = tier_config.get_floor(reg_tier)
+            try:
+                pts = tier_config.get_floor(reg_tier)
+            except ValueError as exc:
+                raise OnboardingConfigError(str(exc)) from exc
             rankings[sport.value] = {
                 "sport": sport.value,
                 "pts": pts,

@@ -22,7 +22,7 @@ from app.models.enums import LevelEnum, SportEnum, TierEnum
 from app.models.user import PrivateUserProfile
 from app.routers.onboarding import get_onboarding_service
 from app.security import CurrentUser
-from app.services.onboarding_service import OnboardingService
+from app.services.onboarding_service import OnboardingConfigError, OnboardingService
 
 # ---- Helpers ----
 
@@ -126,6 +126,18 @@ class TestRegisterMe:
 
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
+
+    def test_tier_config_missing_returns_500(self, client_with_email):
+        """OnboardingConfigError (e.g. config/tiers missing) → 500, not 400."""
+        client, svc = client_with_email
+        svc.register_me.side_effect = OnboardingConfigError(
+            "Tier config not found in Firestore (config/tiers)"
+        )
+
+        response = client.post("/me", json=_HAPPY_PAYLOAD)
+
+        assert response.status_code == 500
+        assert "Tier config not found" in response.json()["detail"]
 
     def test_email_from_token_no_body_email(self, client_with_email):
         """Token email is used; request body has no email field."""
