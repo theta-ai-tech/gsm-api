@@ -7,7 +7,7 @@ decisions and how they're implemented.
 
 ## 1. Rate limiting
 
-**Decision: app-level, per-uid, in-process fixed-window limiter on write endpoints.**
+**Decision: app-level, per-uid, in-process fixed-window limiter on the highest-abuse write endpoints.**
 No new infrastructure (Cloud Armor / API Gateway) is required for launch — the
 cheapest adequate option is a limiter inside the app.
 
@@ -34,6 +34,13 @@ abuse across instances.
 **per-instance**. Cloud Run may run several instances, so the effective global limit
 is `budget × instance_count`. It bounds abuse from a single client rather than
 enforcing a precise global quota.
+
+**Not yet covered (follow-up).** The limiter is applied only to the highest-abuse
+endpoints in the table above. These authenticated write endpoints are **not** yet
+rate-limited and rely on Firebase Auth + Firestore rules alone for launch: `POST
+/venues` (a user-generated-content vector), `PATCH /me/clubhouse/profile`, league
+writes (`/leagues/…`), `POST/DELETE /me/device-tokens`, and `POST /me` (onboarding).
+Extending coverage to these is tracked as a follow-up.
 
 **Toggle.** `GSM_RATE_LIMIT_ENABLED` (default `1`/enabled). Set `0` to disable (the
 test suite does this by default; dedicated tests opt back in).
@@ -99,7 +106,7 @@ emulator.
 ---
 
 ## Acceptance criteria mapping
-- Abusive write loops get 429s → rate limiter on all write endpoints (§1).
+- Abusive write loops get 429s → rate limiter on the highest-abuse authenticated write endpoints — broadcast, offers, verify-score, journal/north-star (§1). Coverage is intentionally partial for launch; see “Not yet covered” in §1.
 - Anonymous requests get 401 everywhere except health → auth-coverage guard (§3).
 - CORS locked, no wildcard → §2.
 - Rules deny direct client access → §4.
