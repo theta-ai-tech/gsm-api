@@ -3,17 +3,19 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/deploy_functions.sh [--project <firebase_project_id>] [--revision <rev>]
+Usage: ./scripts/deploy_functions.sh [--project <firebase_project_id>] [--revision <rev>] [--env <dev|prod>]
 
 Options:
   --project   Firebase project id (defaults to FIREBASE_PROJECT_ID or GOOGLE_CLOUD_PROJECT)
   --revision  Revision tag to stamp (defaults to git short SHA)
+  --env       Target environment; selects deploy/last_good_revision_<env>.txt (default: dev)
   -h, --help  Show this help
 USAGE
 }
 
 PROJECT=""
 REVISION=""
+DEPLOY_ENV="${DEPLOY_ENV:-dev}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --revision)
       REVISION="${2:-}"
+      shift 2
+      ;;
+    --env)
+      DEPLOY_ENV="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -36,6 +42,11 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$DEPLOY_ENV" != "dev" && "$DEPLOY_ENV" != "prod" ]]; then
+  echo "Invalid --env '$DEPLOY_ENV' (expected dev or prod)." >&2
+  exit 1
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -113,11 +124,17 @@ echo "Deployed functions:"
 firebase functions:list --project "$PROJECT"
 echo "Revision: $REVISION"
 
+# Post-deploy smoke creates a synthetic match in the target project. That is fine
+# for dev but would pollute prod, so prod skips auto-smoke unless FORCE_SMOKE=1.
 SMOKE_ENV="${SMOKE_ENV:-dev}"
-echo "Running smoke checks: env=$SMOKE_ENV"
-./scripts/smoke_triggers.sh --env "$SMOKE_ENV" --project "$PROJECT"
+if [[ "$DEPLOY_ENV" == "prod" && "${FORCE_SMOKE:-0}" != "1" ]]; then
+  echo "Skipping auto-smoke for prod (it writes synthetic data). Set FORCE_SMOKE=1 to override."
+else
+  echo "Running smoke checks: env=$SMOKE_ENV"
+  ./scripts/smoke_triggers.sh --env "$SMOKE_ENV" --project "$PROJECT"
+fi
 
-LOG_FILE="$ROOT_DIR/deploy/last_good_revision_dev.txt"
+LOG_FILE="$ROOT_DIR/deploy/last_good_revision_${DEPLOY_ENV}.txt"
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 mkdir -p "$(dirname "$LOG_FILE")"
 printf "%s DEPLOYED %s\n" "$REVISION" "$timestamp" >> "$LOG_FILE"

@@ -1,0 +1,75 @@
+name: Promote to Cloud Run (prod)
+
+# Production promotion. This does NOT rebuild — it deploys an image that was
+# already built and pushed by the dev pipeline (.github/workflows/deploy.yml) to
+# the shared Artifact Registry. Gating is enforced by the `prod` GitHub
+# Environment: configure it with required reviewers so this job pauses for manual
+# approval before it runs. See docs/operations/deployment.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: "Git SHA of the already-built image to promote (the tag pushed by the dev build). Defaults to the current commit."
+        required: false
+        type: string
+
+jobs:
+  promote:
+    name: Promote image to prod
+    # `prod` Environment provides prod-scoped secrets AND the manual-approval gate.
+    environment: prod
+    permissions:
+      id-token: write         # needed for WIF
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ secrets.GCP_REGION }}
+      # Shared registry (repo-level secret). Must match the registry the dev build
+      # pushed to, otherwise the digest cannot be promoted.
+      AR_PROJECT_ID: ${{ secrets.AR_PROJECT_ID || secrets.GCP_PROJECT_ID }}
+      AR_REPO: ${{ secrets.AR_REPO || 'gsm-api' }}
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'gsm-api' }}
+      IMAGE_SHA: ${{ inputs.image_sha || github.sha }}
+    steps:
+      - name: Auth to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve & verify image exists (promote, don't rebuild)
+        id: resolve
+        run: |
+          set -euo pipefail
+          TAGGED="$REGION-docker.pkg.dev/$AR_PROJECT_ID/$AR_REPO/$SERVICE_NAME:${IMAGE_SHA}"
+          # Fail loudly if the requested build was never produced by the dev pipeline.
+          if ! gcloud artifacts docker images describe "$TAGGED" >/dev/null 2>&1; then
+            echo "::error::Image $TAGGED not found in Artifact Registry. Only images built by the dev pipeline can be promoted. Check the SHA." >&2
+            exit 1
+          fi
+          DIGEST="$(gcloud artifacts docker images describe "$TAGGED" --format='value(image_summary.digest)')"
+          IMAGE_REF="$REGION-docker.pkg.dev/$AR_PROJECT_ID/$AR_REPO/$SERVICE_NAME@${DIGEST}"
+          echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "Promoting immutable digest: $IMAGE_REF"
+
+      - name: Deploy to Cloud Run (prod)
+        run: |
+          gcloud run deploy "$SERVICE_NAME" \
+            --image "${{ steps.resolve.outputs.image }}" \
+            --region "$REGION" \
+            --service-account "gsm-api-runtime@${PROJECT_ID}.iam.gserviceaccount.com" \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
+            --quiet
+
+      - name: Promotion summary
+        run: |
+          echo "Promoted image_sha=${IMAGE_SHA} to prod service ${SERVICE_NAME}."
+          echo "Rollback: gcloud run services update-traffic ${SERVICE_NAME} --region ${REGION} --to-revisions <PREVIOUS_REVISION>=100"

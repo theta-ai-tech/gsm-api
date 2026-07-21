@@ -3,17 +3,19 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: ./scripts/rollback_functions.sh [--project <firebase_project_id>] [--revision <rev>]
+Usage: ./scripts/rollback_functions.sh [--project <firebase_project_id>] [--revision <rev>] [--env <dev|prod>]
 
 Options:
   --project   Firebase project id (defaults to FIREBASE_PROJECT_ID or GOOGLE_CLOUD_PROJECT)
-  --revision  Revision to roll back to (defaults to deploy/last_good_revision_dev.txt)
+  --revision  Revision to roll back to (defaults to deploy/last_good_revision_<env>.txt)
+  --env       Target environment; selects deploy/last_good_revision_<env>.txt (default: dev)
   -h, --help  Show this help
 USAGE
 }
 
 PROJECT=""
 REVISION=""
+DEPLOY_ENV="${DEPLOY_ENV:-dev}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --revision)
       REVISION="${2:-}"
+      shift 2
+      ;;
+    --env)
+      DEPLOY_ENV="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -37,6 +43,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "$DEPLOY_ENV" != "dev" && "$DEPLOY_ENV" != "prod" ]]; then
+  echo "Invalid --env '$DEPLOY_ENV' (expected dev or prod)." >&2
+  exit 1
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
@@ -49,7 +60,7 @@ if [[ -z "$PROJECT" ]]; then
 fi
 
 if [[ -z "$REVISION" ]]; then
-  REV_FILE="$ROOT_DIR/deploy/last_good_revision_dev.txt"
+  REV_FILE="$ROOT_DIR/deploy/last_good_revision_${DEPLOY_ENV}.txt"
   if [[ ! -f "$REV_FILE" ]]; then
     echo "Missing $REV_FILE; provide --revision explicitly." >&2
     exit 1
@@ -81,9 +92,9 @@ echo "Worktree: $WORKTREE_DIR"
 
 git -C "$ROOT_DIR" worktree add --detach "$WORKTREE_DIR" "$REVISION" >/dev/null
 
-"$WORKTREE_DIR/scripts/deploy_functions.sh" --project "$PROJECT" --revision "$REVISION"
+"$WORKTREE_DIR/scripts/deploy_functions.sh" --project "$PROJECT" --revision "$REVISION" --env "$DEPLOY_ENV"
 
-LOG_FILE="$ROOT_DIR/deploy/last_good_revision_dev.txt"
+LOG_FILE="$ROOT_DIR/deploy/last_good_revision_${DEPLOY_ENV}.txt"
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 mkdir -p "$(dirname "$LOG_FILE")"
 printf "%s ROLLED BACK %s\n" "$REVISION" "$timestamp" >> "$LOG_FILE"

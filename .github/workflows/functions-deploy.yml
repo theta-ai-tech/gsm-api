@@ -1,20 +1,39 @@
-name: Deploy Firebase Functions (manual)
+name: Deploy Firebase Functions
+
+# Same dev/prod split as the Cloud Run service:
+#   - push to main            -> auto-deploy to DEV (no approval)
+#   - workflow_dispatch (dev) -> manual deploy to DEV
+#   - workflow_dispatch (prod)-> deploy to PROD, gated by the `prod` Environment's
+#                                required reviewers (manual approval).
+# Env selection drives which GitHub Environment (and therefore which project +
+# WIF provider) is used, and which deploy/last_good_revision_<env>.txt is stamped.
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [ "dev", "prod" ]
       project_id:
-        description: "Firebase project id (defaults to secret GCP_PROJECT_ID)"
+        description: "Override Firebase project id (defaults to the environment's GCP_PROJECT_ID secret)"
         required: false
         type: string
 
 jobs:
   deploy-functions:
+    # push -> dev; workflow_dispatch -> chosen env. Prod carries the approval gate.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
     permissions:
       id-token: write
       contents: read
     runs-on: ubuntu-latest
     env:
+      DEPLOY_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
       PROJECT_ID: ${{ inputs.project_id || secrets.GCP_PROJECT_ID }}
     steps:
       - name: Checkout
@@ -38,4 +57,4 @@ jobs:
         run: npm i -g firebase-tools
 
       - name: Deploy Functions (with smoke)
-        run: ./scripts/deploy_functions.sh --project "$PROJECT_ID"
+        run: ./scripts/deploy_functions.sh --project "$PROJECT_ID" --env "$DEPLOY_ENV"
