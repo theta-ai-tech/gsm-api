@@ -29,6 +29,7 @@ from app.models.play import (
     SendOfferResponse,
 )
 from app.deps import get_current_user
+from app.rate_limit import rate_limit
 from app.repos.broadcasts_repo import BroadcastsRepo
 from app.repos.matches_repo import MatchesRepo
 from app.repos.offers_repo import OffersRepo
@@ -116,7 +117,10 @@ def get_discovery_feed(
 
 
 @router.post(
-    "/broadcast", response_model=CreateBroadcastResponse, status_code=status.HTTP_201_CREATED
+    "/broadcast",
+    response_model=CreateBroadcastResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("broadcast"))],
 )
 def create_broadcast(
     request: CreateBroadcastRequest,
@@ -138,7 +142,11 @@ def create_broadcast(
 # ===== DELETE /me/broadcast =====
 
 
-@router.delete("/broadcast", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/broadcast",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(rate_limit("broadcast"))],
+)
 def cancel_broadcast(
     current_user: CurrentUser = Depends(get_current_user),
     play_service: PlayService = Depends(get_play_service),
@@ -158,7 +166,12 @@ def cancel_broadcast(
 # ===== POST /me/offers =====
 
 
-@router.post("/offers", response_model=SendOfferResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/offers",
+    response_model=SendOfferResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit("offer"))],
+)
 def send_offer(
     request: SendOfferRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -198,7 +211,11 @@ def send_offer(
 # ===== POST /me/offers/{offer_id}/accept =====
 
 
-@router.post("/offers/{offer_id}/accept", response_model=OfferActionResponse)
+@router.post(
+    "/offers/{offer_id}/accept",
+    response_model=OfferActionResponse,
+    dependencies=[Depends(rate_limit("offer"))],
+)
 def accept_offer(
     offer_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -227,7 +244,11 @@ def accept_offer(
 # ===== POST /me/offers/{offer_id}/decline =====
 
 
-@router.post("/offers/{offer_id}/decline", response_model=OfferActionResponse)
+@router.post(
+    "/offers/{offer_id}/decline",
+    response_model=OfferActionResponse,
+    dependencies=[Depends(rate_limit("offer"))],
+)
 def decline_offer(
     offer_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -254,7 +275,11 @@ def decline_offer(
 # ===== POST /me/offers/{offer_id}/cancel =====
 
 
-@router.post("/offers/{offer_id}/cancel", response_model=OfferActionResponse)
+@router.post(
+    "/offers/{offer_id}/cancel",
+    response_model=OfferActionResponse,
+    dependencies=[Depends(rate_limit("offer"))],
+)
 def cancel_offer(
     offer_id: str,
     current_user: CurrentUser = Depends(get_current_user),

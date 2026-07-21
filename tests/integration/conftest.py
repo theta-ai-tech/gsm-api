@@ -9,6 +9,9 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Rate limiting off by default in tests; dedicated rate-limit tests opt back in.
+os.environ.setdefault("GSM_RATE_LIMIT_ENABLED", "0")
+
 pytestmark = pytest.mark.integration
 
 

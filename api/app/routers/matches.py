@@ -17,6 +17,7 @@ from app.dependencies.repos import (
 )
 from app.repos.notification_intent_repo import NotificationIntentRepo
 from app.deps import get_current_user
+from app.rate_limit import rate_limit
 from app.models.match import VerifyScoreRequest, VerifyScoreResponse
 from app.repos.matches_repo import MatchesRepo
 from app.repos.point_history_repo import PointHistoryRepo
@@ -55,6 +56,7 @@ def get_match_confirmation_service(
 @router.post(
     "/{match_id}/verify-score",
     response_model=VerifyScoreResponse,
+    dependencies=[Depends(rate_limit("verify_score"))],
 )
 def verify_score(
     request: VerifyScoreRequest,

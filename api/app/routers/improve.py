@@ -24,6 +24,7 @@ from app.dependencies.repos import (
     get_users_repo,
 )
 from app.deps import get_current_user
+from app.rate_limit import rate_limit
 from app.models.base import GsmBaseModel
 from app.models.enums import JournalEntryTypeEnum, SportEnum
 from app.models.journal import (
@@ -193,6 +194,9 @@ def list_loggable_matches(
     response_model=CreateJournalEntryResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a journal entry",
+    # Two layers: the durable per-hour cap in JournalService (global, Firestore-backed)
+    # guards sustained abuse; this in-memory limiter guards bursts per instance.
+    dependencies=[Depends(rate_limit("journal"))],
     responses={
         401: _401,
         404: _404_user,
@@ -231,10 +235,12 @@ def create_journal_entry(
     "/journal/{entry_id}",
     response_model=JournalUpdateResponse,
     summary="Update a journal entry",
+    dependencies=[Depends(rate_limit("journal"))],
     responses={
         401: _401,
         404: _404_entry,
         409: {"description": "Update rejected due to a business rule conflict"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
 def update_journal_entry(
@@ -326,9 +332,11 @@ def get_journal_entry(
     "/journal/{entry_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Soft-delete a journal entry",
+    dependencies=[Depends(rate_limit("journal"))],
     responses={
         401: _401,
         404: _404_entry,
+        429: {"description": "Rate limit exceeded"},
     },
 )
 def delete_journal_entry(
@@ -375,9 +383,11 @@ def get_north_star(
     "/north-star",
     response_model=NorthStarGoal,
     summary="Set North Star goal",
+    dependencies=[Depends(rate_limit("journal"))],
     responses={
         401: _401,
         404: _404_user,
+        429: {"description": "Rate limit exceeded"},
     },
 )
 def set_north_star(
