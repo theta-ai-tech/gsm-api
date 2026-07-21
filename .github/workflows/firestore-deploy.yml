@@ -1,0 +1,66 @@
+name: Deploy Firestore rules & indexes
+
+# Brings a target project's Firestore security rules + composite indexes in line
+# with the repo. Gated the same way as the service deploy:
+#   - push to main touching firestore.rules / firestore.indexes.json -> auto-deploy to DEV
+#   - workflow_dispatch (dev)  -> manual deploy to DEV
+#   - workflow_dispatch (prod) -> deploy to PROD, gated by the `prod` Environment
+#                                 (required reviewers = manual approval).
+# `firebase deploy` compiles rules server-side and exits non-zero on a compile
+# error, so an invalid firestore.rules fails this job loudly.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "firebase.json"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [ "dev", "prod" ]
+      project_id:
+        description: "Override Firebase project id (defaults to the environment's GCP_PROJECT_ID secret)"
+        required: false
+        type: string
+
+jobs:
+  deploy-firestore:
+    # push -> dev; workflow_dispatch -> chosen env. Prod carries the approval gate.
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ inputs.project_id || secrets.GCP_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
+
+      - name: Validate indexes file (broadcasts-feed index present)
+        run: python3 tools/verify_firestore_indexes.py
+
+      - name: Deploy Firestore rules & indexes
+        run: |
+          firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project "$PROJECT_ID" \
+            --non-interactive
