@@ -27,12 +27,17 @@ from app.routers.players import router as players_router
 from app.routers.venues import router as venues_router
 from app.security import CurrentUser, require_self
 from app.settings import get_settings
+from app.telemetry import setup_cloud_logging
 from app.dependencies.repos import get_users_repo
 
 # Ensure app-level loggers (including log_analytics_event) write to stdout.
 # Uvicorn configures only its own loggers; without this the root logger has
 # no handler and logger.info() calls are silently dropped in all environments.
 logging.basicConfig(level=logging.INFO, force=True)
+
+# In production (Cloud Run), route logs through Cloud Logging so ERROR entries
+# with tracebacks surface in Error Reporting. No-op in tests/local (gated).
+setup_cloud_logging()
 
 app = FastAPI(title="GSM API", version="0.1.0")
 
