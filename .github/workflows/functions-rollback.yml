@@ -3,22 +3,31 @@ name: Rollback Firebase Functions (manual)
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: "dev"
+        type: choice
+        options: [ "dev", "prod" ]
       project_id:
-        description: "Firebase project id (defaults to secret GCP_PROJECT_ID)"
+        description: "Override Firebase project id (defaults to the environment's GCP_PROJECT_ID secret)"
         required: false
         type: string
       revision:
-        description: "Target revision SHA/tag (optional; defaults to last DEPLOYED entry)"
+        description: "Target revision SHA/tag (optional; defaults to last DEPLOYED entry for the env)"
         required: false
         type: string
 
 jobs:
   rollback-functions:
+    # Prod rollback is gated by the `prod` Environment's required reviewers.
+    environment: ${{ inputs.environment }}
     permissions:
       id-token: write
       contents: read
     runs-on: ubuntu-latest
     env:
+      DEPLOY_ENV: ${{ inputs.environment }}
       PROJECT_ID: ${{ inputs.project_id || secrets.GCP_PROJECT_ID }}
       REVISION: ${{ inputs.revision }}
     steps:
@@ -45,7 +54,7 @@ jobs:
       - name: Rollback Functions
         run: |
           if [ -n "$REVISION" ]; then
-            ./scripts/rollback_functions.sh --project "$PROJECT_ID" --revision "$REVISION"
+            ./scripts/rollback_functions.sh --project "$PROJECT_ID" --env "$DEPLOY_ENV" --revision "$REVISION"
           else
-            ./scripts/rollback_functions.sh --project "$PROJECT_ID"
+            ./scripts/rollback_functions.sh --project "$PROJECT_ID" --env "$DEPLOY_ENV"
           fi
