@@ -38,9 +38,24 @@ Each run:
    file must parse and must still declare the broadcasts-feed composite index
    (#290). A malformed or regressed indexes file fails **before** touching a live
    project.
-2. Runs `firebase deploy --only firestore:rules,firestore:indexes`. Firebase
-   compiles the rules server-side and exits non-zero on a compile error, so an
-   invalid `firestore.rules` **fails the job loudly**.
+2. **Semantically validates `firestore.rules`** by booting the Firestore emulator
+   with them and asserting unauthenticated access is `PERMISSION_DENIED`
+   (`scripts/verify_firestore_rules.sh`, run via `firebase emulators:exec`). This
+   runs entirely against the local emulator (no real project) and **fails before
+   deploy** if the ruleset is valid-but-permissive: an accidental
+   `allow read, write: if true;` compiles fine but would open the database, and is
+   caught here rather than shipping to dev/prod. Compile-checking alone (step 3)
+   does not catch this class of mistake.
+3. Runs `firebase deploy --only firestore:rules,firestore:indexes
+   --non-interactive`. Firebase compiles the rules server-side and exits non-zero on
+   a compile error, so an invalid `firestore.rules` also **fails the job loudly**.
+
+   **Index pruning:** `--non-interactive` (without `--force`) means the deploy
+   **adds/updates** indexes declared in `firestore.indexes.json` but does **not**
+   delete indexes that exist in the project yet are absent from the file. Removing a
+   live index is therefore a deliberate manual operation
+   (`gcloud firestore indexes composite delete …`), never a silent side effect of a
+   deploy.
 
 ---
 
