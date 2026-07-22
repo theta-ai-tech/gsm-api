@@ -1,7 +1,9 @@
 # --- Config ---
 PROJECT_ID := gsm-dev-f70d0
 DEV_PROJECT_ID ?= $(PROJECT_ID)
-# Prod project id — override on the CLI: make deploy-functions-prod PROD_PROJECT_ID=gsm-prod-xxxx
+# Prod project id — override on the CLI, e.g.
+#   make deploy-firestore-prod PROD_PROJECT_ID=gsm-prod-xxxx
+#   make deploy-functions-prod PROD_PROJECT_ID=gsm-prod-xxxx
 PROD_PROJECT_ID ?=
 FIRESTORE_HOST := 127.0.0.1
 FIRESTORE_PORT := 8082
@@ -54,8 +56,11 @@ help:
 	@echo "make smoke-functions  - curl GSM_PING_URL to verify deployed function"
 	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
 	@echo "make cache-integrity-emu - run read-only cache integrity checks on emulator"
+	@echo "make verify-indexes   - validate firestore.indexes.json (broadcasts-feed index present)"
 	@echo "make deploy-indexes-dev - deploy Firestore indexes to dev project"
 	@echo "make deploy-rules-dev  - deploy Firestore security rules to dev project"
+	@echo "make deploy-firestore-dev  - deploy Firestore rules + indexes to dev"
+	@echo "make deploy-firestore-prod - deploy Firestore rules + indexes to prod (set PROD_PROJECT_ID)"
 
 # --- Python env ---
 # Create virtual env
@@ -246,9 +251,14 @@ test-int:
 .PHONY: test-integration
 test-integration: test-int
 
+# Validate firestore.indexes.json (parses; broadcasts-feed index present)
+.PHONY: verify-indexes
+verify-indexes:
+	$(PYTHON) tools/verify_firestore_indexes.py
+
 # Deploy Firestore indexes to dev project
 .PHONY: deploy-indexes-dev
-deploy-indexes-dev:
+deploy-indexes-dev: verify-indexes
 	@echo "Deploying Firestore indexes to dev project: $(DEV_PROJECT_ID)"
 	firebase deploy --only firestore:indexes --project $(DEV_PROJECT_ID)
 
@@ -256,6 +266,18 @@ deploy-indexes-dev:
 .PHONY: deploy-rules-dev
 deploy-rules-dev:
 	firebase deploy --only firestore:rules --project $(DEV_PROJECT_ID)
+
+# Deploy Firestore rules + indexes to dev in one shot (matches the CI workflow)
+.PHONY: deploy-firestore-dev
+deploy-firestore-dev: verify-indexes
+	firebase deploy --only firestore:rules,firestore:indexes --project $(DEV_PROJECT_ID)
+
+# Deploy Firestore rules + indexes to prod. Prefer the gated GitHub workflow
+# (Deploy Firestore rules & indexes -> environment: prod) for production.
+.PHONY: deploy-firestore-prod
+deploy-firestore-prod: verify-indexes
+	@test -n "$(PROD_PROJECT_ID)" || { echo "Set PROD_PROJECT_ID=<prod-project-id>."; exit 1; }
+	firebase deploy --only firestore:rules,firestore:indexes --project $(PROD_PROJECT_ID)
 
 # Build Docker image
 .PHONY: docker-build
