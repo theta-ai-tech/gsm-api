@@ -1,24 +1,39 @@
-name: Build & Deploy to Cloud Run
+name: Build & Deploy to Cloud Run (dev)
+
+# Dev pipeline: every push to main builds an immutable image and auto-deploys it
+# to the DEV Cloud Run service. Production is a separate, manually-approved
+# promotion of an already-built image — see .github/workflows/promote-prod.yml.
+# We build once here and promote the identical image digest to prod (never rebuild).
 
 on:
   push:
-    branches: [ "main" ]      # change if your default branch differs
-  workflow_dispatch: {}       # allow manual runs
+    branches: [ "main" ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-dev-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
+    name: Build & push image
+    # The `dev` GitHub Environment holds dev-scoped secrets (GCP_PROJECT_ID,
+    # SERVICE_NAME, GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, GCP_REGION). The image
+    # registry (AR_PROJECT_ID / AR_REPO) is a repo-level secret so the SAME
+    # registry backs both environments and prod can promote this exact digest.
+    environment: dev
     permissions:
       id-token: write         # needed for WIF
       contents: read
     runs-on: ubuntu-latest
-
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     env:
-      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
       REGION: ${{ secrets.GCP_REGION }}
+      AR_PROJECT_ID: ${{ secrets.AR_PROJECT_ID || secrets.GCP_PROJECT_ID }}
       AR_REPO: ${{ secrets.AR_REPO || 'gsm-api' }}
       SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'gsm-api' }}
-      IMAGE: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.AR_REPO || 'gsm-api' }}/${{ secrets.SERVICE_NAME || 'gsm-api' }}:${{ github.sha }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,15 +48,46 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker auth for Artifact Registry
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev -q
+        run: gcloud auth configure-docker "$REGION-docker.pkg.dev" -q
 
-      - name: Build image
-        run: docker build -t "$IMAGE" .
+      - name: Build, push & resolve digest
+        id: build
+        run: |
+          set -euo pipefail
+          IMAGE="$REGION-docker.pkg.dev/$AR_PROJECT_ID/$AR_REPO/$SERVICE_NAME:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          # Resolve the immutable digest so dev and prod deploy the exact same artifact.
+          DIGEST="$(gcloud artifacts docker images describe "$IMAGE" --format='value(image_summary.digest)')"
+          IMAGE_REF="$REGION-docker.pkg.dev/$AR_PROJECT_ID/$AR_REPO/$SERVICE_NAME@${DIGEST}"
+          echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Built and pushed: $IMAGE_REF"
 
-      - name: Push image
-        run: docker push "$IMAGE"
+  deploy-dev:
+    name: Deploy to Cloud Run (dev)
+    needs: build
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ secrets.GCP_REGION }}
+      SERVICE_NAME: ${{ secrets.SERVICE_NAME || 'gsm-api' }}
+      IMAGE: ${{ needs.build.outputs.image }}
+    steps:
+      - name: Auth to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Deploy to Cloud Run
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run (dev)
         run: |
           gcloud run deploy "$SERVICE_NAME" \
             --image "$IMAGE" \
@@ -52,3 +98,9 @@ jobs:
             --port 8080 \
             --set-env-vars "FIREBASE_PROJECT_ID=${PROJECT_ID},GOOGLE_CLOUD_PROJECT=${PROJECT_ID}" \
             --quiet
+
+      - name: Record deployed image (dev)
+        run: |
+          echo "Deployed to dev: $IMAGE"
+          echo "To promote this build to prod, run the 'Promote to Cloud Run (prod)'"
+          echo "workflow with image_sha=${GITHUB_SHA}"

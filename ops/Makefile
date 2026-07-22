@@ -1,7 +1,9 @@
 # --- Config ---
 PROJECT_ID := gsm-dev-f70d0
 DEV_PROJECT_ID ?= $(PROJECT_ID)
-# Prod project id — override on the CLI: make deploy-firestore-prod PROD_PROJECT_ID=gsm-prod-xxxx
+# Prod project id — override on the CLI, e.g.
+#   make deploy-firestore-prod PROD_PROJECT_ID=gsm-prod-xxxx
+#   make deploy-functions-prod PROD_PROJECT_ID=gsm-prod-xxxx
 PROD_PROJECT_ID ?=
 FIRESTORE_HOST := 127.0.0.1
 FIRESTORE_PORT := 8082
@@ -50,6 +52,7 @@ help:
 	@echo "make docker-down      - stop Docker Desktop (macOS)"
 	@echo "make functions-venv   - create venv for Firebase Functions and install deps"
 	@echo "make deploy-functions - deploy Firebase Functions (dev project)"
+	@echo "make deploy-functions-prod - deploy Firebase Functions (prod; set PROD_PROJECT_ID)"
 	@echo "make smoke-functions  - curl GSM_PING_URL to verify deployed function"
 	@echo "make rebuild-caches-emu - rebuild user caches from canonical data in emulator"
 	@echo "make cache-integrity-emu - run read-only cache integrity checks on emulator"
@@ -80,7 +83,14 @@ functions-venv:
 
 .PHONY: deploy-functions
 deploy-functions:
-	@./scripts/deploy_functions.sh --project $(DEV_PROJECT_ID)
+	@./scripts/deploy_functions.sh --project $(DEV_PROJECT_ID) --env dev
+
+# Deploy functions to prod (promotes current checkout). Prefer the gated GitHub
+# workflow (Deploy Firebase Functions -> environment: prod) for production.
+.PHONY: deploy-functions-prod
+deploy-functions-prod:
+	@test -n "$(PROD_PROJECT_ID)" || { echo "Set PROD_PROJECT_ID=<prod-project-id>."; exit 1; }
+	@./scripts/deploy_functions.sh --project $(PROD_PROJECT_ID) --env prod
 
 .PHONY: smoke-functions
 smoke-functions:

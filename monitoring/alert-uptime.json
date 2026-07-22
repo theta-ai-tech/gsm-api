@@ -1,0 +1,29 @@
+{
+  "displayName": "GSM API — uptime check failing",
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Uptime check on /health not passing",
+      "conditionThreshold": {
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"${UPTIME_CHECK_ID}\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_FRACTION_TRUE",
+            "crossSeriesReducer": "REDUCE_MEAN"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1.0,
+        "duration": "60s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "alertStrategy": { "autoClose": "1800s" },
+  "notificationChannels": ["${NOTIFICATION_CHANNEL}"],
+  "documentation": {
+    "content": "The GSM API uptime check against /health is failing — the service may be down. Runbook: ${RUNBOOK_URL}",
+    "mimeType": "text/markdown"
+  }
+}
