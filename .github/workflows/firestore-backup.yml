@@ -1,0 +1,59 @@
+name: Firestore scheduled backup (prod)
+
+# Daily managed export of the prod Firestore database to a GCS bucket. The bucket's
+# lifecycle policy (deploy/backup-bucket-lifecycle.json) expires snapshots after
+# 30 days. PITR is enabled separately (operator action — see the runbook).
+#
+# The `check` job makes an unconfigured repo's scheduled run a clean no-op: until
+# the prod `BACKUP_BUCKET` secret is set, the export job is skipped instead of
+# failing red. Export is read-only w.r.t. Firestore data.
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # 03:17 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: prod
+    outputs:
+      configured: ${{ steps.gate.outputs.configured }}
+    steps:
+      - id: gate
+        env:
+          BACKUP_BUCKET: ${{ secrets.BACKUP_BUCKET }}
+        run: |
+          if [ -n "$BACKUP_BUCKET" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "BACKUP_BUCKET not set for the prod environment — skipping export."
+          fi
+
+  export:
+    needs: check
+    if: needs.check.outputs.configured == 'true'
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      BACKUP_BUCKET: ${{ secrets.BACKUP_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Auth to GCP via WIF
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Export Firestore to GCS
+        run: ./scripts/firestore_export.sh --project "$PROJECT_ID" --bucket "$BACKUP_BUCKET"
