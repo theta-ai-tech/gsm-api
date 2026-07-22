@@ -1,3 +1,4 @@
+import json
 import logging
 import secrets
 import time
@@ -26,7 +27,7 @@ from app.routers.leagues import router as leagues_router
 from app.routers.players import router as players_router
 from app.routers.venues import router as venues_router
 from app.security import CurrentUser, require_self
-from app.settings import get_settings
+from app.settings import get_settings, sanitize_cors_origins
 from app.telemetry import setup_cloud_logging
 from app.dependencies.repos import get_users_repo
 
@@ -58,10 +59,23 @@ settings = get_settings()
 logger = logging.getLogger("gsm-api")
 SLOW_REQUEST_THRESHOLD_MS = 500
 
-if settings.cors_origins:
+# CORS is locked to an explicit allow-list. The iOS client is not a browser and
+# needs no CORS; origins are only for browser tooling (e.g. an internal dashboard).
+# A wildcard is never allowed — it is stripped and logged.
+_cors_origins, _cors_wildcard_stripped = sanitize_cors_origins(settings.cors_origins)
+if _cors_wildcard_stripped:
+    logger.warning(
+        json.dumps(
+            {
+                "event": "cors_wildcard_stripped",
+                "detail": "'*' origin ignored; set explicit origins",
+            }
+        )
+    )
+if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=_cors_origins,
         allow_credentials=settings.cors_allow_credentials,
         allow_methods=["*"],
         allow_headers=["Authorization", "Content-Type"],
@@ -148,7 +162,9 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         payload = detail
     else:
         payload = {"detail": detail}
-    return JSONResponse(status_code=exc.status_code, content=payload)
+    # Forward response headers set on the exception (e.g. Retry-After on a 429,
+    # WWW-Authenticate on a 401). Without this they would be silently dropped.
+    return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
 
 
 @app.exception_handler(RequestValidationError)

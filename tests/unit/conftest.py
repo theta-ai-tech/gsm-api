@@ -16,6 +16,8 @@ for path in (ROOT / "api", ROOT):
 # Ensure required env is present before app import (app.main calls get_settings at import time)
 os.environ.setdefault("FIREBASE_PROJECT_ID", "gsm-dev-f70d0")
 os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "gsm-dev-f70d0")
+# Rate limiting off by default in tests; the dedicated rate-limit tests opt back in.
+os.environ.setdefault("GSM_RATE_LIMIT_ENABLED", "0")
 
 from app.main import app
 from app.dependencies.repos import get_users_repo

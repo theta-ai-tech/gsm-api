@@ -19,6 +19,17 @@ class Settings(BaseModel):
         return f"https://securetoken.google.com/{self.project_id}"
 
 
+def sanitize_cors_origins(origins: List[str]) -> tuple[List[str], bool]:
+    """Drop wildcard origins from an explicit allow-list.
+
+    The mobile client does not need permissive CORS, so a `*` origin is never
+    appropriate in this API. Returns ``(cleaned_origins, wildcard_stripped)`` so
+    the caller can log that a wildcard was removed.
+    """
+    cleaned = [o for o in origins if o != "*"]
+    return cleaned, len(cleaned) != len(origins)
+
+
 @lru_cache
 def get_settings() -> Settings:
     project_id = os.getenv("FIREBASE_PROJECT_ID") or os.getenv("GOOGLE_CLOUD_PROJECT")
