@@ -1,4 +1,9 @@
 [![CI (lint, type, tests)](https://github.com/theta-ai-tech/gsm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/theta-ai-tech/gsm-api/actions/workflows/ci.yml)
+[![Artifact Registry (dev)](https://img.shields.io/badge/Artifact_Registry-dev-4285F4?logo=googlecloud&logoColor=white)](https://console.cloud.google.com/artifacts/docker/gsm-dev-f70d0/europe-west8/gsm-api?project=gsm-dev-f70d0)
+[![Cloud Run (dev)](https://img.shields.io/badge/Cloud_Run-dev-4285F4?logo=googlecloud&logoColor=white)](https://console.cloud.google.com/run/detail/europe-west8/gsm-api/metrics?project=gsm-dev-f70d0)
+<!-- TODO(prod): swap gsm-prod-REPLACE_ME for the real prod project id once item 1 provisions it -->
+[![Artifact Registry (prod)](https://img.shields.io/badge/Artifact_Registry-prod-9E9E9E?logo=googlecloud&logoColor=white)](https://console.cloud.google.com/artifacts/docker/gsm-prod-REPLACE_ME/europe-west8/gsm-api?project=gsm-prod-REPLACE_ME)
+[![Cloud Run (prod)](https://img.shields.io/badge/Cloud_Run-prod-9E9E9E?logo=googlecloud&logoColor=white)](https://console.cloud.google.com/run/detail/europe-west8/gsm-api/metrics?project=gsm-prod-REPLACE_ME)
 
 # gsm-api
 FastAPI service for GameSetMatch (GSM). Containerized, deployed via Cloud Run, CI on PRs.
